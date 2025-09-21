@@ -1,0 +1,6 @@
+# Root headers to avoid cross-origin isolation and allow GSI popups
+<IfModule mod_headers.c>
+  Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
+  Header always set Cross-Origin-Embedder-Policy "unsafe-none"
+  Header always set Cross-Origin-Resource-Policy "cross-origin"
+</IfModule>
