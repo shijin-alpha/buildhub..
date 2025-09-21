@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import InfoPopup from './InfoPopup';
 
 const TechnicalDetailsForm = ({ data, setData, onNext, onPrev }) => {
   const [activeSection, setActiveSection] = useState('floor-plans');
@@ -34,16 +35,21 @@ const TechnicalDetailsForm = ({ data, setData, onNext, onPrev }) => {
   };
 
   const updateData = (section, field, value) => {
-    setData(prev => ({
-      ...prev,
-      technical_details: {
-        ...prev.technical_details,
-        [section]: {
-          ...prev.technical_details?.[section],
-          [field]: value
+    console.log('🔍 TechnicalDetailsForm updateData called:', { section, field, value });
+    setData(prev => {
+      const newData = {
+        ...prev,
+        technical_details: {
+          ...prev.technical_details,
+          [section]: {
+            ...prev.technical_details?.[section],
+            [field]: value
+          }
         }
-      }
-    }));
+      };
+      console.log('🔍 New technical_details data:', newData.technical_details);
+      return newData;
+    });
   };
 
   const renderFloorPlansSection = () => (
@@ -61,43 +67,162 @@ const TechnicalDetailsForm = ({ data, setData, onNext, onPrev }) => {
       </div>
 
       <div className="form-group">
-        <label>Room Dimensions</label>
+        <label>
+          Room Dimensions
+          <InfoPopup 
+            content={
+              <div>
+                <strong>Default Room Dimensions (ft):</strong><br/>
+                • Living Room: 20 × 15 (300 sq ft)<br/>
+                • Master Bedroom: 16 × 12 (192 sq ft)<br/>
+                • Kitchen: 12 × 10 (120 sq ft)<br/>
+                • Bedroom 2: 14 × 12 (168 sq ft)<br/>
+                • Bedroom 3: 12 × 10 (120 sq ft)<br/>
+                • Bathroom: 8 × 6 (48 sq ft)<br/>
+                • Dining Room: 14 × 12 (168 sq ft)<br/>
+                <em>Format: Length × Width (e.g., 20 × 15 ft)</em>
+              </div>
+            }
+            position="top"
+          >
+            <span style={{ marginLeft: '8px', cursor: 'pointer', color: '#6b7280' }}>ℹ️</span>
+          </InfoPopup>
+        </label>
         <div className="dimensions-grid">
           <div className="dimension-item">
-            <label>Living Room</label>
-            <input
-              type="text"
-              value={data.technical_details?.floor_plans?.living_room_dimensions || ''}
-              onChange={(e) => updateData('floor_plans', 'living_room_dimensions', e.target.value)}
-              placeholder="e.g., 20×15 ft"
-            />
+            <label>
+              Living Room
+              <InfoPopup 
+                content="Typical size: 20 × 15 ft (300 sq ft). Minimum: 12 × 10 ft. Consider furniture placement and traffic flow."
+                position="top"
+              >
+                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
+              </InfoPopup>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={data.technical_details?.floor_plans?.living_room_dimensions || ''}
+                onChange={(e) => updateData('floor_plans', 'living_room_dimensions', e.target.value)}
+                placeholder="e.g., 20 × 15 ft"
+                style={{ paddingRight: '30px' }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#6b7280',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  pointerEvents: 'none'
+                }}
+              >
+                ×
+              </span>
+            </div>
           </div>
           <div className="dimension-item">
-            <label>Master Bedroom</label>
-            <input
-              type="text"
-              value={data.technical_details?.floor_plans?.master_bedroom_dimensions || ''}
-              onChange={(e) => updateData('floor_plans', 'master_bedroom_dimensions', e.target.value)}
-              placeholder="e.g., 16×12 ft"
-            />
+            <label>
+              Master Bedroom
+              <InfoPopup 
+                content="Typical size: 16 × 12 ft (192 sq ft). Minimum: 12 × 10 ft. Include space for king bed, dressers, and walk-in closet."
+                position="top"
+              >
+                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
+              </InfoPopup>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={data.technical_details?.floor_plans?.master_bedroom_dimensions || ''}
+                onChange={(e) => updateData('floor_plans', 'master_bedroom_dimensions', e.target.value)}
+                placeholder="e.g., 16 × 12 ft"
+                style={{ paddingRight: '30px' }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#6b7280',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  pointerEvents: 'none'
+                }}
+              >
+                ×
+              </span>
+            </div>
           </div>
           <div className="dimension-item">
-            <label>Kitchen</label>
-            <input
-              type="text"
-              value={data.technical_details?.floor_plans?.kitchen_dimensions || ''}
-              onChange={(e) => updateData('floor_plans', 'kitchen_dimensions', e.target.value)}
-              placeholder="e.g., 12×10 ft"
-            />
+            <label>
+              Kitchen
+              <InfoPopup 
+                content="Typical size: 12 × 10 ft (120 sq ft). Minimum: 8 × 8 ft. Include work triangle: sink, stove, refrigerator."
+                position="top"
+              >
+                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
+              </InfoPopup>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                value={data.technical_details?.floor_plans?.kitchen_dimensions || ''}
+                onChange={(e) => updateData('floor_plans', 'kitchen_dimensions', e.target.value)}
+                placeholder="e.g., 12 × 10 ft"
+                style={{ paddingRight: '30px' }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#6b7280',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  pointerEvents: 'none'
+                }}
+              >
+                ×
+              </span>
+            </div>
           </div>
           <div className="dimension-item">
-            <label>Other Rooms</label>
-            <textarea
-              rows="3"
-              value={data.technical_details?.floor_plans?.other_room_dimensions || ''}
-              onChange={(e) => updateData('floor_plans', 'other_room_dimensions', e.target.value)}
-              placeholder="Bedroom 2: 14×12 ft, Bedroom 3: 12×10 ft, Bathroom: 8×6 ft..."
-            />
+            <label>
+              Other Rooms
+              <InfoPopup 
+                content="Common dimensions: Bedroom 2: 14 × 12 ft, Bedroom 3: 12 × 10 ft, Bathroom: 8 × 6 ft, Dining Room: 14 × 12 ft. Format: Room Name: Length × Width ft"
+                position="top"
+              >
+                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
+              </InfoPopup>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <textarea
+                rows="3"
+                value={data.technical_details?.floor_plans?.other_room_dimensions || ''}
+                onChange={(e) => updateData('floor_plans', 'other_room_dimensions', e.target.value)}
+                placeholder="Bedroom 2: 14 × 12 ft, Bedroom 3: 12 × 10 ft, Bathroom: 8 × 6 ft..."
+                style={{ paddingRight: '30px', resize: 'vertical' }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '10px',
+                  color: '#6b7280',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  pointerEvents: 'none'
+                }}
+              >
+                ×
+              </span>
+            </div>
           </div>
         </div>
       </div>

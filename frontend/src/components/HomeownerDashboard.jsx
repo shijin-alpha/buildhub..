@@ -83,6 +83,9 @@ const HomeownerDashboard = () => {
   const [computed3DRooms, setComputed3DRooms] = useState([]);
   const [computed3DWalls, setComputed3DWalls] = useState([]);
 
+  // Image/File viewer state
+  const [viewer, setViewer] = useState({ open: false, src: '', title: '' });
+
   // Contractor selection state
   const [showContractorModal, setShowContractorModal] = useState(false);
   const [contractors, setContractors] = useState([]);
@@ -91,6 +94,9 @@ const HomeownerDashboard = () => {
   const [selectedContractor, setSelectedContractor] = useState(null);
   const [contractorMessage, setContractorMessage] = useState('');
   const [sendingToContractor, setSendingToContractor] = useState(false);
+
+  // Technical details modal state
+  const [technicalDetailsModal, setTechnicalDetailsModal] = useState(null);
 
   // Profile dropdown outside-click handler (top header)
   const profileRef = useRef(null);
@@ -125,10 +131,7 @@ const HomeownerDashboard = () => {
           navigate('/login', { replace: true });
           return;
         }
-        fetchMyRequests();
-        fetchMyProjects();
-        fetchLayoutLibrary();
-        fetchReceivedDesigns();
+        // Only load data when tabs are actually clicked
       })();
     });
   }, []);
@@ -249,6 +252,7 @@ const HomeownerDashboard = () => {
       const json = await res.json();
       if (json.success) {
         setLayoutRequests(prev => prev.filter(r => r.id !== requestId));
+        setContractorRequests(prev => prev.filter(r => r.id !== requestId));
         setSuccess('Request removed');
       } else {
         setError(json.message || 'Failed to remove request');
@@ -792,7 +796,7 @@ const HomeownerDashboard = () => {
             </button>
             <button 
               className="float-rect w-purple"
-              onClick={() => setShowLibraryModal(true)}
+              onClick={() => { setShowLibraryModal(true); fetchLayoutLibrary(); }}
             >
               <div className="fr-icon">📚</div>
               <div className="fr-title">Browse Layout Library</div>
@@ -800,7 +804,7 @@ const HomeownerDashboard = () => {
             </button>
             <button 
               className="float-rect w-orange"
-              onClick={() => setActiveTab('requests')}
+              onClick={() => { setActiveTab('requests'); fetchMyRequests(); }}
             >
               <div className="fr-icon">👁️</div>
               <div className="fr-title">View My Requests</div>
@@ -808,7 +812,7 @@ const HomeownerDashboard = () => {
             </button>
             <button 
               className="float-rect w-green"
-              onClick={() => setActiveTab('projects')}
+              onClick={() => { setActiveTab('projects'); fetchMyProjects(); }}
             >
               <div className="fr-icon">🏠</div>
               <div className="fr-title">Manage Projects</div>
@@ -888,7 +892,7 @@ const HomeownerDashboard = () => {
                 </button>
                 <button 
                   className="btn btn-secondary"
-                  onClick={() => setShowLibraryModal(true)}
+                  onClick={() => { setShowLibraryModal(true); fetchLayoutLibrary(); }}
                 >
                   Browse Library
                 </button>
@@ -911,7 +915,7 @@ const HomeownerDashboard = () => {
           <div className="header-actions">
             <button 
               className="btn btn-secondary"
-              onClick={() => setShowLibraryModal(true)}
+              onClick={() => { setShowLibraryModal(true); fetchLayoutLibrary(); }}
             >
               📚 Browse Library
             </button>
@@ -984,7 +988,7 @@ const HomeownerDashboard = () => {
                 </button>
                 <button 
                   className="btn btn-secondary"
-                  onClick={() => setShowLibraryModal(true)}
+                  onClick={() => { setShowLibraryModal(true); fetchLayoutLibrary(); }}
                 >
                   Browse Library
                 </button>
@@ -1217,6 +1221,7 @@ const HomeownerDashboard = () => {
                   isImageUrl={isImageUrl}
                   isPdfUrl={isPdfUrl}
                   onSendToContractor={openContractorModal}
+                  onViewDetails={setTechnicalDetailsModal}
                 />
               ))}
             </div>
@@ -1315,7 +1320,7 @@ const HomeownerDashboard = () => {
             href="#" 
             className={`nav-item sb-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             data-title="Dashboard"
-            onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}
+            onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); fetchMyProjects(); fetchReceivedDesigns(); }}
           >
             <span className="nav-icon sb-icon">📊</span>
             <span className="nav-label sb-label">Dashboard</span>
@@ -1324,7 +1329,7 @@ const HomeownerDashboard = () => {
             href="#" 
             className={`nav-item sb-item ${activeTab === 'library' ? 'active' : ''}`}
             data-title="Layout Library"
-            onClick={(e) => { e.preventDefault(); setActiveTab('library'); }}
+            onClick={(e) => { e.preventDefault(); setActiveTab('library'); fetchLayoutLibrary(); }}
           >
             <span className="nav-icon sb-icon">📚</span>
             <span className="nav-label sb-label">Layout Library</span>
@@ -1333,7 +1338,7 @@ const HomeownerDashboard = () => {
             href="#" 
             className={`nav-item sb-item ${activeTab === 'requests' ? 'active' : ''}`}
             data-title="My Requests"
-            onClick={(e) => { e.preventDefault(); setActiveTab('requests'); }}
+            onClick={(e) => { e.preventDefault(); setActiveTab('requests'); fetchMyRequests(); }}
           >
             <span className="nav-icon sb-icon">📋</span>
             <span className="nav-label sb-label">My Requests</span>
@@ -1351,7 +1356,7 @@ const HomeownerDashboard = () => {
             href="#" 
             className={`nav-item sb-item ${activeTab === 'projects' ? 'active' : ''}`}
             data-title="My Projects"
-            onClick={(e) => { e.preventDefault(); setActiveTab('projects'); }}
+            onClick={(e) => { e.preventDefault(); setActiveTab('projects'); fetchMyProjects(); }}
           >
             <span className="nav-icon sb-icon">🏗️</span>
             <span className="nav-label sb-label">My Projects</span>
@@ -1673,6 +1678,17 @@ const HomeownerDashboard = () => {
                       <p><strong>Area:</strong> {selectedLibraryLayout.area} sq ft</p>
                     </div>
                   </div>
+                  
+                  {/* Technical Details in Selected Layout */}
+                  {selectedLibraryLayout.technical_details && (
+                    <div style={{marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef'}}>
+                      <h5 style={{margin: '0 0 8px 0', fontSize: '0.9rem', color: '#495057'}}>Technical Specifications</h5>
+                      <TechnicalDetailsDisplay 
+                        technicalDetails={selectedLibraryLayout.technical_details} 
+                        compact={true}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -2182,6 +2198,17 @@ const HomeownerDashboard = () => {
                       <p><strong>Area:</strong> {selectedLibraryLayout.area} sq ft</p>
                     </div>
                   </div>
+                  
+                  {/* Technical Details in Selected Layout */}
+                  {selectedLibraryLayout.technical_details && (
+                    <div style={{marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef'}}>
+                      <h5 style={{margin: '0 0 8px 0', fontSize: '0.9rem', color: '#495057'}}>Technical Specifications</h5>
+                      <TechnicalDetailsDisplay 
+                        technicalDetails={selectedLibraryLayout.technical_details} 
+                        compact={true}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2292,6 +2319,7 @@ const HomeownerDashboard = () => {
                         isPdfUrl={isPdfUrl}
                         isModal={true}
                         onSendToContractor={openContractorModal}
+                        onViewDetails={setTechnicalDetailsModal}
                       />
                     ))}
                   </div>
@@ -2337,13 +2365,57 @@ const HomeownerDashboard = () => {
                   )}
                 </div>
               </div>
+              
+              {/* Technical Details in Preview Modal */}
+              {previewLayout.technical_details && (
+                <div style={{marginTop: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef'}}>
+                  <h5 style={{margin: '0 0 8px 0', fontSize: '0.9rem', color: '#495057'}}>Technical Specifications</h5>
+                  <TechnicalDetailsDisplay 
+                    technicalDetails={previewLayout.technical_details} 
+                    compact={true}
+                  />
+                </div>
+              )}
+              
               <div className="form-actions">
                 <button type="button" className="btn btn-primary" onClick={() => setPreviewLayout(null)}>Close</button>
               </div>
             </div>
           </div>
         )}
+
+        {/* Technical Details Modal */}
+        {technicalDetailsModal && (
+          <div className="form-modal" onClick={() => setTechnicalDetailsModal(null)}>
+            <div className="form-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: 'min(1000px, 95vw)', maxHeight: '90vh'}}>
+              <div className="form-header">
+                <h3>Technical Details - {technicalDetailsModal.title}</h3>
+                <p>Comprehensive architectural specifications and construction details</p>
+                {(technicalDetailsModal.architect_name || technicalDetailsModal.architect_email) && (
+                  <div style={{marginTop: 6, color: '#6b7280'}}>
+                    {technicalDetailsModal.architect_name && (<div><strong>Architect:</strong> {technicalDetailsModal.architect_name}</div>)}
+                    {technicalDetailsModal.architect_email && (<div><strong>Email:</strong> {technicalDetailsModal.architect_email}</div>)}
+                  </div>
+                )}
+              </div>
+              
+              <div style={{overflowY: 'auto', maxHeight: '70vh', paddingRight: '8px'}}>
+                <TechnicalDetailsDisplay 
+                  technicalDetails={technicalDetailsModal.technical_details} 
+                  compact={false}
+                />
+              </div>
+              
+              <div className="form-actions">
+                <button type="button" className="btn btn-primary" onClick={() => setTechnicalDetailsModal(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+      
+      {/* Image/File Viewer Modal */}
+      <ImageViewer viewer={viewer} setViewer={setViewer} />
     </div>
   );
 };
@@ -2579,10 +2651,10 @@ const ProjectItem = ({ project }) => {
 };
 
 // Layout Card Component
-const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal = false, onSendToContractor }) => (
+const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal = false, onSendToContractor, onViewDetails }) => (
   <div className={`layout-card ${isModal ? 'modal-card' : ''}`}>
     <div className="layout-image-container">
-      <button className="layout-image-button" onClick={onPreview} style={{cursor:'zoom-in'}}>
+      <button type="button" className="layout-image-button" onClick={(e) => { e.stopPropagation(); onPreview(); }} style={{cursor:'zoom-in'}}>
         <img 
           src={layout.image_url || '/images/default-layout.jpg'} 
           alt={layout.title}
@@ -2592,12 +2664,15 @@ const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal
       <div className="layout-overlay">
         <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
           {(layout.design_file_url && (isImageUrl(layout.design_file_url) || isPdfUrl(layout.design_file_url))) && (
-            <button className="btn" onClick={onPreview}>View Layout</button>
+            <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onPreview(); }}>View Layout</button>
           )}
-          <button className="btn" onClick={onSelect}>
+          {layout.technical_details && (
+            <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onViewDetails && onViewDetails(layout); }}>View Details</button>
+          )}
+          <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onSelect(); }}>
             Customize
           </button>
-          <button className="btn btn-primary" onClick={() => onSendToContractor && onSendToContractor(layout)}>
+          <button type="button" className="btn btn-primary" onClick={(e) => { e.stopPropagation(); onSendToContractor && onSendToContractor(layout); }}>
             Send to Contractor
           </button>
         </div>
@@ -2620,6 +2695,18 @@ const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal
       {layout.description && (
         <p className="layout-description">{layout.description}</p>
       )}
+      
+      {/* Technical Details Preview */}
+      {layout.technical_details && (
+        <div className="technical-details-preview" style={{marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef'}}>
+          <h5 style={{margin: '0 0 8px 0', fontSize: '0.9rem', color: '#495057'}}>Technical Specifications</h5>
+          <TechnicalDetailsDisplay 
+            technicalDetails={layout.technical_details} 
+            compact={true}
+          />
+        </div>
+      )}
+      
       <div className="layout-price">
         {layout.price_range && (
           <span className="price-range">₹{layout.price_range}</span>
@@ -2629,6 +2716,181 @@ const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal
   </div>
 );
 
+// Image/File Viewer Modal Component
+const ImageViewer = ({ viewer, setViewer }) => {
+  if (!viewer.open) return null;
 
+  const isImage = /\.(jpg|jpeg|png|gif|webp|svg|heic)$/i.test(viewer.src);
+  const isPdf = /\.(pdf)$/i.test(viewer.src);
+
+  return (
+    <div 
+      className="viewer-overlay"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
+      }}
+      onClick={() => setViewer({ open: false, src: '', title: '' })}
+    >
+      <div 
+        className="viewer-content"
+        style={{
+          position: 'relative',
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div 
+          className="viewer-header"
+          style={{
+            padding: '16px 20px',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            backgroundColor: '#f9fafb'
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#374151' }}>
+            {viewer.title}
+          </h3>
+          <button
+            onClick={() => setViewer({ open: false, src: '', title: '' })}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '24px',
+              cursor: 'pointer',
+              color: '#6b7280',
+              padding: '4px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Close viewer"
+          >
+            ×
+          </button>
+        </div>
+        <div 
+          className="viewer-body"
+          style={{
+            padding: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '400px',
+            maxHeight: '70vh',
+            overflow: 'auto'
+          }}
+        >
+          {isImage ? (
+            <img
+              src={viewer.src}
+              alt={viewer.title}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                borderRadius: '4px'
+              }}
+            />
+          ) : isPdf ? (
+            <iframe
+              src={viewer.src}
+              style={{
+                width: '100%',
+                height: '600px',
+                border: 'none',
+                borderRadius: '4px'
+              }}
+              title={viewer.title}
+            />
+          ) : (
+            <div style={{ textAlign: 'center', color: '#6b7280' }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
+              <p style={{ margin: 0, fontSize: '16px' }}>Preview not available</p>
+              <a
+                href={viewer.src}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-block',
+                  marginTop: '12px',
+                  padding: '8px 16px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  textDecoration: 'none',
+                  borderRadius: '6px',
+                  fontSize: '14px'
+                }}
+              >
+                Open File
+              </a>
+            </div>
+          )}
+        </div>
+        <div 
+          className="viewer-footer"
+          style={{
+            padding: '12px 20px',
+            borderTop: '1px solid #e5e7eb',
+            backgroundColor: '#f9fafb',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          <a
+            href={viewer.src}
+            download
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#10b981',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            Download
+          </a>
+          <a
+            href={viewer.src}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6b7280',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            Open in New Tab
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default HomeownerDashboard;

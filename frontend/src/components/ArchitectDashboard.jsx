@@ -15,6 +15,7 @@ import NeatJsonCard from './NeatJsonCard';
 import TechnicalDetailsDisplay from './TechnicalDetailsDisplay';
 import TechnicalDetailsForm from './TechnicalDetailsForm';
 import '../styles/TechnicalDetailsForm.css';
+import InfoPopup from './InfoPopup';
 
 
 const ArchitectDashboard = () => {
@@ -221,14 +222,10 @@ const ArchitectDashboard = () => {
   };
 
   const submitNewLibraryItem = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const fd = new FormData();
     Object.entries(libraryForm).forEach(([k,v]) => {
-      if (k === 'technical_details') {
-        if (v && Object.keys(v).length > 0) {
-          fd.append(k, JSON.stringify(v));
-        }
-      } else if (v !== null && v !== '') {
+      if (v !== null && v !== '') {
         fd.append(k, v);
       }
     });
@@ -253,13 +250,19 @@ const ArchitectDashboard = () => {
   };
 
   const [editLayout, setEditLayout] = useState(null);
+  const [editFormStep, setEditFormStep] = useState(0);
 
   // Library form navigation
   const nextLibraryStep = () => setLibraryFormStep(s => Math.min(s + 1, 1));
   const prevLibraryStep = () => setLibraryFormStep(s => Math.max(s - 1, 0));
+  
+  // Edit form navigation
+  const nextEditStep = () => setEditFormStep(s => Math.min(s + 1, 1));
+  const prevEditStep = () => setEditFormStep(s => Math.max(s - 1, 0));
 
   const openEditLayout = (item) => {
     setEditLayout({ ...item, image: null, design_file: null });
+    setEditFormStep(0);
   };
 
   const closeEditLayout = () => setEditLayout(null);
@@ -367,10 +370,22 @@ const ArchitectDashboard = () => {
                   <div><strong>Architect:</strong> {architectName.trim() || 'You'}</div>
                   <div><strong>Email:</strong> {architectEmail || '-'}</div>
                 </div>
-                {previewItem.description && <p style={{marginTop:10, whiteSpace:'pre-wrap'}}>{previewItem.description}</p>}
-                {fileUrl && !canEmbed && (
-                  <a className="btn btn-primary" href={fileUrl} target="_blank" rel="noreferrer" style={{marginTop:10, display:'inline-block'}}>Download Layout</a>
-                )}
+                 {previewItem.description && <p style={{marginTop:10, whiteSpace:'pre-wrap'}}>{previewItem.description}</p>}
+                 
+                 {/* Technical Details in Preview */}
+                 {previewItem.technical_details && (
+                   <div style={{marginTop: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef'}}>
+                     <h5 style={{margin: '0 0 8px 0', fontSize: '0.9rem', color: '#495057'}}>Technical Specifications</h5>
+                     <TechnicalDetailsDisplay 
+                       technicalDetails={previewItem.technical_details} 
+                       compact={true}
+                     />
+                   </div>
+                 )}
+                 
+                 {fileUrl && !canEmbed && (
+                   <a className="btn btn-primary" href={fileUrl} target="_blank" rel="noreferrer" style={{marginTop:10, display:'inline-block'}}>Download Layout</a>
+                 )}
               </div>
             </div>
           </div>
@@ -795,7 +810,13 @@ const ArchitectDashboard = () => {
   );
 
   const renderLibrary = () => (
-    <div>
+    <div style={{
+      height: '100vh', 
+      overflowY: 'auto', 
+      paddingRight: '8px',
+      scrollbarWidth: 'thin',
+      scrollbarColor: '#cbd5e0 #f7fafc'
+    }}>
       <div className="main-header">
         <div className="header-content">
           <div>
@@ -834,8 +855,19 @@ const ArchitectDashboard = () => {
                       <span className="spec">🚿 {item.bathrooms} BA</span>
                       <span className="spec">📐 {item.area} sq ft</span>
                     </div>
-                    {item.description && (<p className="layout-description">{item.description}</p>)}
-                    {item.price_range && (<div className="layout-price"><span className="price-range">₹{item.price_range}</span></div>)}
+                     {item.description && (<p className="layout-description">{item.description}</p>)}
+                     {item.price_range && (<div className="layout-price"><span className="price-range">₹{item.price_range}</span></div>)}
+                     
+                     {/* Technical Details Display */}
+                     {item.technical_details && (
+                       <div className="technical-details-preview" style={{marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #e9ecef'}}>
+                         <h5 style={{margin: '0 0 8px 0', fontSize: '0.9rem', color: '#495057'}}>Technical Specifications</h5>
+                         <TechnicalDetailsDisplay 
+                           technicalDetails={item.technical_details} 
+                           compact={true}
+                         />
+                       </div>
+                     )}
                     <div style={{display:'flex', gap:8, flexWrap:'wrap', margin:'6px 0'}}>
                       {item.image_url && (
                         <button className="btn btn-secondary" onClick={()=>openPreview(item)}>View Preview</button>
@@ -867,96 +899,153 @@ const ArchitectDashboard = () => {
 
       {showLibraryForm && (
         <div className="form-modal">
-          <div className="form-content" style={{maxWidth:'920px'}}>
+          <div className="form-content" style={{
+            maxWidth:'920px', 
+            maxHeight:'90vh', 
+            height: '90vh',
+            overflowY:'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#cbd5e0 #f7fafc',
+            paddingRight: '12px',
+            marginRight: '8px',
+            position: 'relative'
+          }}>
             <div className="form-header">
               <h3>Add Layout</h3>
               <p>Publish a new layout to the library</p>
               <div className="step-indicator" style={{marginTop: 10, display: 'flex', gap: 10}}>
-                <span className={`step ${libraryFormStep === 0 ? 'active' : ''}`}>Basic Info</span>
-                <span className={`step ${libraryFormStep === 1 ? 'active' : ''}`}>Technical Details</span>
+                <span className={`step active`}>Basic Info & Files</span>
               </div>
             </div>
             <form onSubmit={submitNewLibraryItem}>
-              {libraryFormStep === 0 && (
-                <>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Title</label>
-                      <input type="text" value={libraryForm.title} onChange={(e)=>setLibraryForm({...libraryForm, title:e.target.value})}/>
-                    </div>
-                    <div className="form-group">
-                      <label>Type</label>
-                      <input type="text" value={libraryForm.layout_type} onChange={(e)=>setLibraryForm({...libraryForm, layout_type:e.target.value})}/>
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Bedrooms</label>
-                      <input type="number" value={libraryForm.bedrooms} onChange={(e)=>setLibraryForm({...libraryForm, bedrooms:e.target.value})}/>
-                    </div>
-                    <div className="form-group">
-                      <label>Bathrooms</label>
-                      <input type="number" value={libraryForm.bathrooms} onChange={(e)=>setLibraryForm({...libraryForm, bathrooms:e.target.value})}/>
-                    </div>
-                    <div className="form-group">
-                      <label>Area (sq ft)</label>
-                      <input type="number" value={libraryForm.area} onChange={(e)=>setLibraryForm({...libraryForm, area:e.target.value})}/>
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Price Range</label>
-                      <input type="text" value={libraryForm.price_range} onChange={(e)=>setLibraryForm({...libraryForm, price_range:e.target.value})} placeholder="e.g., 20-30 Lakhs"/>
-                    </div>
-                    <div className="form-group">
-                      <label>Preview Image</label>
-                      <input type="file" accept="image/*" onChange={(e)=>setLibraryForm({...libraryForm, image:e.target.files?.[0] || null})}/>
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Layout Design File</label>
-                      <input type="file" onChange={(e)=>setLibraryForm({...libraryForm, design_file:e.target.files?.[0] || null})}/>
-                    </div>
-                    <div className="form-group" style={{flex:1}}>
-                      {libraryForm.image && (
-                        <div style={{border:'1px solid #eee', padding:8, borderRadius:8}}>
-                          <p style={{margin:'0 0 6px'}}>Image Preview</p>
-                          <img src={URL.createObjectURL(libraryForm.image)} alt="Preview" style={{maxWidth:'100%', borderRadius:6}}/>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Title</label>
+                  <input type="text" value={libraryForm.title} onChange={(e)=>setLibraryForm({...libraryForm, title:e.target.value})} placeholder="e.g., Modern 3BHK House" required/>
+                </div>
+                <div className="form-group">
+                  <label>Layout Type</label>
+                  <select value={libraryForm.layout_type} onChange={(e)=>setLibraryForm({...libraryForm, layout_type:e.target.value})} required>
+                    <option value="">Select Type</option>
+                    <option value="Residential">Residential</option>
+                    <option value="Commercial">Commercial</option>
+                    <option value="Mixed Use">Mixed Use</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Bedrooms</label>
+                  <input type="number" value={libraryForm.bedrooms} onChange={(e)=>setLibraryForm({...libraryForm, bedrooms:e.target.value})} min="1" required/>
+                </div>
+                <div className="form-group">
+                  <label>Bathrooms</label>
+                  <input type="number" value={libraryForm.bathrooms} onChange={(e)=>setLibraryForm({...libraryForm, bathrooms:e.target.value})} min="1" required/>
+                </div>
+                <div className="form-group">
+                  <label>
+                    Area (sq ft)
+                    <InfoPopup 
+                      content={
+                        <div>
+                          <strong>Typical House Areas:</strong><br/>
+                          • 1BHK: 400-600 sq ft<br/>
+                          • 2BHK: 600-900 sq ft<br/>
+                          • 3BHK: 900-1200 sq ft<br/>
+                          • 4BHK: 1200-1500 sq ft<br/>
+                          • Villa: 1500+ sq ft
                         </div>
-                      )}
-                    </div>
+                      }
+                      position="top"
+                    >
+                      <span style={{ marginLeft: '8px', cursor: 'pointer', color: '#6b7280' }}>ℹ️</span>
+                    </InfoPopup>
+                  </label>
+                  <input type="number" value={libraryForm.area} onChange={(e)=>setLibraryForm({...libraryForm, area:e.target.value})} min="100" required/>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Price Range</label>
+                  <input type="text" value={libraryForm.price_range} onChange={(e)=>setLibraryForm({...libraryForm, price_range:e.target.value})} placeholder="e.g., 20-30 Lakhs"/>
+                </div>
+              </div>
+              
+              {/* File Upload Section */}
+              <div className="form-section" style={{marginTop: '20px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
+                <h4 style={{margin: '0 0 16px 0', color: '#374151'}}>Files & Media</h4>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Preview Image *</label>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e)=>setLibraryForm({...libraryForm, image:e.target.files?.[0] || null})}
+                      required
+                    />
+                    <p className="form-help" style={{margin: '4px 0 0 0', fontSize: '0.8rem', color: '#6b7280'}}>Upload a preview image (JPG, PNG, GIF, WebP)</p>
                   </div>
                   <div className="form-group">
-                    <label>Description</label>
-                    <textarea rows="4" value={libraryForm.description} onChange={(e)=>setLibraryForm({...libraryForm, description:e.target.value})}></textarea>
+                    <label>Layout Design File *</label>
+                    <input 
+                      type="file" 
+                      accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.dwg,.dxf,.ifc,.rvt,.skp,.3dm,.obj,.stl"
+                      onChange={(e)=>setLibraryForm({...libraryForm, design_file:e.target.files?.[0] || null})}
+                      required
+                    />
+                    <p className="form-help" style={{margin: '4px 0 0 0', fontSize: '0.8rem', color: '#6b7280'}}>Upload layout file (PDF, Images, CAD files, 3D models)</p>
                   </div>
-                </>
-              )}
-              
-              {libraryFormStep === 1 && (
-                <div className="technical-details-section">
-                  <TechnicalDetailsForm 
-                    data={libraryForm} 
-                    setData={setLibraryForm} 
-                    onNext={submitNewLibraryItem} 
-                    onPrev={prevLibraryStep} 
-                  />
                 </div>
-              )}
+                
+                {/* File Previews */}
+                <div className="form-row">
+                  <div className="form-group">
+                    {libraryForm.image && (
+                      <div style={{border:'1px solid #ddd', padding:12, borderRadius:8, background:'#fff'}}>
+                        <p style={{margin:'0 0 8px', fontWeight:'500', color:'#374151'}}>📷 Preview Image</p>
+                        <img src={URL.createObjectURL(libraryForm.image)} alt="Preview" style={{maxWidth:'100%', maxHeight:'200px', borderRadius:6, objectFit:'cover'}}/>
+                        <p style={{margin:'8px 0 0', fontSize:'0.8rem', color:'#6b7280'}}>{libraryForm.image.name}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    {libraryForm.design_file && (
+                      <div style={{border:'1px solid #ddd', padding:12, borderRadius:8, background:'#fff'}}>
+                        <p style={{margin:'0 0 8px', fontWeight:'500', color:'#374151'}}>📄 Layout File</p>
+                        <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#f3f4f6', borderRadius:6}}>
+                          <span style={{fontSize:'1.5rem'}}>
+                            {libraryForm.design_file.name.toLowerCase().endsWith('.pdf') ? '📄' :
+                             libraryForm.design_file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? '🖼️' :
+                             libraryForm.design_file.name.toLowerCase().match(/\.(dwg|dxf)$/) ? '📐' :
+                             libraryForm.design_file.name.toLowerCase().match(/\.(skp|3dm|obj|stl)$/) ? '🏗️' : '📎'}
+                          </span>
+                          <div>
+                            <p style={{margin:0, fontWeight:'500'}}>{libraryForm.design_file.name}</p>
+                            <p style={{margin:0, fontSize:'0.8rem', color:'#6b7280'}}>
+                              {(libraryForm.design_file.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Description</label>
+                <textarea 
+                  rows="6" 
+                  value={libraryForm.description} 
+                  onChange={(e)=>setLibraryForm({...libraryForm, description:e.target.value})} 
+                  placeholder="Describe the layout features and design highlights..."
+                  style={{minHeight: '120px'}}
+                />
+              </div>
               
-              <div className="form-actions">
-                {libraryFormStep === 0 ? (
-                  <>
-                    <button type="button" className="btn btn-secondary" onClick={()=>setShowLibraryForm(false)}>Cancel</button>
-                    <button type="button" className="btn btn-primary" onClick={nextLibraryStep}>Next: Technical Details</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" className="btn btn-secondary" onClick={prevLibraryStep}>Back</button>
-                    <button type="submit" className="btn btn-primary">Add Layout</button>
-                  </>
-                )}
+              <div className="form-actions" style={{marginTop: '30px', paddingBottom: '30px', borderTop: '1px solid #e5e7eb', paddingTop: '20px'}}>
+                <button type="submit" className="btn btn-primary">Add Layout</button>
+                <button type="button" className="btn btn-secondary" onClick={()=>setShowLibraryForm(false)}>Cancel</button>
               </div>
             </form>
           </div>
@@ -965,12 +1054,37 @@ const ArchitectDashboard = () => {
 
       {editLayout && (
         <div className="form-modal">
-          <div className="form-content" style={{maxWidth:'920px'}}>
-            <div className="form-header">
+          <div className="form-content" style={{
+            maxWidth:'920px', 
+            maxHeight:'90vh', 
+            display:'flex', 
+            flexDirection:'column'
+          }}>
+            <div className="form-header" style={{flexShrink:0}}>
               <h3>Edit Layout</h3>
               <p>Update your library item</p>
+              <div className="form-steps" style={{marginTop: '12px'}}>
+                <div className={`step ${editFormStep === 0 ? 'active' : editFormStep > 0 ? 'completed' : ''}`}>
+                  <span className="step-number">1</span>
+                  <span className="step-label">Basic Info</span>
+                </div>
+                <div className={`step ${editFormStep === 1 ? 'active' : ''}`}>
+                  <span className="step-number">2</span>
+                  <span className="step-label">Technical Details</span>
+                </div>
+              </div>
             </div>
-            <form onSubmit={saveEditLayout}>
+            <div style={{
+              flex:1, 
+              overflowY:'auto', 
+              paddingRight:'8px',
+              marginRight:'-8px',
+              scrollbarWidth:'thin',
+              scrollbarColor:'#cbd5e1 #f1f5f9'
+            }} className="scrollable-form-content">
+              <form onSubmit={(e) => e.preventDefault()} style={{paddingBottom:'16px'}}>
+              {editFormStep === 0 && (
+                <>
               <div className="form-row">
                 <div className="form-group">
                   <label>Title *</label>
@@ -991,52 +1105,181 @@ const ArchitectDashboard = () => {
                   <input type="number" value={editLayout.bathrooms} onChange={(e)=>setEditLayout({...editLayout, bathrooms:e.target.value})} required/>
                 </div>
                 <div className="form-group">
-                  <label>Area (sq ft) *</label>
+                  <label>
+                    Area (sq ft) *
+                    <InfoPopup 
+                      content={
+                        <div>
+                          <strong>Typical House Areas:</strong><br/>
+                          • 1BHK: 400-600 sq ft<br/>
+                          • 2BHK: 600-900 sq ft<br/>
+                          • 3BHK: 900-1200 sq ft<br/>
+                          • 4BHK: 1200-1500 sq ft<br/>
+                          • Villa: 1500+ sq ft
+                        </div>
+                      }
+                      position="top"
+                    >
+                      <span style={{ marginLeft: '8px', cursor: 'pointer', color: '#6b7280' }}>ℹ️</span>
+                    </InfoPopup>
+                  </label>
                   <input type="number" value={editLayout.area} onChange={(e)=>setEditLayout({...editLayout, area:e.target.value})} required/>
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Price Range</label>
-                  <input type="text" value={editLayout.price_range || ''} onChange={(e)=>setEditLayout({...editLayout, price_range:e.target.value})} placeholder="e.g., 20-30 Lakhs"/>
-                </div>
-                <div className="form-group">
-                  <label>Replace Image</label>
-                  <input type="file" accept="image/*" onChange={(e)=>setEditLayout({...editLayout, image:e.target.files?.[0] || null})}/>
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Replace Layout Design File</label>
-                  <input type="file" onChange={(e)=>setEditLayout({...editLayout, design_file:e.target.files?.[0] || null})}/>
-                </div>
-                <div className="form-group" style={{flex:1}}>
-                  {editLayout.image && (
-                    <div style={{border:'1px solid #eee', padding:8, borderRadius:8}}>
-                      <p style={{margin:'0 0 6px'}}>New Image Preview</p>
-                      <img src={URL.createObjectURL(editLayout.image)} alt="Preview" style={{maxWidth:'100%', borderRadius:6}}/>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Description</label>
-                <textarea rows="4" value={editLayout.description || ''} onChange={(e)=>setEditLayout({...editLayout, description:e.target.value})}></textarea>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Status</label>
-                  <select value={editLayout.status} onChange={(e)=>setEditLayout({...editLayout, status: e.target.value})}>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </div>
-              </div>
-              <div className="form-actions">
-                <button type="button" className="btn btn-secondary" onClick={closeEditLayout}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save</button>
-              </div>
-            </form>
+               <div className="form-row">
+                 <div className="form-group">
+                   <label>Price Range</label>
+                   <input type="text" value={editLayout.price_range || ''} onChange={(e)=>setEditLayout({...editLayout, price_range:e.target.value})} placeholder="e.g., 20-30 Lakhs"/>
+                 </div>
+               </div>
+               
+               {/* File Upload Section for Edit */}
+               <div className="form-section" style={{marginTop: '20px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
+                 <h4 style={{margin: '0 0 16px 0', color: '#374151'}}>Files & Media</h4>
+                 <p style={{margin: '0 0 16px 0', color: '#6b7280', fontSize: '0.9rem'}}>Replace existing files or keep current ones</p>
+                 
+                 <div className="form-row">
+                   <div className="form-group">
+                     <label>Replace Preview Image</label>
+                     <input 
+                       type="file" 
+                       accept="image/*" 
+                       onChange={(e)=>setEditLayout({...editLayout, image:e.target.files?.[0] || null})}
+                     />
+                     <p className="form-help" style={{margin: '4px 0 0 0', fontSize: '0.8rem', color: '#6b7280'}}>Upload a new preview image (JPG, PNG, GIF, WebP)</p>
+                   </div>
+                   <div className="form-group">
+                     <label>Replace Layout Design File</label>
+                     <input 
+                       type="file" 
+                       accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.dwg,.dxf,.ifc,.rvt,.skp,.3dm,.obj,.stl"
+                       onChange={(e)=>setEditLayout({...editLayout, design_file:e.target.files?.[0] || null})}
+                     />
+                     <p className="form-help" style={{margin: '4px 0 0 0', fontSize: '0.8rem', color: '#6b7280'}}>Upload new layout file (PDF, Images, CAD files, 3D models)</p>
+                   </div>
+                 </div>
+                 
+                 {/* Current Files Display */}
+                 <div className="form-row">
+                   <div className="form-group">
+                     <label>Current Preview Image</label>
+                     {editLayout.image_url ? (
+                       <div style={{border:'1px solid #ddd', padding:12, borderRadius:8, background:'#fff'}}>
+                         <p style={{margin:'0 0 8px', fontWeight:'500', color:'#374151'}}>📷 Current Image</p>
+                         <img src={editLayout.image_url} alt="Current Preview" style={{maxWidth:'100%', maxHeight:'200px', borderRadius:6, objectFit:'cover'}}/>
+                       </div>
+                     ) : (
+                       <p style={{color:'#6b7280', fontStyle:'italic'}}>No current image</p>
+                     )}
+                   </div>
+                   <div className="form-group">
+                     <label>Current Layout File</label>
+                     {editLayout.design_file_url ? (
+                       <div style={{border:'1px solid #ddd', padding:12, borderRadius:8, background:'#fff'}}>
+                         <p style={{margin:'0 0 8px', fontWeight:'500', color:'#374151'}}>📄 Current Layout File</p>
+                         <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#f3f4f6', borderRadius:6}}>
+                           <span style={{fontSize:'1.5rem'}}>
+                             {editLayout.design_file_url.toLowerCase().endsWith('.pdf') ? '📄' :
+                              editLayout.design_file_url.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? '🖼️' :
+                              editLayout.design_file_url.toLowerCase().match(/\.(dwg|dxf)$/) ? '📐' :
+                              editLayout.design_file_url.toLowerCase().match(/\.(skp|3dm|obj|stl)$/) ? '🏗️' : '📎'}
+                           </span>
+                           <div>
+                             <p style={{margin:0, fontWeight:'500'}}>{editLayout.design_file_url.split('/').pop()}</p>
+                             <a href={editLayout.design_file_url} target="_blank" rel="noreferrer" style={{fontSize:'0.8rem', color:'#3b82f6'}}>View File</a>
+                           </div>
+                         </div>
+                       </div>
+                     ) : (
+                       <p style={{color:'#6b7280', fontStyle:'italic'}}>No current layout file</p>
+                     )}
+                   </div>
+                 </div>
+                 
+                 {/* New File Previews */}
+                 {(editLayout.image || editLayout.design_file) && (
+                   <div className="form-row">
+                     <div className="form-group">
+                       {editLayout.image && (
+                         <div style={{border:'1px solid #4ade80', padding:12, borderRadius:8, background:'#f0fdf4'}}>
+                           <p style={{margin:'0 0 8px', fontWeight:'500', color:'#166534'}}>🆕 New Preview Image</p>
+                           <img src={URL.createObjectURL(editLayout.image)} alt="New Preview" style={{maxWidth:'100%', maxHeight:'200px', borderRadius:6, objectFit:'cover'}}/>
+                           <p style={{margin:'8px 0 0', fontSize:'0.8rem', color:'#166534'}}>{editLayout.image.name}</p>
+                         </div>
+                       )}
+                     </div>
+                     <div className="form-group">
+                       {editLayout.design_file && (
+                         <div style={{border:'1px solid #4ade80', padding:12, borderRadius:8, background:'#f0fdf4'}}>
+                           <p style={{margin:'0 0 8px', fontWeight:'500', color:'#166534'}}>🆕 New Layout File</p>
+                           <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#dcfce7', borderRadius:6}}>
+                             <span style={{fontSize:'1.5rem'}}>
+                               {editLayout.design_file.name.toLowerCase().endsWith('.pdf') ? '📄' :
+                                editLayout.design_file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? '🖼️' :
+                                editLayout.design_file.name.toLowerCase().match(/\.(dwg|dxf)$/) ? '📐' :
+                                editLayout.design_file.name.toLowerCase().match(/\.(skp|3dm|obj|stl)$/) ? '🏗️' : '📎'}
+                             </span>
+                             <div>
+                               <p style={{margin:0, fontWeight:'500'}}>{editLayout.design_file.name}</p>
+                               <p style={{margin:0, fontSize:'0.8rem', color:'#166534'}}>
+                                 {(editLayout.design_file.size / 1024 / 1024).toFixed(2)} MB
+                               </p>
+                             </div>
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
+               </div>
+               <div className="form-group">
+                 <label>Description</label>
+                 <textarea rows="4" value={editLayout.description || ''} onChange={(e)=>setEditLayout({...editLayout, description:e.target.value})}></textarea>
+               </div>
+               </>
+               )}
+               
+               {editFormStep === 1 && (
+                 <>
+               {/* Technical Details Section for Edit */}
+               <div className="technical-details-section" style={{marginTop: '20px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
+                 <h4>Technical Details</h4>
+                 <p style={{margin: '8px 0 16px 0', color: '#6b7280'}}>Update technical specifications for this layout</p>
+                 <TechnicalDetailsForm 
+                   data={editLayout} 
+                   setData={setEditLayout} 
+                   onNext={() => {}} 
+                   onPrev={() => {}} 
+                   showNavigation={false}
+                 />
+               </div>
+               </>
+               )}
+               
+               <div className="form-row">
+                 <div className="form-group">
+                   <label>Status</label>
+                   <select value={editLayout.status} onChange={(e)=>setEditLayout({...editLayout, status: e.target.value})}>
+                     <option value="active">Active</option>
+                     <option value="inactive">Inactive</option>
+                   </select>
+                 </div>
+               </div>
+              </form>
+            </div>
+            <div className="form-actions" style={{flexShrink:0, marginTop:'16px', paddingTop:'16px', borderTop:'1px solid #e5e7eb'}}>
+              {editFormStep === 0 ? (
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={closeEditLayout}>Cancel</button>
+                  <button type="button" className="btn btn-primary" onClick={nextEditStep}>Next: Technical Details</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={prevEditStep}>Back</button>
+                  <button type="button" className="btn btn-primary" onClick={saveEditLayout}>Save</button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1045,6 +1288,84 @@ const ArchitectDashboard = () => {
 
   return (
     <div className="dashboard-container">
+      <style jsx>{`
+        .scrollable-form-content::-webkit-scrollbar {
+          width: 8px;
+        }
+        .scrollable-form-content::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 4px;
+        }
+        .scrollable-form-content::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .scrollable-form-content::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        
+        /* Enhanced scrollbar for form content */
+        .form-content::-webkit-scrollbar {
+          width: 10px;
+        }
+        .form-content::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 5px;
+          margin: 5px;
+        }
+        .form-content::-webkit-scrollbar-thumb {
+          background: #64748b;
+          border-radius: 5px;
+          border: 2px solid #f1f5f9;
+        }
+        .form-content::-webkit-scrollbar-thumb:hover {
+          background: #475569;
+        }
+        
+        /* Force scrollbar to always show */
+        .form-content {
+          scrollbar-gutter: stable;
+        }
+        .form-steps {
+          display: flex;
+          gap: 16px;
+          margin-top: 12px;
+        }
+        .step {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 6px;
+          background: #f3f4f6;
+          color: #6b7280;
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+        .step.active {
+          background: #3b82f6;
+          color: white;
+        }
+        .step.completed {
+          background: #10b981;
+          color: white;
+        }
+        .step-number {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.2);
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+        .step.active .step-number,
+        .step.completed .step-number {
+          background: rgba(255, 255, 255, 0.3);
+        }
+      `}</style>
       {/* Mobile Menu Button */}
       <button 
         className="mobile-menu-btn"

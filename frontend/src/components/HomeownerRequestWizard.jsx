@@ -195,6 +195,13 @@ export default function HomeownerRequestWizard() {
         } catch (e) { console.warn('Architect assignment failed'); }
       }
 
+      // Show success message
+      window.dispatchEvent && window.dispatchEvent(new CustomEvent('toast', { 
+        detail: { 
+          type: 'success', 
+          message: 'Request submitted successfully! Your custom design request has been created and sent to the selected architects.' 
+        } 
+      }));
       window.history.back();
     } catch (e) { alert('Network error'); }
     finally { setLoading(false); }
