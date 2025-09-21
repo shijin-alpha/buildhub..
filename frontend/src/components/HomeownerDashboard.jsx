@@ -18,12 +18,14 @@ import TechnicalDetailsDisplay from './TechnicalDetailsDisplay';
 const HomeownerDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [requestsTab, setRequestsTab] = useState('all'); // 'all' or 'contractors'
   const [receivedDesigns, setReceivedDesigns] = useState([]);
   const [comments, setComments] = useState({}); // designId -> list
   const [commentDrafts, setCommentDrafts] = useState({}); // designId -> text
   const [commentRatings, setCommentRatings] = useState({}); // designId -> 1..5
   const [user, setUser] = useState(null);
   const [layoutRequests, setLayoutRequests] = useState([]);
+  const [contractorRequests, setContractorRequests] = useState([]);
   const [myProjects, setMyProjects] = useState([]);
   const [layoutLibrary, setLayoutLibrary] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -216,6 +218,22 @@ const HomeownerDashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
+    }
+  };
+
+  const fetchContractorRequests = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/buildhub/backend/api/homeowner/get_contractor_requests.php');
+      const result = await response.json();
+      if (result.success) {
+        const reqs = Array.isArray(result.requests) ? result.requests : [];
+        setContractorRequests(reqs);
+      }
+    } catch (error) {
+      console.error('Error fetching contractor requests:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -907,19 +925,56 @@ const HomeownerDashboard = () => {
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="tab-navigation" style={{ marginBottom: '20px', borderBottom: '1px solid #e5e7eb' }}>
+        <button
+          className={`tab-button ${requestsTab === 'all' ? 'active' : ''}`}
+          onClick={() => setRequestsTab('all')}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: 'transparent',
+            borderBottom: requestsTab === 'all' ? '2px solid #3b82f6' : '2px solid transparent',
+            color: requestsTab === 'all' ? '#3b82f6' : '#6b7280',
+            cursor: 'pointer',
+            fontWeight: requestsTab === 'all' ? '600' : '400'
+          }}
+        >
+          All Requests
+        </button>
+        <button
+          className={`tab-button ${requestsTab === 'contractors' ? 'active' : ''}`}
+          onClick={() => {
+            setRequestsTab('contractors');
+            fetchContractorRequests();
+          }}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: 'transparent',
+            borderBottom: requestsTab === 'contractors' ? '2px solid #3b82f6' : '2px solid transparent',
+            color: requestsTab === 'contractors' ? '#3b82f6' : '#6b7280',
+            cursor: 'pointer',
+            fontWeight: requestsTab === 'contractors' ? '600' : '400'
+          }}
+        >
+          Sent to Contractors
+        </button>
+      </div>
+
       <div className="section-card">
         <div className="section-header">
-          <h2>Request History</h2>
-          <p>All your submitted layout requests</p>
+          <h2>{requestsTab === 'all' ? 'Request History' : 'Contractor Requests'}</h2>
+          <p>{requestsTab === 'all' ? 'All your submitted layout requests' : 'Requests sent to contractors for proposals'}</p>
         </div>
         <div className="section-content">
           {loading ? (
             <div className="loading">Loading requests...</div>
-          ) : layoutRequests.length === 0 ? (
+          ) : (requestsTab === 'all' ? layoutRequests : contractorRequests).length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">📭</div>
-              <h3>No Requests Yet</h3>
-              <p>Submit your first layout request to get started!</p>
+              <div className="empty-icon">{requestsTab === 'all' ? '📭' : '🏗️'}</div>
+              <h3>{requestsTab === 'all' ? 'No Requests Yet' : 'No Contractor Requests'}</h3>
+              <p>{requestsTab === 'all' ? 'Submit your first layout request to get started!' : 'Send requests to contractors to get started!'}</p>
               <div className="empty-actions">
                 <button 
                   className="btn btn-primary"
@@ -937,12 +992,13 @@ const HomeownerDashboard = () => {
             </div>
           ) : (
             <div className="item-list">
-              {layoutRequests.map(request => (
+              {(requestsTab === 'all' ? layoutRequests : contractorRequests).map(request => (
                 <RequestItem
                   key={request.id}
                   request={request}
                   onAssignArchitect={() => openArchitectModal(request)}
                   onRemove={() => removeRequest(request.id)}
+                  showContractorInfo={requestsTab === 'contractors'}
                 />
               ))}
             </div>
@@ -2293,7 +2349,7 @@ const HomeownerDashboard = () => {
 };
 
 // Request Item Component
-const RequestItem = ({ request, onAssignArchitect, onRemove }) => {
+const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo = false }) => {
   const [showDetails, setShowDetails] = React.useState(false);
   return (
     <div className="list-item">
@@ -2325,6 +2381,40 @@ const RequestItem = ({ request, onAssignArchitect, onRemove }) => {
           <span className="status-chip success">Accepted: {request.accepted_count || 0}</span>
           <span className="status-chip danger">Rejected: {request.rejected_count || 0}</span>
         </div>
+        {showContractorInfo && (
+          <div className="contractor-info" style={{ marginTop: '8px', padding: '8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span style={{ fontWeight: '600', color: '#374151' }}>Contractor Assignments</span>
+              <span className="status-chip" style={{ background: '#dbeafe', color: '#1e40af' }}>
+                {request.assignment_count || 0} assigned
+              </span>
+            </div>
+            {request.assigned_contractors && request.assigned_contractors.length > 0 ? (
+              <div>
+                <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '4px' }}>Assigned Contractors:</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {request.assigned_contractors.map((contractor, index) => (
+                    <span key={index} className="status-chip" style={{ background: '#ecfdf5', color: '#065f46' }}>
+                      {contractor}
+                    </span>
+                  ))}
+                </div>
+                {request.assignment_statuses && request.assignment_statuses.length > 0 && (
+                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>
+                    Status: {request.assignment_statuses.join(', ')}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: '14px', color: '#6b7280', fontStyle: 'italic' }}>
+                No contractors assigned yet
+              </div>
+            )}
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+              Proposals received: {request.proposal_count || 0}
+            </div>
+          </div>
+        )}
         {/* Minimal homeowner view: hide requirements & large preview */}
         {showDetails && (
           <div className="details-panel" style={{ marginTop:10, padding:12, border:'1px solid #e5e7eb', borderRadius:8, background:'#fafafa' }}>
