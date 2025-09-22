@@ -898,21 +898,29 @@ const ArchitectDashboard = () => {
             maxWidth:'920px', 
             maxHeight:'90vh', 
             height: '90vh',
-            overflowY:'auto',
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#cbd5e0 #f7fafc',
-            paddingRight: '12px',
-            marginRight: '8px',
+            display:'flex',
+            flexDirection:'column',
             position: 'relative'
           }}>
-            <div className="form-header">
+            <div className="form-header" style={{flexShrink:0}}>
               <h3>Add Layout</h3>
               <p>Publish a new layout to the library</p>
               <div className="step-indicator" style={{marginTop: 10, display: 'flex', gap: 10}}>
                 <span className={`step active`}>Basic Info & Files</span>
               </div>
             </div>
-            <form onSubmit={submitNewLibraryItem}>
+            <form onSubmit={submitNewLibraryItem} style={{display:'flex', flexDirection:'column', minHeight:0, flex:1}}>
+              <div
+                className="scrollable-form-content"
+                style={{
+                  flex:1,
+                  overflowY:'auto',
+                  paddingRight:'8px',
+                  marginRight:'-8px',
+                  scrollbarWidth:'thin',
+                  scrollbarColor:'#cbd5e1 #f1f5f9'
+                }}
+              >
               <div className="form-row">
                 <div className="form-group">
                   <label>Title</label>
@@ -1037,8 +1045,8 @@ const ArchitectDashboard = () => {
                   style={{minHeight: '120px'}}
                 />
               </div>
-              
-              <div className="form-actions" style={{marginTop: '30px', paddingBottom: '30px', borderTop: '1px solid #e5e7eb', paddingTop: '20px'}}>
+              </div>
+              <div className="form-actions" style={{marginTop:'16px'}}>
                 <button type="submit" className="btn btn-primary">Add Layout</button>
                 <button type="button" className="btn btn-secondary" onClick={()=>setShowLibraryForm(false)}>Cancel</button>
               </div>

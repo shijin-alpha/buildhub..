@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 const TechnicalDetailsDisplay = ({ technicalDetails }) => {
   const [activeSection, setActiveSection] = useState('floor-plans');
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   if (!technicalDetails || Object.keys(technicalDetails).length === 0) {
     return (
@@ -222,8 +223,18 @@ const TechnicalDetailsDisplay = ({ technicalDetails }) => {
       <div className="technical-header">
         <h3>Technical Design Details</h3>
         <p>Comprehensive architectural specifications and construction details</p>
+        <div style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setIsCollapsed(prev => !prev)}
+          >
+            {isCollapsed ? 'View details' : 'Hide details'}
+          </button>
+        </div>
       </div>
 
+      {!isCollapsed && (
       <div className="technical-layout">
         <div className="technical-sidebar">
           <div className="section-nav">
@@ -247,6 +258,7 @@ const TechnicalDetailsDisplay = ({ technicalDetails }) => {
           {renderSectionContent()}
         </div>
       </div>
+      )}
     </div>
   );
 };
