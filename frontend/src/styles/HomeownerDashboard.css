@@ -1359,6 +1359,29 @@ body {
   max-height: 90vh;
   overflow-y: auto;
   border: 1px solid #e2e8f0;
+  position: relative;
+}
+
+.fade-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, #fafafa, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fade-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to top, #fafafa, transparent);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .form-header {
@@ -1379,7 +1402,7 @@ body {
 }
 
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .form-group label {
@@ -1387,14 +1410,14 @@ body {
   font-size: 0.875rem;
   font-weight: 500;
   color: #374151;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .form-group input,
 .form-group textarea,
 .form-group select {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.5rem;
   border: 1px solid #d1d5db;
   border-radius: 4px;
   font-size: 0.875rem;
@@ -1412,16 +1435,82 @@ body {
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .form-actions {
   display: flex;
   gap: 0.75rem;
   justify-content: flex-end;
-  margin-top: 2rem;
-  padding-top: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
   border-top: 1px solid #e2e8f0;
+}
+
+/* Override inline styles for modal form spacing */
+.form-modal .form-content .form-section {
+  margin-top: 8px !important;
+  padding: 12px !important;
+}
+
+.form-modal .form-content .form-section h4 {
+  margin: 0px 0px 8px !important;
+}
+
+.form-modal .form-content .form-actions {
+  margin-top: 16px !important;
+  padding-bottom: 16px !important;
+  padding-top: 12px !important;
+}
+
+.form-modal .form-content .form-help {
+  margin: 2px 0px 0px !important;
+}
+
+/* Reduce spacing around Add Layout button in modal header */
+.form-modal .form-content .form-header {
+  padding-bottom: 8px !important;
+}
+
+.form-modal .form-content .form-header h3 {
+  margin-bottom: 4px !important;
+}
+
+.form-modal .form-content .form-header p {
+  margin-bottom: 8px !important;
+}
+
+.form-modal .form-content .form-header .btn {
+  margin-top: 6px !important;
+}
+
+/* Reduce spacing in library modal specifically */
+.form-modal .form-content.library-modal .form-header {
+  padding: 12px 16px 8px !important;
+}
+
+.form-modal .form-content.library-modal .library-content {
+  padding-top: 8px !important;
+}
+
+/* Reduce spacing between form sections to bring Files & Media and Description higher */
+.form-modal .form-content .form-row {
+  margin-bottom: 4px !important;
+}
+
+.form-modal .form-content .form-group {
+  margin-bottom: 6px !important;
+}
+
+/* Bring Description field closer to Files & Media section */
+.form-modal .form-content .form-group textarea {
+  margin-top: 8px !important;
+}
+
+/* Reduce spacing for description form group specifically */
+.form-modal .form-content .form-group:last-of-type {
+  margin-top: 8px !important;
 }
 
 /* Layout Library Styles */

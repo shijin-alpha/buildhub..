@@ -79,6 +79,10 @@ const HomeownerDashboard = () => {
   const [issueReplies, setIssueReplies] = useState([]);
   const [showReportsList, setShowReportsList] = useState(false);
 
+  // Add Layout modal state
+  const [showAddLayoutModal, setShowAddLayoutModal] = useState(false);
+  const [addLayoutForm, setAddLayoutForm] = useState({ title: '', layoutType: '', bedrooms: '', bathrooms: '', area: '', priceRange: '', description: '', previewImage: null, layoutFile: null });
+
   // 3D computed plan from finalized design (fallback to placeholder)
   const [computed3DRooms, setComputed3DRooms] = useState([]);
   const [computed3DWalls, setComputed3DWalls] = useState([]);
@@ -272,6 +276,15 @@ const HomeownerDashboard = () => {
     } catch (error) {
       console.error('Error fetching layout library:', error);
     }
+  };
+
+  const handleAddLayout = async (e) => {
+    e.preventDefault();
+    // Placeholder: send to backend
+    // For now, just close modal
+    setShowAddLayoutModal(false);
+    setAddLayoutForm({ title: '', layoutType: '', bedrooms: '', bathrooms: '', area: '', priceRange: '', description: '', previewImage: null, layoutFile: null });
+    setSuccess('Layout added to library (placeholder)');
   };
 
   const fetchReceivedDesigns = async () => {
@@ -919,12 +932,6 @@ const HomeownerDashboard = () => {
             >
               📚 Browse Library
             </button>
-            <button 
-              className="btn btn-primary"
-              onClick={() => setShowRequestForm(true)}
-            >
-              + Custom Request
-            </button>
           </div>
         </div>
       </div>
@@ -1187,12 +1194,6 @@ const HomeownerDashboard = () => {
             <h1>Layout Library</h1>
             <p>Browse and select from our collection of pre-designed layouts</p>
           </div>
-          <button 
-            className="btn btn-primary"
-            onClick={() => setShowRequestForm(true)}
-          >
-            + Custom Request
-          </button>
         </div>
       </div>
 
@@ -2290,12 +2291,13 @@ const HomeownerDashboard = () => {
               <div className="form-header">
                 <h3>Layout Library</h3>
                 <p>Choose from our collection of professionally designed layouts</p>
-                <button 
+                <button
                   className="modal-close"
                   onClick={() => setShowLibraryModal(false)}
                 >
                   ×
                 </button>
+                <button className="btn btn-primary" onClick={() => setShowAddLayoutModal(true)} style={{marginTop: 10}}>Add Layout</button>
               </div>
               
               <div className="library-content">
@@ -2325,6 +2327,93 @@ const HomeownerDashboard = () => {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Layout Modal */}
+        {showAddLayoutModal && (
+          <div className="form-modal">
+            <div className="form-content" style={{maxWidth: 920, maxHeight: '90vh', height: '90vh', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgb(203, 213, 224) rgb(247, 250, 252)', paddingRight: 12, marginRight: 8, position: 'relative', scrollBehavior: 'smooth'}}>
+              <div className="fade-top"></div>
+              <div className="form-header">
+                <h3>Add Layout</h3>
+                <p>Publish a new layout to the library</p>
+                <div className="step-indicator" style={{marginTop: 10, display: 'flex', gap: 10}}>
+                  <span className="step active">Basic Info &amp; Files</span>
+                </div>
+                <button
+                  className="modal-close"
+                  onClick={() => setShowAddLayoutModal(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <form onSubmit={handleAddLayout}>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Title</label>
+                    <input placeholder="e.g., Modern 3BHK House" required type="text" value={addLayoutForm.title} onChange={(e) => setAddLayoutForm({...addLayoutForm, title: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label>Layout Type</label>
+                    <select required value={addLayoutForm.layoutType} onChange={(e) => setAddLayoutForm({...addLayoutForm, layoutType: e.target.value})}>
+                      <option value="">Select Type</option>
+                      <option value="Residential">Residential</option>
+                      <option value="Commercial">Commercial</option>
+                      <option value="Mixed Use">Mixed Use</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Bedrooms</label>
+                    <input min="1" required type="number" value={addLayoutForm.bedrooms} onChange={(e) => setAddLayoutForm({...addLayoutForm, bedrooms: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label>Bathrooms</label>
+                    <input min="1" required type="number" value={addLayoutForm.bathrooms} onChange={(e) => setAddLayoutForm({...addLayoutForm, bathrooms: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label>Area (sq ft)<div className="info-popup-container" style={{position: 'relative', display: 'inline-block'}}><span style={{marginLeft: 8, cursor: 'pointer', color: 'rgb(107, 114, 128)'}}>ℹ️</span></div></label>
+                    <input min="100" required type="number" value={addLayoutForm.area} onChange={(e) => setAddLayoutForm({...addLayoutForm, area: e.target.value})} />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Price Range</label>
+                    <input placeholder="e.g., 20-30 Lakhs" type="text" value={addLayoutForm.priceRange} onChange={(e) => setAddLayoutForm({...addLayoutForm, priceRange: e.target.value})} />
+                  </div>
+                </div>
+                <div className="form-section" style={{marginTop: 20, padding: 16, border: '1px solid rgb(229, 231, 235)', borderRadius: 8, background: 'rgb(249, 250, 251)'}}>
+                  <h4 style={{margin: '0px 0px 16px', color: 'rgb(55, 65, 81)'}}>Files &amp; Media</h4>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Preview Image *</label>
+                      <input accept="image/*" required type="file" onChange={(e) => setAddLayoutForm({...addLayoutForm, previewImage: e.target.files[0]})} />
+                      <p className="form-help" style={{margin: '4px 0px 0px', fontSize: '0.8rem', color: 'rgb(107, 114, 128)'}}>Upload a preview image (JPG, PNG, GIF, WebP)</p>
+                    </div>
+                    <div className="form-group">
+                      <label>Layout Design File *</label>
+                      <input accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,.dwg,.dxf,.ifc,.rvt,.skp,.3dm,.obj,.stl" required type="file" onChange={(e) => setAddLayoutForm({...addLayoutForm, layoutFile: e.target.files[0]})} />
+                      <p className="form-help" style={{margin: '4px 0px 0px', fontSize: '0.8rem', color: 'rgb(107, 114, 128)'}}>Upload layout file (PDF, Images, CAD files, 3D models)</p>
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"></div>
+                    <div className="form-group"></div>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea rows="6" placeholder="Describe the layout features and design highlights..." style={{minHeight: 120}} value={addLayoutForm.description} onChange={(e) => setAddLayoutForm({...addLayoutForm, description: e.target.value})}></textarea>
+                </div>
+                <div className="form-actions" style={{marginTop: 30, paddingBottom: 30, borderTop: '1px solid rgb(229, 231, 235)', paddingTop: 20}}>
+                  <button type="submit" className="btn btn-primary">Add Layout</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowAddLayoutModal(false)}>Cancel</button>
+                </div>
+              </form>
+              <div className="fade-bottom"></div>
             </div>
           </div>
         )}
@@ -2384,13 +2473,13 @@ const HomeownerDashboard = () => {
           </div>
         )}
 
-        {/* Technical Details Modal */}
+        {/* Layout Details Modal */}
         {technicalDetailsModal && (
           <div className="form-modal" onClick={() => setTechnicalDetailsModal(null)}>
             <div className="form-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: 'min(1000px, 95vw)', maxHeight: '90vh'}}>
               <div className="form-header">
-                <h3>Technical Details - {technicalDetailsModal.title}</h3>
-                <p>Comprehensive architectural specifications and construction details</p>
+                <h3>Layout Details - {technicalDetailsModal.title}</h3>
+                <p>Complete layout information and specifications</p>
                 {(technicalDetailsModal.architect_name || technicalDetailsModal.architect_email) && (
                   <div style={{marginTop: 6, color: '#6b7280'}}>
                     {technicalDetailsModal.architect_name && (<div><strong>Architect:</strong> {technicalDetailsModal.architect_name}</div>)}
@@ -2400,10 +2489,91 @@ const HomeownerDashboard = () => {
               </div>
               
               <div style={{overflowY: 'auto', maxHeight: '70vh', paddingRight: '8px'}}>
-                <TechnicalDetailsDisplay 
-                  technicalDetails={technicalDetailsModal.technical_details} 
-                  compact={false}
-                />
+                {/* Basic Layout Information */}
+                <div style={{marginBottom: '24px', padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef'}}>
+                  <h4 style={{margin: '0 0 12px 0', color: '#495057'}}>Basic Information</h4>
+                  <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px'}}>
+                    <div>
+                      <strong>Title:</strong> {technicalDetailsModal.title || 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Type:</strong> {technicalDetailsModal.layout_type || 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Bedrooms:</strong> {technicalDetailsModal.bedrooms || 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Bathrooms:</strong> {technicalDetailsModal.bathrooms || 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Area:</strong> {technicalDetailsModal.area ? `${technicalDetailsModal.area} sq ft` : 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Price Range:</strong> {technicalDetailsModal.price_range || 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Status:</strong> {technicalDetailsModal.status || 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Created:</strong> {technicalDetailsModal.created_at ? new Date(technicalDetailsModal.created_at).toLocaleDateString() : 'N/A'}
+                    </div>
+                  </div>
+                  {technicalDetailsModal.description && (
+                    <div style={{marginTop: '12px'}}>
+                      <strong>Description:</strong>
+                      <p style={{margin: '4px 0 0 0', color: '#6c757d'}}>{technicalDetailsModal.description}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Technical Details */}
+                {technicalDetailsModal.technical_details && (
+                  <div style={{marginBottom: '24px'}}>
+                    <h4 style={{margin: '0 0 12px 0', color: '#495057'}}>Technical Specifications</h4>
+                    <TechnicalDetailsDisplay 
+                      technicalDetails={technicalDetailsModal.technical_details} 
+                      compact={false}
+                    />
+                  </div>
+                )}
+
+                {/* Files Information */}
+                <div style={{padding: '16px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef'}}>
+                  <h4 style={{margin: '0 0 12px 0', color: '#495057'}}>Files & Media</h4>
+                  <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px'}}>
+                    {technicalDetailsModal.image_url && (
+                      <div>
+                        <strong>Preview Image:</strong>
+                        <div style={{marginTop: '8px'}}>
+                          <img 
+                            src={technicalDetailsModal.image_url} 
+                            alt="Preview" 
+                            style={{maxWidth: '100%', maxHeight: '200px', borderRadius: '6px', objectFit: 'cover'}}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {technicalDetailsModal.design_file_url && (
+                      <div>
+                        <strong>Layout File:</strong>
+                        <div style={{marginTop: '8px', padding: '8px', background: '#fff', borderRadius: '6px', border: '1px solid #dee2e6'}}>
+                          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span style={{fontSize: '1.5rem'}}>
+                              {technicalDetailsModal.design_file_url.toLowerCase().endsWith('.pdf') ? '📄' :
+                               technicalDetailsModal.design_file_url.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? '🖼️' :
+                               technicalDetailsModal.design_file_url.toLowerCase().match(/\.(dwg|dxf)$/) ? '📐' :
+                               technicalDetailsModal.design_file_url.toLowerCase().match(/\.(skp|3dm|obj|stl)$/) ? '🏗️' : '📎'}
+                            </span>
+                            <div>
+                              <div style={{fontWeight: '500'}}>{technicalDetailsModal.design_file_url.split('/').pop()}</div>
+                              <a href={technicalDetailsModal.design_file_url} target="_blank" rel="noreferrer" style={{fontSize: '0.8rem', color: '#3b82f6'}}>View File</a>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               
               <div className="form-actions">
@@ -2666,9 +2836,7 @@ const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal
           {(layout.design_file_url && (isImageUrl(layout.design_file_url) || isPdfUrl(layout.design_file_url))) && (
             <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onPreview(); }}>View Layout</button>
           )}
-          {layout.technical_details && (
-            <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onViewDetails && onViewDetails(layout); }}>View Details</button>
-          )}
+          <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onViewDetails && onViewDetails(layout); }}>View Details</button>
           <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onSelect(); }}>
             Customize
           </button>

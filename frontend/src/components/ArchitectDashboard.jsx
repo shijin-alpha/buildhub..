@@ -250,19 +250,14 @@ const ArchitectDashboard = () => {
   };
 
   const [editLayout, setEditLayout] = useState(null);
-  const [editFormStep, setEditFormStep] = useState(0);
 
   // Library form navigation
   const nextLibraryStep = () => setLibraryFormStep(s => Math.min(s + 1, 1));
   const prevLibraryStep = () => setLibraryFormStep(s => Math.max(s - 1, 0));
   
-  // Edit form navigation
-  const nextEditStep = () => setEditFormStep(s => Math.min(s + 1, 1));
-  const prevEditStep = () => setEditFormStep(s => Math.max(s - 1, 0));
 
   const openEditLayout = (item) => {
     setEditLayout({ ...item, image: null, design_file: null });
-    setEditFormStep(0);
   };
 
   const closeEditLayout = () => setEditLayout(null);
@@ -526,7 +521,7 @@ const ArchitectDashboard = () => {
           <div className="quick-actions float-grid stagger-children">
             <button 
               className="float-rect w-blue"
-              onClick={() => navigate('/architect/upload')}
+              onClick={() => setActiveTab('requests')}
             >
               <div className="fr-icon">📐</div>
               <div className="fr-title">Upload New Design</div>
@@ -1064,13 +1059,9 @@ const ArchitectDashboard = () => {
               <h3>Edit Layout</h3>
               <p>Update your library item</p>
               <div className="form-steps" style={{marginTop: '12px'}}>
-                <div className={`step ${editFormStep === 0 ? 'active' : editFormStep > 0 ? 'completed' : ''}`}>
+                <div className="step active">
                   <span className="step-number">1</span>
                   <span className="step-label">Basic Info</span>
-                </div>
-                <div className={`step ${editFormStep === 1 ? 'active' : ''}`}>
-                  <span className="step-number">2</span>
-                  <span className="step-label">Technical Details</span>
                 </div>
               </div>
             </div>
@@ -1083,8 +1074,6 @@ const ArchitectDashboard = () => {
               scrollbarColor:'#cbd5e1 #f1f5f9'
             }} className="scrollable-form-content">
               <form onSubmit={(e) => e.preventDefault()} style={{paddingBottom:'16px'}}>
-              {editFormStep === 0 && (
-                <>
               <div className="form-row">
                 <div className="form-group">
                   <label>Title *</label>
@@ -1236,25 +1225,7 @@ const ArchitectDashboard = () => {
                  <label>Description</label>
                  <textarea rows="4" value={editLayout.description || ''} onChange={(e)=>setEditLayout({...editLayout, description:e.target.value})}></textarea>
                </div>
-               </>
-               )}
                
-               {editFormStep === 1 && (
-                 <>
-               {/* Technical Details Section for Edit */}
-               <div className="technical-details-section" style={{marginTop: '20px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb'}}>
-                 <h4>Technical Details</h4>
-                 <p style={{margin: '8px 0 16px 0', color: '#6b7280'}}>Update technical specifications for this layout</p>
-                 <TechnicalDetailsForm 
-                   data={editLayout} 
-                   setData={setEditLayout} 
-                   onNext={() => {}} 
-                   onPrev={() => {}} 
-                   showNavigation={false}
-                 />
-               </div>
-               </>
-               )}
                
                <div className="form-row">
                  <div className="form-group">
@@ -1268,17 +1239,8 @@ const ArchitectDashboard = () => {
               </form>
             </div>
             <div className="form-actions" style={{flexShrink:0, marginTop:'16px', paddingTop:'16px', borderTop:'1px solid #e5e7eb'}}>
-              {editFormStep === 0 ? (
-                <>
-                  <button type="button" className="btn btn-secondary" onClick={closeEditLayout}>Cancel</button>
-                  <button type="button" className="btn btn-primary" onClick={nextEditStep}>Next: Technical Details</button>
-                </>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-secondary" onClick={prevEditStep}>Back</button>
-                  <button type="button" className="btn btn-primary" onClick={saveEditLayout}>Save</button>
-                </>
-              )}
+              <button type="button" className="btn btn-secondary" onClick={closeEditLayout}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={saveEditLayout}>Save Changes</button>
             </div>
           </div>
         </div>

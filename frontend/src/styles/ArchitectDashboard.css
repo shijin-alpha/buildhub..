@@ -859,13 +859,33 @@ body {
   display: flex;
   gap: 0.75rem;
   justify-content: flex-end;
-  margin-top: 2rem;
-  padding: 1.5rem 0;
+  margin-top: 1rem;
+  padding: 1rem 0;
   border-top: 1px solid #e2e8f0;
   background: white;
   position: sticky;
   bottom: 0;
   z-index: 10;
+}
+
+/* Reduce spacing around Add Layout button in header */
+.main-header .header-content {
+  padding: 12px 16px !important;
+}
+
+.main-header .header-content h1 {
+  margin-bottom: 4px !important;
+}
+
+.main-header .header-content p {
+  margin-bottom: 8px !important;
+}
+
+/* Override inline styles for form actions in architect dashboard */
+.form-modal .form-content .form-actions {
+  margin-top: 16px !important;
+  padding-bottom: 16px !important;
+  padding-top: 12px !important;
 }
 
 /* Responsive Design */
