@@ -2658,6 +2658,110 @@ const HomeownerDashboard = () => {
 // Request Item Component
 const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo = false }) => {
   const [showDetails, setShowDetails] = React.useState(false);
+  const parseRequirements = (req) => {
+    if (!req) return {};
+    try { return typeof req === 'string' ? JSON.parse(req) : req; } catch { return {}; }
+  };
+  const renderForwardedDesign = () => {
+    const reqObj = parseRequirements(request.requirements);
+    const forwarded = reqObj.forwarded_design;
+    if (!forwarded) return null;
+    const files = Array.isArray(forwarded.files) ? forwarded.files : [];
+    const td = forwarded.technical_details || {};
+    const renderKV = (obj) => {
+      if (!obj || typeof obj !== 'object') return null;
+      return (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:8 }}>
+          {Object.entries(obj).map(([k, v]) => (
+            <div key={k} style={{ padding:'8px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6 }}>
+              <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>{k.replaceAll('_',' ')}:</div>
+              <div style={{ whiteSpace:'pre-wrap' }}>{String(v || '-')}</div>
+            </div>
+          ))}
+        </div>
+      );
+    };
+    return (
+      <div className="forwarded-design" style={{ marginTop: 10 }}>
+        <div className="details-grid" style={{ marginBottom: 8 }}>
+          <div><strong>Design Title:</strong> {forwarded.title || '-'}</div>
+          <div><strong>Uploaded:</strong> {forwarded.created_at ? new Date(forwarded.created_at).toLocaleString() : '-'}</div>
+        </div>
+        {forwarded.description && (
+          <div className="description-section" style={{ marginBottom: 8 }}>
+            <strong>Description:</strong>
+            <div className="description-content">{forwarded.description}</div>
+          </div>
+        )}
+        {reqObj.contractor_message && (
+          <div className="description-section" style={{ marginBottom: 8 }}>
+            <strong>Message to contractor:</strong>
+            <div className="description-content">{reqObj.contractor_message}</div>
+          </div>
+        )}
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:'10px'}}>
+          {files.map((f, idx) => {
+            const href = f.path || `/buildhub/backend/uploads/designs/${f.stored || f.original}`;
+            const ext = (f.ext || '').toLowerCase();
+            const isImage = ['jpg','jpeg','png','gif','webp','svg','heic'].includes(ext);
+            return (
+              <div key={idx} className="file-card" style={{cursor:'default'}}>
+                {isImage ? (
+                  <img src={href} alt={f.original} style={{width:'100%', height:120, objectFit:'cover', borderRadius:6}} />
+                ) : (
+                  <div className="file-thumb" style={{height:120, display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f7', borderRadius:6}}>
+                    <span style={{fontSize:'2rem'}}>📄</span>
+                  </div>
+                )}
+                <div className="file-name" style={{fontSize:'0.85rem', marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={f.original || f.stored}>
+                  {f.original || f.stored}
+                </div>
+                <div style={{display:'flex', gap:8, marginTop:6}}>
+                  <a href={href} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{padding:'6px 10px'}}>Open</a>
+                  <a href={href} download className="btn" style={{padding:'6px 10px'}}>Download</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {(td && Object.keys(td).length > 0) && (
+          <div style={{ marginTop: 16 }}>
+            <h4 style={{ margin: '10px 0' }}>Technical Details</h4>
+            {td.floor_plans && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Floor Plans</div>
+                {renderKV(td.floor_plans)}
+              </div>
+            )}
+            {td.site_orientation && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Site Orientation</div>
+                {renderKV(td.site_orientation)}
+              </div>
+            )}
+            {td.structural && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Structural</div>
+                {renderKV(td.structural)}
+              </div>
+            )}
+            {td.elevations && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Elevations</div>
+                {renderKV(td.elevations)}
+              </div>
+            )}
+            {td.construction && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Construction</div>
+                {renderKV(td.construction)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
   return (
     <div className="list-item">
       <div className="item-icon">
@@ -2722,7 +2826,7 @@ const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo 
             </div>
           </div>
         )}
-        {/* Minimal homeowner view: hide requirements & large preview */}
+        {/* Minimal homeowner view: show details and forwarded design (if any) */}
         {showDetails && (
           <div className="details-panel" style={{ marginTop:10, padding:12, border:'1px solid #e5e7eb', borderRadius:8, background:'#fafafa' }}>
             <div className="grid-2" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
@@ -2765,6 +2869,12 @@ const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo 
               {request.requirements && (
                 <div style={{ gridColumn:'1 / -1' }}>
                   <NeatJsonCard raw={request.requirements} title="Requirements" />
+                </div>
+              )}
+              {showContractorInfo && (
+                <div style={{ gridColumn:'1 / -1' }}>
+                  <div className="muted" style={{ fontSize:12, color:'#666', marginBottom:6 }}>Forwarded to Contractor</div>
+                  {renderForwardedDesign()}
                 </div>
               )}
             </div>

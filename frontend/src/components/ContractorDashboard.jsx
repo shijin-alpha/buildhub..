@@ -85,6 +85,20 @@ const ContractorDashboard = () => {
     const forwarded = reqObj.forwarded_design;
     if (!forwarded) return null;
     const files = Array.isArray(forwarded.files) ? forwarded.files : [];
+    const td = forwarded.technical_details || {};
+    const renderKV = (obj) => {
+      if (!obj || typeof obj !== 'object') return null;
+      return (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:8 }}>
+          {Object.entries(obj).map(([k, v]) => (
+            <div key={k} style={{ padding:'8px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6 }}>
+              <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>{k.replaceAll('_',' ')}:</div>
+              <div style={{ whiteSpace:'pre-wrap' }}>{String(v || '-')}</div>
+            </div>
+          ))}
+        </div>
+      );
+    };
     return (
       <div className="forwarded-design" style={{ marginTop: 10 }}>
         <div className="details-grid" style={{ marginBottom: 8 }}>
@@ -128,8 +142,64 @@ const ContractorDashboard = () => {
             );
           })}
         </div>
+        {(td && Object.keys(td).length > 0) && (
+          <div style={{ marginTop: 16 }}>
+            <h4 style={{ margin: '10px 0' }}>Technical Details</h4>
+            {td.floor_plans && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Floor Plans</div>
+                {renderKV(td.floor_plans)}
+              </div>
+            )}
+            {td.site_orientation && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Site Orientation</div>
+                {renderKV(td.site_orientation)}
+              </div>
+            )}
+            {td.structural && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Structural</div>
+                {renderKV(td.structural)}
+              </div>
+            )}
+            {td.elevations && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Elevations</div>
+                {renderKV(td.elevations)}
+              </div>
+            )}
+            {td.construction && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight:600, marginBottom:6 }}>Construction</div>
+                {renderKV(td.construction)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
+  };
+
+  const getForwardedSummary = (request) => {
+    const reqObj = parseRequirements(request.requirements);
+    const forwarded = reqObj.forwarded_design || {};
+    const title = forwarded.title || reqObj.layout_description || 'Project Request';
+    const desc = (forwarded.description || '').trim();
+    const short = desc.length > 120 ? desc.slice(0, 117) + '…' : desc;
+    return { title, short, hasDesc: !!desc };
+  };
+
+  const getForwardedThumb = (request) => {
+    const reqObj = parseRequirements(request.requirements);
+    const forwarded = reqObj.forwarded_design;
+    const files = Array.isArray(forwarded?.files) ? forwarded.files : [];
+    const first = files[0];
+    if (!first) return null;
+    const href = first.path || `/buildhub/backend/uploads/designs/${first.stored || first.original}`;
+    const ext = (first.ext || '').toLowerCase();
+    const isImage = ['jpg','jpeg','png','gif','webp','svg','heic'].includes(ext);
+    return { href, isImage, name: first.original || first.stored };
   };
 
   const fetchMyProposals = async () => {
@@ -216,13 +286,24 @@ const ContractorDashboard = () => {
             </div>
           ) : (
             <div className="item-list">
-              {layoutRequests.slice(0, 5).map(request => (
+              {layoutRequests.slice(0, 5).map(request => {
+                const summary = getForwardedSummary(request);
+                const thumb = getForwardedThumb(request);
+                return (
                 <div key={request.id} className="list-item">
-                  <div className="item-image">🏠</div>
+                  <div className="item-image">
+                    {thumb?.isImage ? (
+                      <img src={thumb.href} alt={thumb.name} style={{width:48, height:48, objectFit:'cover', borderRadius:6}} />
+                    ) : (
+                      '🏠'
+                    )}
+                  </div>
                   <div className="item-content">
-                    <h4 className="item-title">{request.homeowner_name}</h4>
-                    <p className="item-subtitle">{(parseRequirements(request.requirements).layout_description || request.requirements) || 'Modern Home Project'}</p>
-                    <p className="item-meta">{request.plot_size} • Budget: ₹{request.budget_range}</p>
+                    <h4 className="item-title">{summary.title}</h4>
+                    {summary.hasDesc && (
+                      <p className="item-subtitle">{summary.short}</p>
+                    )}
+                    <p className="item-meta">By {request.homeowner_name} • {request.plot_size} • Budget: ₹{request.budget_range}</p>
                     <button className="btn btn-secondary" style={{marginTop:6}} onClick={() => setShowRequestDetails(prev => ({...prev, [request.id]: !prev[request.id]}))}>
                       {showRequestDetails[request.id] ? 'Hide Details' : 'View Details'}
                     </button>
@@ -237,7 +318,7 @@ const ContractorDashboard = () => {
                     <button className="btn btn-primary" onClick={() => navigate(`/contractor/estimate?layout_request_id=${request.id}`)}>Submit Estimate</button>
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
           )}
         </div>
@@ -268,13 +349,24 @@ const ContractorDashboard = () => {
             </div>
           ) : (
             <div className="item-list">
-              {layoutRequests.map(request => (
+              {layoutRequests.map(request => {
+                const summary = getForwardedSummary(request);
+                const thumb = getForwardedThumb(request);
+                return (
                 <div key={request.id} className="list-item">
-                  <div className="item-image">🏠</div>
+                  <div className="item-image">
+                    {thumb?.isImage ? (
+                      <img src={thumb.href} alt={thumb.name} style={{width:48, height:48, objectFit:'cover', borderRadius:6}} />
+                    ) : (
+                      '🏠'
+                    )}
+                  </div>
                   <div className="item-content">
-                    <h4 className="item-title">{request.homeowner_name}</h4>
-                    <p className="item-subtitle">{(parseRequirements(request.requirements).layout_description || request.requirements) || 'Modern Home Project'}</p>
-                    <p className="item-meta">{request.plot_size} • Budget: ₹{request.budget_range}</p>
+                    <h4 className="item-title">{summary.title}</h4>
+                    {summary.hasDesc && (
+                      <p className="item-subtitle">{summary.short}</p>
+                    )}
+                    <p className="item-meta">By {request.homeowner_name} • {request.plot_size} • Budget: ₹{request.budget_range}</p>
                     <button className="btn btn-secondary" style={{marginTop:6}} onClick={() => setShowRequestDetails(prev => ({...prev, [request.id]: !prev[request.id]}))}>
                       {showRequestDetails[request.id] ? 'Hide Details' : 'View Details'}
                     </button>
@@ -289,7 +381,7 @@ const ContractorDashboard = () => {
                     <button className="btn btn-primary" onClick={() => navigate(`/contractor/estimate?layout_request_id=${request.id}`)}>Submit Estimate</button>
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
           )}
         </div>
