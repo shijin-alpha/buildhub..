@@ -19,6 +19,7 @@ const ContractorDashboard = () => {
   const [collapsed] = useState(false);
   const [sidebarProfileOpen, setSidebarProfileOpen] = useState(false);
   const sidebarProfileRef = useRef(null);
+  const [showRequestDetails, setShowRequestDetails] = useState({});
 
   useEffect(() => {
     // Get user data from session
@@ -72,6 +73,63 @@ const ContractorDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const parseRequirements = (req) => {
+    if (!req) return {};
+    try { return typeof req === 'string' ? JSON.parse(req) : req; } catch { return {}; }
+  };
+
+  const renderForwardedDesign = (request) => {
+    const reqObj = parseRequirements(request.requirements);
+    const forwarded = reqObj.forwarded_design;
+    if (!forwarded) return null;
+    const files = Array.isArray(forwarded.files) ? forwarded.files : [];
+    return (
+      <div className="forwarded-design" style={{ marginTop: 10 }}>
+        <div className="details-grid" style={{ marginBottom: 8 }}>
+          <div><strong>Design Title:</strong> {forwarded.title || '-'}</div>
+          <div><strong>Uploaded:</strong> {forwarded.created_at ? new Date(forwarded.created_at).toLocaleString() : '-'}</div>
+        </div>
+        {forwarded.description && (
+          <div className="description-section" style={{ marginBottom: 8 }}>
+            <strong>Description:</strong>
+            <div className="description-content">{forwarded.description}</div>
+          </div>
+        )}
+        {reqObj.contractor_message && (
+          <div className="description-section" style={{ marginBottom: 8 }}>
+            <strong>Message from homeowner:</strong>
+            <div className="description-content">{reqObj.contractor_message}</div>
+          </div>
+        )}
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:'10px'}}>
+          {files.map((f, idx) => {
+            const href = f.path || `/buildhub/backend/uploads/designs/${f.stored || f.original}`;
+            const ext = (f.ext || '').toLowerCase();
+            const isImage = ['jpg','jpeg','png','gif','webp','svg','heic'].includes(ext);
+            return (
+              <div key={idx} className="file-card" style={{cursor:'default'}}>
+                {isImage ? (
+                  <img src={href} alt={f.original} style={{width:'100%', height:120, objectFit:'cover', borderRadius:6}} />
+                ) : (
+                  <div className="file-thumb" style={{height:120, display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f7', borderRadius:6}}>
+                    <span style={{fontSize:'2rem'}}>📄</span>
+                  </div>
+                )}
+                <div className="file-name" style={{fontSize:'0.85rem', marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={f.original || f.stored}>
+                  {f.original || f.stored}
+                </div>
+                <div style={{display:'flex', gap:8, marginTop:6}}>
+                  <a href={href} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{padding:'6px 10px'}}>Open</a>
+                  <a href={href} download className="btn" style={{padding:'6px 10px'}}>Download</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   const fetchMyProposals = async () => {
@@ -163,8 +221,16 @@ const ContractorDashboard = () => {
                   <div className="item-image">🏠</div>
                   <div className="item-content">
                     <h4 className="item-title">{request.homeowner_name}</h4>
-                    <p className="item-subtitle">{request.requirements || 'Modern Home Project'}</p>
+                    <p className="item-subtitle">{(parseRequirements(request.requirements).layout_description || request.requirements) || 'Modern Home Project'}</p>
                     <p className="item-meta">{request.plot_size} • Budget: ₹{request.budget_range}</p>
+                    <button className="btn btn-secondary" style={{marginTop:6}} onClick={() => setShowRequestDetails(prev => ({...prev, [request.id]: !prev[request.id]}))}>
+                      {showRequestDetails[request.id] ? 'Hide Details' : 'View Details'}
+                    </button>
+                    {showRequestDetails[request.id] && (
+                      <div className="details-panel">
+                        {renderForwardedDesign(request)}
+                      </div>
+                    )}
                   </div>
                   <div className="item-actions">
                     <span className={`status-badge ${badgeClass(request.status)}`}>{formatStatus(request.status)}</span>
@@ -207,8 +273,16 @@ const ContractorDashboard = () => {
                   <div className="item-image">🏠</div>
                   <div className="item-content">
                     <h4 className="item-title">{request.homeowner_name}</h4>
-                    <p className="item-subtitle">{request.requirements || 'Modern Home Project'}</p>
+                    <p className="item-subtitle">{(parseRequirements(request.requirements).layout_description || request.requirements) || 'Modern Home Project'}</p>
                     <p className="item-meta">{request.plot_size} • Budget: ₹{request.budget_range}</p>
+                    <button className="btn btn-secondary" style={{marginTop:6}} onClick={() => setShowRequestDetails(prev => ({...prev, [request.id]: !prev[request.id]}))}>
+                      {showRequestDetails[request.id] ? 'Hide Details' : 'View Details'}
+                    </button>
+                    {showRequestDetails[request.id] && (
+                      <div className="details-panel">
+                        {renderForwardedDesign(request)}
+                      </div>
+                    )}
                   </div>
                   <div className="item-actions">
                     <span className={`status-badge ${badgeClass(request.status)}`}>{formatStatus(request.status)}</span>

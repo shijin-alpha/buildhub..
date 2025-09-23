@@ -16,28 +16,32 @@ try {
     $layout_id = $data['layout_id'] ?? null;
     $contractor_id = $data['contractor_id'] ?? null;
     $homeowner_id = $data['homeowner_id'] ?? null;
+    $contractor_message = $data['contractor_message'] ?? '';
+    $forwarded_design = $data['forwarded_design'] ?? null; // optional full design payload
     
-    // Validate required fields
-    if (!$layout_id || !$contractor_id || !$homeowner_id) {
+    // Validate required fields: allow either layout_id OR forwarded_design
+    if (!$contractor_id || !$homeowner_id || (!$layout_id && empty($forwarded_design))) {
         echo json_encode([
             'success' => false,
-            'message' => 'Layout ID, Contractor ID, and Homeowner ID are required'
+            'message' => 'Contractor and Homeowner are required, plus either a layout or forwarded design'
         ]);
         exit;
     }
-    
-    // Get layout details from library
-    $layoutQuery = "SELECT * FROM layout_library WHERE id = :layout_id";
-    $layoutStmt = $db->prepare($layoutQuery);
-    $layoutStmt->execute([':layout_id' => $layout_id]);
-    $layout = $layoutStmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$layout) {
-        echo json_encode([
-            'success' => false,
-            'message' => 'Layout not found'
-        ]);
-        exit;
+
+    $layout = null;
+    if ($layout_id) {
+        // Get layout details from library
+        $layoutQuery = "SELECT * FROM layout_library WHERE id = :layout_id";
+        $layoutStmt = $db->prepare($layoutQuery);
+        $layoutStmt->execute([':layout_id' => $layout_id]);
+        $layout = $layoutStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$layout) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Layout not found'
+            ]);
+            exit;
+        }
     }
     
     // Check if contractor exists and is verified
@@ -77,23 +81,46 @@ try {
         :location,
         :timeline,
         'active',
-        'library',
-        :layout_id,
+        :layout_type,
+        :selected_layout_id,
         :layout_file,
         NOW()
     )";
     
     $insertStmt = $db->prepare($insertQuery);
+    // Build structured requirements JSON including forwarded design details (if any)
+    $requirementsPayload = [
+        'source' => 'homeowner-forward',
+        'contractor_message' => $contractor_message,
+        'layout_description' => $layout['description'] ?? '',
+        'forwarded_design' => $forwarded_design ?: null
+    ];
+
+    // Determine layout type, selected_layout_id and layout_file
+    $derived_layout_type = $layout ? 'library' : 'direct';
+    $derived_selected_layout_id = $layout ? $layout_id : null;
+    $derived_layout_file = $layout['design_file_url'] ?? null;
+    if (!$derived_layout_file && !empty($forwarded_design) && !empty($forwarded_design['files']) && is_array($forwarded_design['files'])) {
+        $first = $forwarded_design['files'][0];
+        if (is_array($first)) {
+            $derived_layout_file = $first['path'] ?? ($first['stored'] ?? ($first['original'] ?? null));
+            if ($derived_layout_file && strpos($derived_layout_file, '/buildhub/backend/uploads/designs/') === false && !preg_match('/^https?:/i', $derived_layout_file)) {
+                $derived_layout_file = '/buildhub/backend/uploads/designs/' . $derived_layout_file;
+            }
+        }
+    }
+
     $result = $insertStmt->execute([
         ':user_id' => $homeowner_id,
         ':homeowner_id' => $homeowner_id,
         ':plot_size' => $layout['plot_size'] ?? '',
         ':budget_range' => $layout['budget_range'] ?? '',
-        ':requirements' => $layout['description'] ?? '',
+        ':requirements' => json_encode($requirementsPayload),
         ':location' => '',
         ':timeline' => 'contractor-direct',
-        ':layout_id' => $layout_id,
-        ':layout_file' => $layout['design_file_url'] ?? null
+        ':layout_type' => $derived_layout_type,
+        ':selected_layout_id' => $derived_selected_layout_id,
+        ':layout_file' => $derived_layout_file
     ]);
     
     if ($result) {

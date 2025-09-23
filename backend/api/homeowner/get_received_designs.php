@@ -50,11 +50,16 @@ try {
     // Add technical_details column if it doesn't exist (for existing tables)
     $db->exec("ALTER TABLE designs ADD COLUMN IF NOT EXISTS technical_details TEXT");
 
-    $sql = "SELECT d.*, a.first_name AS architect_first_name, a.last_name AS architect_last_name, a.email AS architect_email
+    $sql = "SELECT d.*, 
+                   a.first_name AS architect_first_name, 
+                   a.last_name AS architect_last_name, 
+                   a.email AS architect_email,
+                   lr.selected_layout_id AS selected_layout_id
             FROM designs d
             JOIN users a ON d.architect_id = a.id
+            LEFT JOIN layout_requests lr ON lr.id = d.layout_request_id
             WHERE d.homeowner_id = :uid1
-               OR d.layout_request_id IN (SELECT lr.id FROM layout_requests lr WHERE lr.homeowner_id = :uid2)
+               OR d.layout_request_id IN (SELECT lr2.id FROM layout_requests lr2 WHERE lr2.homeowner_id = :uid2)
             ORDER BY d.created_at DESC";
 
     $stmt = $db->prepare($sql);
@@ -94,6 +99,7 @@ try {
         $designs[] = [
             'id' => (int)$row['id'],
             'layout_request_id' => $row['layout_request_id'] ? (int)$row['layout_request_id'] : null,
+            'selected_layout_id' => isset($row['selected_layout_id']) && $row['selected_layout_id'] !== null ? (int)$row['selected_layout_id'] : null,
             'homeowner_id' => $row['homeowner_id'] ? (int)$row['homeowner_id'] : null,
             'architect_id' => (int)$row['architect_id'],
             'design_title' => $row['design_title'],

@@ -98,6 +98,7 @@ const HomeownerDashboard = () => {
   const [selectedContractor, setSelectedContractor] = useState(null);
   const [contractorMessage, setContractorMessage] = useState('');
   const [sendingToContractor, setSendingToContractor] = useState(false);
+  const [sourceDesignForContractor, setSourceDesignForContractor] = useState(null); // when opened from Received Designs
 
   // Technical details modal state
   const [technicalDetailsModal, setTechnicalDetailsModal] = useState(null);
@@ -470,9 +471,53 @@ const HomeownerDashboard = () => {
     fetchContractors();
   };
 
+  // From a received design: resolve related library layout and open modal
+  const openSendToContractorFromDesign = (design) => {
+    setSourceDesignForContractor(design || null);
+    const layoutId = design?.selected_layout_id;
+    // Immediately set minimal selection so sending works without waiting for library load
+    if (layoutId) {
+      setSelectedLibraryLayout({ id: layoutId, title: 'Selected Layout' });
+    } else {
+      setSelectedLibraryLayout(null);
+    }
+    setShowContractorModal(true);
+    fetchContractors();
+
+    // Try to enrich with full layout details for the modal display
+    const ensureFullLayout = async () => {
+      if (!layoutId) return;
+      // If already in memory with full details, use it
+      if (Array.isArray(layoutLibrary) && layoutLibrary.length > 0) {
+        const match = layoutLibrary.find(l => Number(l.id) === Number(layoutId));
+        if (match) {
+          setSelectedLibraryLayout(match);
+          return;
+        }
+      }
+      // Otherwise, fetch the library and find the item
+      try {
+        const res = await fetch('/buildhub/backend/api/homeowner/get_layout_library.php', { credentials: 'include' });
+        const json = await res.json();
+        if (json?.success && Array.isArray(json.layouts)) {
+          const match = json.layouts.find(l => Number(l.id) === Number(layoutId));
+          if (match) setSelectedLibraryLayout(match);
+        }
+      } catch (_) { /* ignore, minimal selection already set */ }
+    };
+    ensureFullLayout();
+  };
+
   const sendToContractor = async () => {
-    if (!selectedContractor || !selectedLibraryLayout) {
+    const layoutIdToSend = selectedLibraryLayout?.id || sourceDesignForContractor?.selected_layout_id;
+    if (!selectedContractor) {
       setError('Please select a contractor');
+      return;
+    }
+    // Allow send without layout if we have a forwarded design bundle
+    const canSendWithoutLayout = !!sourceDesignForContractor;
+    if (!layoutIdToSend && !canSendWithoutLayout) {
+      setError('Please select a layout to send');
       return;
     }
 
@@ -483,9 +528,18 @@ const HomeownerDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          layout_id: selectedLibraryLayout.id,
+          layout_id: layoutIdToSend || null,
           contractor_id: selectedContractor.id,
-          homeowner_id: user?.id
+          homeowner_id: user?.id,
+          contractor_message: contractorMessage || '',
+          forwarded_design: sourceDesignForContractor ? {
+            id: sourceDesignForContractor.id,
+            title: sourceDesignForContractor.design_title,
+            description: sourceDesignForContractor.description,
+            files: Array.isArray(sourceDesignForContractor.files) ? sourceDesignForContractor.files : [],
+            technical_details: sourceDesignForContractor.technical_details || null,
+            created_at: sourceDesignForContractor.created_at
+          } : null
         })
       });
 
@@ -497,6 +551,7 @@ const HomeownerDashboard = () => {
         setSelectedContractor(null);
         setContractorMessage('');
         setSelectedLibraryLayout(null);
+        setSourceDesignForContractor(null);
         // Refresh the requests to show the new entry
         fetchMyRequests();
         // Auto-hide success message after 5 seconds
@@ -1167,6 +1222,7 @@ const HomeownerDashboard = () => {
                     </div>
                   </div>
                   <div className="item-actions" style={{display:'flex', flexDirection:'column', gap:6}}>
+                    <button className="btn" onClick={() => openSendToContractorFromDesign(d)}>Send to Contractor</button>
                     {d.status !== 'shortlisted' && d.status !== 'finalized' && (
                       <button className="btn" onClick={() => updateSelection(d.id, 'shortlist')}>⭐ Shortlist</button>
                     )}
@@ -2272,7 +2328,16 @@ const HomeownerDashboard = () => {
                   </div>
                 )}
               </div>
-
+              {/* Optional message to contractor */}
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label>Message to contractor (optional)</label>
+                <textarea
+                  value={contractorMessage}
+                  onChange={(e) => setContractorMessage(e.target.value)}
+                  placeholder="Add any notes or instructions for the contractor"
+                  rows="3"
+                />
+              </div>
 
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setShowContractorModal(false)}>Cancel</button>
