@@ -21,6 +21,30 @@ const ContractorDashboard = () => {
   const sidebarProfileRef = useRef(null);
   const [showRequestDetails, setShowRequestDetails] = useState({});
 
+  // Sidebar counts
+  const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
+  const proposalsCount = Array.isArray(myProposals) ? myProposals.length : 0;
+
+  // Periodic refresh for sidebar counts
+  useEffect(() => {
+    let mounted = true;
+    const refreshCounts = async () => {
+      try {
+        const r1 = await fetch('/buildhub/backend/api/contractor/get_layout_requests.php');
+        const j1 = await r1.json().catch(() => ({}));
+        if (mounted && j1?.success) setLayoutRequests(Array.isArray(j1.requests) ? j1.requests : []);
+      } catch {}
+      try {
+        const r2 = await fetch('/buildhub/backend/api/contractor/get_my_proposals.php');
+        const j2 = await r2.json().catch(() => ({}));
+        if (mounted && j2?.success) setMyProposals(Array.isArray(j2.proposals) ? j2.proposals : []);
+      } catch {}
+    };
+    refreshCounts();
+    const id = setInterval(refreshCounts, 60000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
   useEffect(() => {
     // Get user data from session
     const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
@@ -494,7 +518,6 @@ const ContractorDashboard = () => {
             onClick={(e) => { e.preventDefault(); setActiveTab('overview'); }}
             title="Dashboard"
           >
-            <span className="nav-icon sb-icon">📊</span>
             <span className="nav-label sb-label">Dashboard</span>
           </a>
           <a 
@@ -503,8 +526,8 @@ const ContractorDashboard = () => {
             onClick={(e) => { e.preventDefault(); setActiveTab('projects'); }}
             title="Cost Requests"
           >
-            <span className="nav-icon sb-icon">📋</span>
             <span className="nav-label sb-label">Cost Requests</span>
+            {requestsCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{requestsCount}</span>)}
           </a>
           <a 
             href="#" 
@@ -512,8 +535,8 @@ const ContractorDashboard = () => {
             onClick={(e) => { e.preventDefault(); setActiveTab('proposals'); }}
             title="My Estimates"
           >
-            <span className="nav-icon sb-icon">📄</span>
             <span className="nav-label sb-label">My Estimates</span>
+            {proposalsCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{proposalsCount}</span>)}
           </a>
         
         </nav>

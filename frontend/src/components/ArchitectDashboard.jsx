@@ -114,6 +114,54 @@ const ArchitectDashboard = () => {
     }
   };
 
+  // Sidebar counts
+  const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
+  // Count logic tolerant to different backend fields
+  const normalize = (v) => String(v || '').toLowerCase();
+  const pendingRequestsCount = Array.isArray(layoutRequests)
+    ? layoutRequests.filter(r => {
+        const s = normalize(r.status);
+        const anyPending = s === 'pending' || s === 'awaiting' || s === 'in_review' || s === 'processing';
+        const byCounters = (Number(r.accepted_count) || 0) === 0 && (Number(r.rejected_count) || 0) === 0;
+        return anyPending || byCounters;
+      }).length
+    : 0;
+  const acceptedRequestsCount = Array.isArray(layoutRequests)
+    ? layoutRequests.filter(r => {
+        const s = normalize(r.status);
+        const byStatus = s === 'accepted' || s === 'approved' || s === 'finalized' || s === 'completed';
+        const byCounters = (Number(r.accepted_count) || 0) > 0;
+        return byStatus || byCounters;
+      }).length
+    : 0;
+  const designsCount = Array.isArray(myDesigns) ? myDesigns.length : 0;
+  const libraryCount = Array.isArray(libraryLayouts) ? libraryLayouts.length : 0;
+
+  // Lightweight periodic refresh for counts
+  useEffect(() => {
+    let mounted = true;
+    const refreshCounts = async () => {
+      try {
+        const r1 = await fetch('/buildhub/backend/api/architect/get_layout_requests.php');
+        const j1 = await r1.json().catch(() => ({}));
+        if (mounted && j1?.success) setLayoutRequests(Array.isArray(j1.requests) ? j1.requests : []);
+      } catch {}
+      try {
+        const r2 = await fetch('/buildhub/backend/api/architect/get_my_designs.php');
+        const j2 = await r2.json().catch(() => ({}));
+        if (mounted && j2?.success) setMyDesigns(Array.isArray(j2.designs) ? j2.designs : []);
+      } catch {}
+      try {
+        const r3 = await fetch('/buildhub/backend/api/architect/get_my_layouts.php');
+        const j3 = await r3.json().catch(() => ({}));
+        if (mounted && j3?.success) setLibraryLayouts(Array.isArray(j3.layouts) ? j3.layouts : []);
+      } catch {}
+    };
+    refreshCounts();
+    const id = setInterval(refreshCounts, 60000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
   // Mark a design as finalized
   const finalizeDesign = async (designId) => {
     try {
@@ -1258,7 +1306,7 @@ const ArchitectDashboard = () => {
 
   return (
     <div className="dashboard-container">
-      <style jsx>{`
+      <style>{`
         .scrollable-form-content::-webkit-scrollbar {
           width: 8px;
         }
@@ -1359,32 +1407,40 @@ const ArchitectDashboard = () => {
             className={`nav-item sb-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}
           >
-            <span className="nav-icon sb-icon">📊</span>
-            Dashboard
+            <span className="sb-label">Dashboard</span>
           </a>
           <a 
             href="#" 
             className={`nav-item sb-item ${activeTab === 'requests' ? 'active' : ''}`}
             onClick={(e) => { e.preventDefault(); setActiveTab('requests'); }}
           >
-            <span className="nav-icon sb-icon">📋</span>
-            Layout Requests
+            <span className="sb-label">Layout Requests</span>
+            {(pendingRequestsCount > 0 || acceptedRequestsCount > 0) && (
+              <div style={{ display:'inline-flex', gap:6, marginLeft:'auto' }}>
+                {pendingRequestsCount > 0 && (
+                  <span className="nav-badge pending pulse" title="Pending requests">{pendingRequestsCount}</span>
+                )}
+                {acceptedRequestsCount > 0 && (
+                  <span className="nav-badge accepted" title="Accepted requests">{acceptedRequestsCount}</span>
+                )}
+              </div>
+            )}
           </a>
           <a 
             href="#" 
             className={`nav-item sb-item ${activeTab === 'designs' ? 'active' : ''}`}
             onClick={(e) => { e.preventDefault(); setActiveTab('designs'); }}
           >
-            <span className="nav-icon sb-icon">🎨</span>
-            My Designs
+            <span className="sb-label">My Designs</span>
+            {designsCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{designsCount}</span>)}
           </a>
           <a 
             href="#" 
             className={`nav-item sb-item ${activeTab === 'library' ? 'active' : ''}`}
             onClick={(e) => { e.preventDefault(); setActiveTab('library'); }}
           >
-            <span className="nav-icon sb-icon">📚</span>
-            My Layout Library
+            <span className="sb-label">My Layout Library</span>
+            {libraryCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{libraryCount}</span>)}
           </a>
 
         </nav>

@@ -30,10 +30,10 @@ try {
     // Build query with optional join to mark already-assigned architects for a given request
     $select = "SELECT 
                 u.id, u.first_name, u.last_name, u.email, u.role, u.is_verified,
-                NULL AS phone, NULL AS address, NULL AS company_name,
-                NULL AS experience_years, NULL AS specialization,
-                NULL AS license, NULL AS portfolio,
-                NULL AS created_at,
+                u.phone AS phone, u.address AS address, u.company_name AS company_name,
+                u.experience_years AS experience_years, u.specialization AS specialization,
+                u.license AS license, u.portfolio AS portfolio,
+                u.created_at AS created_at, u.city AS city, u.state AS state, u.location AS location,
                 (SELECT ROUND(AVG(r.rating),2) FROM architect_reviews r WHERE r.architect_id = u.id) AS avg_rating,
                 (SELECT COUNT(*) FROM architect_reviews r2 WHERE r2.architect_id = u.id) AS review_count";
     if ($lrid > 0) {
@@ -56,7 +56,16 @@ try {
         $params[':search'] = '%' . $search . '%';
     }
 
-    // Ignore specialization and min_experience filters for compatibility
+    // Optional specialization filter
+    if (!empty($specialization)) {
+        $where .= " AND (u.specialization LIKE :spec)";
+        $params[':spec'] = '%' . $specialization . '%';
+    }
+    // Optional minimum experience filter
+    if ($minExp !== null) {
+        $where .= " AND (u.experience_years IS NOT NULL AND u.experience_years >= :minexp)";
+        $params[':minexp'] = $minExp;
+    }
 
     $order = " ORDER BY u.id DESC";
 
@@ -84,6 +93,9 @@ try {
             'license' => $row['license'],
             'portfolio' => $row['portfolio'],
             'created_at' => $row['created_at'],
+            'city' => $row['city'] ?? null,
+            'state' => $row['state'] ?? null,
+            'location' => $row['location'] ?? null,
             'avg_rating' => is_null($row['avg_rating']) ? null : (float)$row['avg_rating'],
             'review_count' => isset($row['review_count']) ? (int)$row['review_count'] : 0,
             'already_assigned' => isset($row['already_assigned']) ? (bool)$row['already_assigned'] : false,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ArchitectDetailsModal from './ArchitectDetailsModal.jsx';
 import { useNavigate } from 'react-router-dom';
 import '../styles/HomeownerDashboard.css';
 import '../styles/BlueGlassTheme.css';
@@ -58,10 +59,76 @@ const HomeownerDashboard = () => {
   const [showArchitectModal, setShowArchitectModal] = useState(false);
   const [sidebarProfileOpen, setSidebarProfileOpen] = useState(false);
 
+  // Sidebar badge counts
+  const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
+  const designsCount = Array.isArray(receivedDesigns) ? receivedDesigns.length : 0;
+  const projectsCount = Array.isArray(myProjects) ? myProjects.length : 0;
+  const contractorReqCount = Array.isArray(contractorRequests) ? contractorRequests.length : 0;
+  const libraryCount = Array.isArray(layoutLibrary) ? layoutLibrary.length : 0;
+
+  // Background refresh for sidebar counts (does not toggle main loading state)
+  useEffect(() => {
+    let mounted = true;
+    const refreshCounts = async () => {
+      try {
+        // My Requests
+        const r1 = await fetch('/buildhub/backend/api/homeowner/get_my_requests.php');
+        const j1 = await r1.json().catch(() => ({}));
+        if (mounted && j1?.success) {
+          const reqs = Array.isArray(j1.requests) ? j1.requests : [];
+          setLayoutRequests(reqs.filter(r => r.status !== 'deleted'));
+        }
+      } catch {}
+      try {
+        // Contractor Requests
+        const r2 = await fetch('/buildhub/backend/api/homeowner/get_contractor_requests.php');
+        const j2 = await r2.json().catch(() => ({}));
+        if (mounted && j2?.success) {
+          const reqs = Array.isArray(j2.requests) ? j2.requests : [];
+          setContractorRequests(reqs.filter(r => r.status !== 'deleted'));
+        }
+      } catch {}
+      try {
+        // Received Designs
+        const r3 = await fetch('/buildhub/backend/api/homeowner/get_received_designs.php', { credentials: 'include' });
+        const j3 = await r3.json().catch(() => ({}));
+        if (mounted && j3?.success) {
+          setReceivedDesigns(Array.isArray(j3.designs) ? j3.designs : []);
+        }
+      } catch {}
+      try {
+        // Projects
+        const r4 = await fetch('/buildhub/backend/api/homeowner/get_my_projects.php');
+        const j4 = await r4.json().catch(() => ({}));
+        if (mounted && j4?.success) {
+          setMyProjects(Array.isArray(j4.projects) ? j4.projects : []);
+        }
+      } catch {}
+      try {
+        // Layout Library
+        const r5 = await fetch('/buildhub/backend/api/homeowner/get_layout_library.php', { credentials: 'include' });
+        const j5 = await r5.json().catch(() => ({}));
+        if (mounted && j5?.success) {
+          setLayoutLibrary(Array.isArray(j5.layouts) ? j5.layouts : []);
+        }
+      } catch {}
+    };
+
+    // Initial immediate refresh
+    refreshCounts();
+    // Poll every 60s
+    const id = setInterval(refreshCounts, 60000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
   // Architect assignment state
   const [architects, setArchitects] = useState([]);
   const [archLoading, setArchLoading] = useState(false);
   const [archError, setArchError] = useState('');
+  const [showArchitectDetails, setShowArchitectDetails] = useState(false);
+  const [architectForDetails, setArchitectForDetails] = useState(null);
+  const [architectReviews, setArchitectReviews] = useState([]);
+  const [architectReviewsLoading, setArchitectReviewsLoading] = useState(false);
   const [archSearch, setArchSearch] = useState('');
   const [archSpec, setArchSpec] = useState('');
   const [archMinExp, setArchMinExp] = useState('');
@@ -236,7 +303,8 @@ const HomeownerDashboard = () => {
       const result = await response.json();
       if (result.success) {
         const reqs = Array.isArray(result.requests) ? result.requests : [];
-        setContractorRequests(reqs);
+        // Exclude deleted contractor requests from the list
+        setContractorRequests(reqs.filter(r => r.status !== 'deleted'));
       }
     } catch (error) {
       console.error('Error fetching contractor requests:', error);
@@ -428,6 +496,23 @@ const HomeownerDashboard = () => {
     } finally {
       setArchLoading(false);
     }
+  };
+
+  const openArchitectDetails = async (architect) => {
+    setArchitectForDetails(architect);
+    setShowArchitectDetails(true);
+    setArchitectReviewsLoading(true);
+    setArchitectReviews([]);
+    try {
+      if (architect?.id) {
+        const r = await fetch(`/buildhub/backend/api/reviews/get_reviews.php?architect_id=${architect.id}`);
+        const rj = await r.json();
+        if (rj.success) {
+          setArchitectReviews(Array.isArray(rj.reviews) ? rj.reviews : []);
+        }
+      }
+    } catch {}
+    finally { setArchitectReviewsLoading(false); }
   };
 
   // Contractor directory + selection
@@ -1379,7 +1464,6 @@ const HomeownerDashboard = () => {
             data-title="Dashboard"
             onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); fetchMyProjects(); fetchReceivedDesigns(); }}
           >
-            <span className="nav-icon sb-icon">📊</span>
             <span className="nav-label sb-label">Dashboard</span>
           </a>
           <a 
@@ -1388,8 +1472,10 @@ const HomeownerDashboard = () => {
             data-title="Layout Library"
             onClick={(e) => { e.preventDefault(); setActiveTab('library'); fetchLayoutLibrary(); }}
           >
-            <span className="nav-icon sb-icon">📚</span>
             <span className="nav-label sb-label">Layout Library</span>
+            {libraryCount > 0 && (
+              <span className="nav-badge pulse" style={{ marginLeft: 'auto' }}>{libraryCount}</span>
+            )}
           </a>
           <a 
             href="#" 
@@ -1397,8 +1483,10 @@ const HomeownerDashboard = () => {
             data-title="My Requests"
             onClick={(e) => { e.preventDefault(); setActiveTab('requests'); fetchMyRequests(); }}
           >
-            <span className="nav-icon sb-icon">📋</span>
             <span className="nav-label sb-label">My Requests</span>
+            {requestsCount > 0 && (
+              <span className="nav-badge pulse" style={{ marginLeft: 'auto' }}>{requestsCount}</span>
+            )}
           </a>
           <a 
             href="#" 
@@ -1406,8 +1494,10 @@ const HomeownerDashboard = () => {
             data-title="Received Designs"
             onClick={(e) => { e.preventDefault(); setActiveTab('designs'); fetchReceivedDesigns(); }}
           >
-            <span className="nav-icon sb-icon">🎨</span>
             <span className="nav-label sb-label">Received Designs</span>
+            {designsCount > 0 && (
+              <span className="nav-badge pulse" style={{ marginLeft: 'auto' }}>{designsCount}</span>
+            )}
           </a>
           <a 
             href="#" 
@@ -1415,8 +1505,10 @@ const HomeownerDashboard = () => {
             data-title="My Projects"
             onClick={(e) => { e.preventDefault(); setActiveTab('projects'); fetchMyProjects(); }}
           >
-            <span className="nav-icon sb-icon">🏗️</span>
             <span className="nav-label sb-label">My Projects</span>
+            {projectsCount > 0 && (
+              <span className="nav-badge pulse" style={{ marginLeft: 'auto' }}>{projectsCount}</span>
+            )}
           </a>
 
         </nav>
@@ -2015,6 +2107,9 @@ const HomeownerDashboard = () => {
                               </span>
                               <span className="rating-count">({a.review_count || 0} reviews)</span>
                             </div>
+                            <div style={{marginTop:6}}>
+                              <button type="button" className="btn btn-secondary" onClick={(e)=>{ e.preventDefault(); openArchitectDetails(a); }}>View details</button>
+                            </div>
                           </div>
                           <div className="architect-actions">
                             <button type="button" className="select-architect-btn" onClick={() => { setSelectedArchitectId([a.id]); setArchStepDone(true); }}>
@@ -2227,6 +2322,15 @@ const HomeownerDashboard = () => {
             </div>
           </div>
         )}
+
+        {/* Architect Details Modal (global) */}
+        <ArchitectDetailsModal 
+          open={showArchitectDetails} 
+          onClose={() => setShowArchitectDetails(false)} 
+          architect={architectForDetails} 
+          reviews={architectReviews} 
+          loading={architectReviewsLoading}
+        />
 
         {/* Contractor Selection Modal */}
         {showContractorModal && (
@@ -2771,6 +2875,7 @@ const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo 
       </div>
       <div className="item-content">
         <h4 className="item-title">
+          <span className="status-chip" style={{ marginRight: 8, background:'#eef2ff', color:'#3730a3' }}>#{request.id}</span>
           {request.layout_type === 'library' 
             ? `Library Layout: ${request.selected_layout_title || 'Selected Layout'}` 
             : `Custom Layout Request - ${request.plot_size} sq ft`
