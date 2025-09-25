@@ -243,13 +243,30 @@ const StylishProfile = ({
               <div className="info-item full-width">
                 <label>Specialization</label>
                 {isEditing ? (
-                  <input 
-                    type="text" 
-                    value={profile.specialization} 
-                    onChange={(e) => setProfile({...profile, specialization: e.target.value})}
-                    className="info-input"
-                    placeholder="e.g., Residential, Commercial, Interior Design"
-                  />
+                  <div className="specialization-input-container">
+                    <input 
+                      type="text" 
+                      value={profile.specialization} 
+                      onChange={(e) => setProfile({...profile, specialization: e.target.value})}
+                      className="info-input"
+                      placeholder="e.g., Residential Architect, Commercial Architect"
+                      list="specialization-options"
+                    />
+                    <datalist id="specialization-options">
+                      <option value="Residential Architect" />
+                      <option value="Commercial Architect" />
+                      <option value="Interior Designer" />
+                      <option value="Landscape Architect" />
+                      <option value="Urban Planner" />
+                      <option value="Industrial Architect" />
+                      <option value="Healthcare Architect" />
+                      <option value="Educational Architect" />
+                      <option value="Restoration/Conservation Architect" />
+                      <option value="Sustainable/Green Architect" />
+                      <option value="Hospitality Architect" />
+                      <option value="Transport Architect" />
+                    </datalist>
+                  </div>
                 ) : (
                   <span className="info-value">{profile.specialization || 'Not specified'}</span>
                 )}

@@ -21,6 +21,8 @@ import ArchitectRoute from "./components/ArchitectRoute.jsx";
 import ContractorRoute from "./components/ContractorRoute.jsx";
 import { useToast } from "./components/ToastProvider.jsx";
 import ArchitectFullPageUpload from "./components/ArchitectFullPageUpload.jsx";
+import PageLoader from "./components/PageLoader.jsx";
+import NavigationWrapper from "./components/NavigationWrapper.jsx";
 
 // Home page component
 function Home() {
@@ -349,6 +351,16 @@ function Home() {
             Home
           </a>
           <a
+            href="/login"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/login");
+            }}
+            className="nav-link login-link"
+          >
+            Login
+          </a>
+          <a
             href="#features"
             onClick={(e) => {
               e.preventDefault();
@@ -399,7 +411,7 @@ function Home() {
             Contact
           </a>
           <div className="contact-info">
-            <span className="phone-number">123-456-7890</span>
+            <span className="phone-number">7558-8956-67</span>
           </div>
         </nav>
       </header>
@@ -793,9 +805,39 @@ function Home() {
 }
 
 export default function App() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingTimeout, setLoadingTimeout] = useState(null);
+
+  // Global loading state management
+  useEffect(() => {
+    const handleRouteChange = () => {
+      setIsLoading(true);
+      // Clear any existing timeout
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+      }
+      // Set minimum loading time for smooth UX
+      const timeout = setTimeout(() => {
+        setIsLoading(false);
+      }, 1500);
+      setLoadingTimeout(timeout);
+    };
+
+    // Listen for route changes
+    window.addEventListener('beforeunload', handleRouteChange);
+    
+    return () => {
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+      }
+      window.removeEventListener('beforeunload', handleRouteChange);
+    };
+  }, [loadingTimeout]);
+
   return (
     <Router>
-      <Routes>
+      <NavigationWrapper>
+        <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
@@ -847,7 +889,8 @@ export default function App() {
         } />
         <Route path="/forgot-password" element={<ForgotPassword />} />
 
-      </Routes>
+        </Routes>
+      </NavigationWrapper>
     </Router>
   );
 }

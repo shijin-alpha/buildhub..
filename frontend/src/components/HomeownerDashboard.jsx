@@ -884,7 +884,7 @@ const HomeownerDashboard = () => {
       <div className="hero-card">
         <div className="hero-content">
           <div>
-            <h1>Welcome back, {user?.first_name || 'Homeowner'}! <span role="img" aria-label="wave">👋</span></h1>
+            <h1>Welcome back, {user?.first_name || 'Homeowner'} <span role="img" aria-label="wave"></span></h1>
             <p>Plan and track your home project. Request designs, review proposals, and manage progress.</p>
           </div>
           <div className="hero-actions"></div>
@@ -3116,12 +3116,8 @@ const LayoutCard = ({ layout, onSelect, onPreview, isImageUrl, isPdfUrl, isModal
           {(layout.design_file_url && (isImageUrl(layout.design_file_url) || isPdfUrl(layout.design_file_url))) && (
             <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onPreview(); }}>View Layout</button>
           )}
-          <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onViewDetails && onViewDetails(layout); }}>View Details</button>
           <button type="button" className="btn" onClick={(e) => { e.stopPropagation(); onSelect(); }}>
             Customize
-          </button>
-          <button type="button" className="btn btn-primary" onClick={(e) => { e.stopPropagation(); onSendToContractor && onSendToContractor(layout); }}>
-            Send to Contractor
           </button>
         </div>
       </div>

@@ -31,24 +31,153 @@
 .admin-modern .topbar-actions { display:flex; gap:10px; }
 
 .admin-modern .admin-right-rail { position:sticky; top:0; height: fit-content; padding: 8px 0; }
-.admin-modern .profile-card { background:#fff; border:1px solid #ecebff; border-radius: 20px; padding: 16px; box-shadow:0 12px 34px rgba(124,58,237,0.08); }
-.admin-modern .profile-header { display:flex; align-items:center; justify-content:space-between; }
-.admin-modern .profile-avatar { width:40px; height:40px; border-radius:50%; }
-.admin-modern .close-btn { font-size:20px; }
-.admin-modern .profile-name { font-size:1rem; font-weight:700; margin:10px 0 2px 0; color:#1f2937; }
-.admin-modern .profile-sub { font-size:12px; color:#6b7280; margin-bottom:12px; }
-.admin-modern .profit-card { display:flex; align-items:center; gap:12px; background:#f6f5ff; border-radius:16px; padding:12px; margin-bottom:16px; }
-.admin-modern .mini-chart { width:60px; height:40px; background:linear-gradient(90deg,#e9d5ff,#a78bfa); border-radius:10px; }
-.admin-modern .profit-values .label { font-size:12px; color:#6b7280; display:block; }
-.admin-modern .profit-values .value { font-size:22px; font-weight:800; color:#111827; }
-.admin-modern .recent-activities h4 { font-size:14px; margin:8px 0 8px; color:#111827; }
-.admin-modern .recent-activities ul { list-style:none; display:grid; gap:10px; padding:0; margin:0 0 12px 0; }
-.admin-modern .recent-activities li { display:flex; align-items:center; justify-content:space-between; font-size:12px; color:#374151; }
-.admin-modern .recent-activities .act-icon { width:24px; height:24px; border-radius:8px; display:inline-block; margin-right:8px; }
-.admin-modern .recent-activities .act-icon.up { background:#fde7ef; }
-.admin-modern .recent-activities .act-icon.down { background:#e8f7ef; }
-.admin-modern .recent-activities .amount { color:#6b7280; }
-.admin-modern .logout-rail { width:100%; display:flex; align-items:center; gap:8px; justify-content:center; border:none; background:#7c3aed; color:#fff; border-radius:12px; padding:10px; cursor:pointer; font-weight:600; }
+.admin-modern .profile-card { 
+  background:#fff; 
+  border:1px solid #ecebff; 
+  border-radius: 20px; 
+  padding: 24px; 
+  box-shadow:0 12px 34px rgba(124,58,237,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.admin-modern .profile-header { 
+  display:flex; 
+  align-items:center; 
+  justify-content:space-between; 
+  margin-bottom: 0;
+}
+.admin-modern .profile-avatar { 
+  width:48px; 
+  height:48px; 
+  border-radius:50%; 
+  border: 2px solid #f3f4f6;
+}
+.admin-modern .close-btn { 
+  font-size:20px; 
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.admin-modern .close-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+.admin-modern .profile-name { 
+  font-size:1.25rem; 
+  font-weight:700; 
+  margin: 0 0 4px 0; 
+  color:#1f2937; 
+}
+.admin-modern .profile-sub { 
+  font-size:14px; 
+  color:#6b7280; 
+  margin: 0 0 16px 0; 
+  font-weight: 500;
+}
+.admin-modern .profit-card { 
+  display:flex; 
+  align-items:center; 
+  gap:16px; 
+  background:#f8fafc; 
+  border: 1px solid #e2e8f0;
+  border-radius:12px; 
+  padding:16px; 
+  margin: 0;
+  transition: all 0.2s;
+}
+.admin-modern .profit-card:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.admin-modern .mini-chart { 
+  width:48px; 
+  height:48px; 
+  background:linear-gradient(135deg,#7c3aed,#a855f7); 
+  border-radius:12px; 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+}
+.admin-modern .profit-values .label { 
+  font-size:13px; 
+  color:#64748b; 
+  display:block; 
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.admin-modern .profit-values .value { 
+  font-size:24px; 
+  font-weight:800; 
+  color:#1e293b; 
+  line-height: 1;
+}
+.admin-modern .recent-activities h4 { 
+  font-size:15px; 
+  margin: 0 0 12px 0; 
+  color:#1e293b; 
+  font-weight: 600;
+}
+.admin-modern .recent-activities ul { 
+  list-style:none; 
+  display:grid; 
+  gap:8px; 
+  padding:0; 
+  margin:0; 
+}
+.admin-modern .recent-activities li { 
+  display:flex; 
+  align-items:center; 
+  justify-content:space-between; 
+  font-size:13px; 
+  color:#64748b; 
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.admin-modern .recent-activities li:last-child {
+  border-bottom: none;
+}
+.admin-modern .recent-activities .act-icon { 
+  width:20px; 
+  height:20px; 
+  border-radius:6px; 
+  display:inline-block; 
+  margin-right:10px; 
+}
+.admin-modern .recent-activities .act-icon.up { background:#dcfce7; }
+.admin-modern .recent-activities .act-icon.down { background:#fef3c7; }
+.admin-modern .recent-activities .amount { color:#94a3b8; font-weight: 500; }
+.admin-modern .logout-rail { 
+  width:100%; 
+  display:flex; 
+  align-items:center; 
+  gap:10px; 
+  justify-content:center; 
+  border:none; 
+  background:#dc2626; 
+  color:#fff; 
+  border-radius:12px; 
+  padding:12px 16px; 
+  cursor:pointer; 
+  font-weight:600; 
+  font-size: 14px;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+.admin-modern .logout-rail:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
 
 /* Slightly larger headline like mockup */
 .admin-modern .main-header h1 { font-size: 2.25rem; }
@@ -665,21 +794,50 @@ body {
   margin: 0 0 0.75rem 0;
 }
 
+.user-documents {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .document-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 40px;
 }
 
 .document-item span {
   font-size: 0.875rem;
   color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.doc-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
 }
 
 .document-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: fit-content;
+  max-width: 200px;
 }
 
 .no-documents {
