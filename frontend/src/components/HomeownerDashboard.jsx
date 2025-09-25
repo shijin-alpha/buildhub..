@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ArchitectDetailsModal from './ArchitectDetailsModal.jsx';
+import ArchitectRecommendationEngine from './ArchitectRecommendationEngine.jsx';
 import { useNavigate } from 'react-router-dom';
 import '../styles/HomeownerDashboard.css';
 import '../styles/BlueGlassTheme.css';
 import '../styles/SoftSidebar.css';
 import '../styles/Widgets.css';
 import '../styles/ReviewSection.css';
+import '../styles/ArchitectRecommendation.css';
 import './WidgetColors.css';
 import SearchableDropdown from './SearchableDropdown';
 import { indianCities } from '../data/indianCities';
@@ -46,6 +48,7 @@ const HomeownerDashboard = () => {
     family_needs: '',
     rooms: '',
     aesthetic: '',
+    style_preferences: {}, // AI recommendation style preferences
     location: '',
     timeline: '',
     requirements: '',
@@ -125,13 +128,83 @@ const HomeownerDashboard = () => {
   const [architects, setArchitects] = useState([]);
   const [archLoading, setArchLoading] = useState(false);
   const [archError, setArchError] = useState('');
+  // Architect filters state (must be declared before effects that reference them)
+  const [archSearch, setArchSearch] = useState('');
+  const [archSpec, setArchSpec] = useState('');
+  const [archMinExp, setArchMinExp] = useState('');
+  // Debounced fetch for specialization input
+  const archSpecRef = useRef('');
+  useEffect(() => { archSpecRef.current = archSpec; }, [archSpec]);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const spec = archSpecRef.current;
+      if (typeof spec === 'string' && spec.trim().length > 0) {
+        fetchArchitects({ status: 'approved', search: archSearch, specialization: spec, min_experience: archMinExp });
+      }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [archSpec, archSearch, archMinExp]);
   const [showArchitectDetails, setShowArchitectDetails] = useState(false);
   const [architectForDetails, setArchitectForDetails] = useState(null);
   const [architectReviews, setArchitectReviews] = useState([]);
   const [architectReviewsLoading, setArchitectReviewsLoading] = useState(false);
-  const [archSearch, setArchSearch] = useState('');
-  const [archSpec, setArchSpec] = useState('');
-  const [archMinExp, setArchMinExp] = useState('');
+  
+  // AI Recommendation Engine state
+  const [showRecommendationEngine, setShowRecommendationEngine] = useState(false);
+  const [recommendedArchitects, setRecommendedArchitects] = useState([]);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+
+  // Fetch AI recommendations based on style preferences
+  const fetchRecommendations = async (preferences) => {
+    setRecommendationLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/buildhub/backend/api/homeowner/recommend_architects.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          preferences: preferences,
+          k: 5
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setRecommendedArchitects(result.recommendations || []);
+      } else {
+        setError(result.message || 'Failed to get recommendations');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+      console.error('Recommendation error:', err);
+    } finally {
+      setRecommendationLoading(false);
+    }
+  };
+
+  // Helpers to mark recommended architects and show score
+  const getRecommendationScore = (architectId) => {
+    try {
+      const rec = (recommendedArchitects || []).find(r => Number(r?.architect?.id) === Number(architectId));
+      return rec?.composite_score ?? null;
+    } catch (_) { return null; }
+  };
+  const isRecommendedArchitect = (architectId) => getRecommendationScore(architectId) !== null;
+
+  // Auto-fetch recommendations when style preferences change or when modal opens
+  useEffect(() => {
+    try {
+      const hasPrefs = requestData && requestData.style_preferences && Object.keys(requestData.style_preferences).length > 0;
+      if (showArchitectModal && hasPrefs) {
+        fetchRecommendations(requestData.style_preferences);
+      }
+    } catch (_) {}
+  }, [showArchitectModal, requestData?.style_preferences]);
   const [archStepDone, setArchStepDone] = useState(false);
   const [selectedRequestForAssign, setSelectedRequestForAssign] = useState(null);
   const [selectedArchitectId, setSelectedArchitectId] = useState([]);
@@ -487,7 +560,8 @@ const HomeownerDashboard = () => {
       // else we will filter client-side below
       const result = await response.json();
       if (result.success) {
-        setArchitects(result.architects || []);
+        const list = result.architects || [];
+        setArchitects(list);
       } else {
         setArchError(result.message || 'Failed to load architects');
       }
@@ -1054,6 +1128,7 @@ const HomeownerDashboard = () => {
           )}
         </div>
       </div>
+
     </div>
   );
 
@@ -1964,6 +2039,50 @@ const HomeownerDashboard = () => {
                       />
                     </div>
                   </div>
+
+                  {/* AI Style Preferences */}
+                  <div className="form-row">
+                    <div className="form-group" style={{ width: '100%' }}>
+                      <label>🎨 Style Preferences (AI Matching)</label>
+                      <p style={{ fontSize: '0.9rem', color: '#666', margin: '4px 0 12px 0' }}>
+                        Select your preferred styles to get AI-recommended architects
+                      </p>
+                      <div className="style-preferences-grid">
+                        {[
+                          { key: 'modern', label: 'Modern', icon: '🏢' },
+                          { key: 'contemporary', label: 'Contemporary', icon: '✨' },
+                          { key: 'minimalist', label: 'Minimalist', icon: '⚪' },
+                          { key: 'traditional', label: 'Traditional', icon: '🏛️' },
+                          { key: 'luxury', label: 'Luxury', icon: '💎' },
+                          { key: 'sustainable', label: 'Sustainable', icon: '🌱' },
+                          { key: 'eco_friendly', label: 'Eco-friendly', icon: '♻️' },
+                          { key: 'natural', label: 'Natural', icon: '🌿' },
+                          { key: 'aesthetic', label: 'Aesthetic', icon: '🎨' },
+                          { key: 'functional', label: 'Functional', icon: '⚙️' },
+                          { key: 'elegant', label: 'Elegant', icon: '👑' },
+                          { key: 'innovative', label: 'Innovative', icon: '💡' }
+                        ].map(option => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            className={`style-preference-option ${requestData.style_preferences[option.key] ? 'selected' : ''}`}
+                            onClick={() => {
+                              const newPreferences = { ...requestData.style_preferences };
+                              if (newPreferences[option.key]) {
+                                delete newPreferences[option.key];
+                              } else {
+                                newPreferences[option.key] = 1;
+                              }
+                              setRequestData({ ...requestData, style_preferences: newPreferences });
+                            }}
+                          >
+                            <span className="style-icon">{option.icon}</span>
+                            <span className="style-label">{option.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="form-section location-timeline-section">
@@ -2035,7 +2154,14 @@ const HomeownerDashboard = () => {
                 {/* Inline Architect selection before submit */}
                 <div className="form-card architect-selection-card">
                   <h4 className="architect-selection-title">Choose Architect (optional)</h4>
-                  <p className="architect-selection-subtitle">Pick who should receive your request immediately after submission.</p>
+                  <p className="architect-selection-subtitle">
+                    Pick who should receive your request immediately after submission.
+                    {Object.keys(requestData.style_preferences).length > 0 && (
+                      <span style={{ color: '#3b82f6', fontWeight: '500' }}>
+                        {' '}🤖 AI recommendations will appear below based on your style preferences.
+                      </span>
+                    )}
+                  </p>
                   <div className="architect-filters-row">
                     <div className="filter-input-group">
                       <i className="fas fa-search filter-icon"></i>
@@ -2051,7 +2177,7 @@ const HomeownerDashboard = () => {
                       <i className="fas fa-briefcase filter-icon"></i>
                       <input
                         type="text"
-                        placeholder="Specialization (optional)"
+                        placeholder="Modern, Traditional, Minimalist"
                         value={archSpec}
                         onChange={(e) => setArchSpec(e.target.value)}
                         className="architect-filter-input"
@@ -2072,6 +2198,60 @@ const HomeownerDashboard = () => {
                       <i className="fas fa-search"></i> Search
                     </button>
                   </div>
+
+                  {/* AI Recommendations based on style preferences */}
+                  {Object.keys(requestData.style_preferences).length > 0 && (
+                    <div className="ai-recommendations-inline">
+                      <div className="ai-recommendations-header">
+                        <h5>🤖 AI Recommended Architects</h5>
+                        <button 
+                          type="button"
+                          className="btn btn-sm btn-outline"
+                          onClick={() => {
+                            fetchRecommendations(requestData.style_preferences);
+                          }}
+                          disabled={recommendationLoading}
+                        >
+                          {recommendationLoading ? 'Finding...' : 'Get AI Recommendations'}
+                        </button>
+                      </div>
+                      
+                      {recommendedArchitects.length > 0 && (
+                        <div className="recommended-architects-inline">
+                          {recommendedArchitects.slice(0, 3).map((rec, index) => (
+                            <div key={rec.architect.id} className="recommended-architect-inline">
+                              <div className="architect-info">
+                                <h6>{rec.architect.first_name} {rec.architect.last_name}</h6>
+                                <p className="specialization">{rec.architect.specialization}</p>
+                                <div className="architect-stats">
+                                  <span>⭐ {rec.architect.avg_rating || 0}/5</span>
+                                  <span>{rec.architect.experience_years || 0} years</span>
+                                </div>
+                              </div>
+                              <div className="match-score">
+                                <div className="score-badge" style={{ 
+                                  backgroundColor: rec.composite_score >= 0.8 ? '#10b981' : 
+                                                 rec.composite_score >= 0.6 ? '#f59e0b' : '#ef4444'
+                                }}>
+                                  {Math.round(rec.composite_score * 100)}%
+                                </div>
+                              </div>
+                              <button 
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => {
+                                  setSelectedArchitectId([rec.architect.id]);
+                                }}
+                              >
+                                Select
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {archError && <div className="alert alert-error architect-error">{archError}</div>}
                   <div className="architect-list">
                     {archLoading ? (
@@ -2093,7 +2273,12 @@ const HomeownerDashboard = () => {
                             <i className="fas fa-user-tie"></i>
                           </div>
                           <div className="architect-content">
-                            <div className="architect-name">{a.first_name} {a.last_name} {a.company_name ? `• ${a.company_name}` : ''}</div>
+                            <div className="architect-name" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                              <span>{a.first_name} {a.last_name} {a.company_name ? `• ${a.company_name}` : ''}</span>
+                              {isRecommendedArchitect(a.id) && (
+                                <span className="best-option-badge">Best Option</span>
+                              )}
+                            </div>
                             <div className="architect-specialization">
                               <i className="fas fa-briefcase"></i> {a.specialization || 'General'} 
                               <span className="experience-badge">{a.experience_years ?? 'N/A'} yrs</span>
@@ -2176,7 +2361,15 @@ const HomeownerDashboard = () => {
               <div className="form-header">
                 <h3>Select Architect</h3>
                 <p>Choose an architect to send your request</p>
-                <button className="modal-close" onClick={() => setShowArchitectModal(false)}>×</button>
+                <div className="header-actions">
+                  <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowRecommendationEngine(!showRecommendationEngine)}
+                  >
+                    🤖 AI Recommendations
+                  </button>
+                  <button className="modal-close" onClick={() => setShowArchitectModal(false)}>×</button>
+                </div>
               </div>
 
               {/* Request selection fallback */}
@@ -2203,6 +2396,15 @@ const HomeownerDashboard = () => {
                 <div className="info-row">
                   <span className="status-chip success">For Request #{selectedRequestForAssign.id}</span>
                 </div>
+              )}
+
+              {/* AI Recommendation Engine */}
+              {showRecommendationEngine && (
+                <ArchitectRecommendationEngine
+                  onRecommendations={setRecommendedArchitects}
+                  onLoading={setRecommendationLoading}
+                  showRecommendations={true}
+                />
               )}
 
               <div className="filters-row">
@@ -2232,6 +2434,44 @@ const HomeownerDashboard = () => {
 
               {archError && <div className="alert alert-error">{archError}</div>}
 
+              {/* Show AI Recommendations if available */}
+              {showRecommendationEngine && recommendedArchitects.length > 0 && (
+                <div className="ai-recommendations-section">
+                  <h4>🤖 AI Recommended Architects</h4>
+                  <div className="recommended-architects">
+                    {recommendedArchitects.map((rec, index) => (
+                      <div key={rec.architect.id} className="recommended-architect-card">
+                        <div className="architect-info">
+                          <h5>{rec.architect.first_name} {rec.architect.last_name}</h5>
+                          <p className="specialization">{rec.architect.specialization}</p>
+                          <div className="architect-stats">
+                            <span>⭐ {rec.architect.avg_rating || 0}/5</span>
+                            <span>{rec.architect.experience_years || 0} years</span>
+                          </div>
+                        </div>
+                        <div className="match-score">
+                          <div className="score-badge" style={{ 
+                            backgroundColor: rec.composite_score >= 0.8 ? '#10b981' : 
+                                           rec.composite_score >= 0.6 ? '#f59e0b' : '#ef4444'
+                          }}>
+                            {Math.round(rec.composite_score * 100)}% Match
+                          </div>
+                        </div>
+                        <button 
+                          className="btn btn-primary btn-sm"
+                          onClick={() => {
+                            setSelectedArchitectId([rec.architect.id]);
+                            setShowRecommendationEngine(false);
+                          }}
+                        >
+                          Select
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="architects-list">
                 {archLoading ? (
                   <div className="loading">Loading architects...</div>
@@ -2250,8 +2490,18 @@ const HomeownerDashboard = () => {
                         <label key={a.id} className={`list-item ${already ? 'disabled' : ''} ${Array.isArray(selectedArchitectId) ? selectedArchitectId.includes(a.id) ? 'selected' : '' : (selectedArchitectId === a.id ? 'selected' : '')}`}>
                           <div className="item-icon">🧑‍🎨</div>
                           <div className="item-content">
-                            <h4 className="item-title">{a.first_name} {a.last_name} {a.company_name ? `• ${a.company_name}` : ''}</h4>
-                            <p className="item-subtitle">{a.specialization || 'General'}</p>
+                            <h4 className="item-title" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                              <span>{a.first_name} {a.last_name} {a.company_name ? `• ${a.company_name}` : ''}</span>
+                              {isRecommendedArchitect(a.id) && (
+                                <span className="best-option-badge">Best Option</span>
+                              )}
+                            </h4>
+                            <p className="item-subtitle" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                              <span>{a.specialization || 'General'}</span>
+                              {isRecommendedArchitect(a.id) && (
+                                <span className="score-chip">{Math.round((getRecommendationScore(a.id) || 0) * 100)}% match</span>
+                              )}
+                            </p>
                             <div className="detail-grid">
                               <span><strong>Experience:</strong> {a.experience_years ?? 'N/A'} years</span>
                               <span><strong>Projects:</strong> {a.project_count || '0'}</span>
