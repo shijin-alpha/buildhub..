@@ -48,6 +48,7 @@ const ArchitectDashboard = () => {
   const [libraryLayouts, setLibraryLayouts] = useState([]);
   const [showLibraryForm, setShowLibraryForm] = useState(false);
   const [libraryFormStep, setLibraryFormStep] = useState(0);
+  const [expandedAssignments, setExpandedAssignments] = useState({});
   const [libraryForm, setLibraryForm] = useState({
     title: '', layout_type: '', bedrooms: '', bathrooms: '', area: '', price_range: '', description: '', image: null, design_file: null, technical_details: {}
   });
@@ -97,6 +98,25 @@ const ArchitectDashboard = () => {
       }
     } catch (error) {
       console.error('Error fetching requests:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Comprehensive refresh function for all dashboard data
+  const refreshDashboard = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchLayoutRequests(),
+        fetchMyDesigns(),
+        fetchMyLibrary(),
+        fetchMyProfile()
+      ]);
+      toast.success('Dashboard refreshed successfully');
+    } catch (error) {
+      console.error('Error refreshing dashboard:', error);
+      toast.error('Failed to refresh dashboard');
     } finally {
       setLoading(false);
     }
@@ -508,6 +528,15 @@ const ArchitectDashboard = () => {
             <h1>Dashboard</h1>
             <p>Manage your architectural designs and connect with clients</p>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button 
+              className="btn btn-secondary" 
+              onClick={refreshDashboard}
+              disabled={loading}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              {loading ? 'Refreshing...' : '🔄 Refresh Dashboard'}
+            </button>
           <div className="header-profile">
             <ArchitectProfileButton 
               user={user}
@@ -515,6 +544,7 @@ const ArchitectDashboard = () => {
               onProfileClick={() => setActiveTab('profile')}
               onLogout={handleLogout}
             />
+            </div>
           </div>
         </div>
       </div>
@@ -663,17 +693,43 @@ const ArchitectDashboard = () => {
       </div>
 
       {/* Assigned to me */}
+      <div className="section-card">
       <div className="section-header">
+          <div>
         <h2>Requests Assigned To Me</h2>
         <p>Homeowners selected you for these requests</p>
       </div>
-      <AssignedRequests onCreateFromAssigned={(requestId) => { setUploadData({ ...uploadData, request_id: requestId }); setShowUploadForm(true); }} />
+          <button 
+            className="btn btn-secondary" 
+            onClick={refreshDashboard}
+            disabled={loading}
+            style={{ marginLeft: 'auto' }}
+          >
+            {loading ? 'Refreshing...' : '🔄 Refresh'}
+          </button>
+        </div>
+        <AssignedRequests 
+          onCreateFromAssigned={(requestId) => { setUploadData({ ...uploadData, request_id: requestId }); setShowUploadForm(true); }}
+          expandedAssignments={expandedAssignments}
+          setExpandedAssignments={setExpandedAssignments}
+        />
+      </div>
 
       {/* Open/available requests */}
       <div className="section-card">
         <div className="section-header">
+          <div>
           <h2>Available Requests</h2>
           <p>Create architectural designs for these client requests</p>
+          </div>
+          <button 
+            className="btn btn-secondary" 
+            onClick={refreshDashboard}
+            disabled={loading}
+            style={{ marginLeft: 'auto' }}
+          >
+            {loading ? 'Refreshing...' : '🔄 Refresh'}
+          </button>
         </div>
         <div className="section-content">
           {loading ? (
@@ -1665,7 +1721,7 @@ const ArchitectDashboard = () => {
 };
 
 // Assigned Requests Component
-const AssignedRequests = ({ onCreateFromAssigned }) => {
+const AssignedRequests = ({ onCreateFromAssigned, expandedAssignments, setExpandedAssignments }) => {
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -1712,11 +1768,11 @@ const AssignedRequests = ({ onCreateFromAssigned }) => {
       const res = await fetch('/buildhub/backend/api/architect/get_assigned_requests.php');
       const data = await res.json();
       if (data.success) {
-        // Filter out requests with 'declined' status
-        const filteredAssignments = data.assignments.filter(assignment => 
-          assignment.assignment_status !== 'declined'
+        // Show only assignments waiting for architect response (avoid duplicates with Available Requests)
+        const filteredAssignments = (data.assignments || []).filter(assignment => 
+          assignment.assignment_status === 'sent'
         );
-        setItems(filteredAssignments || []);
+        setItems(filteredAssignments);
       } else {
         setError(data.message || 'Failed to load assigned requests');
       }
@@ -1737,9 +1793,27 @@ const AssignedRequests = ({ onCreateFromAssigned }) => {
         body: JSON.stringify({ assignment_id, action })
       });
       const data = await res.json().catch(() => ({}));
+      
+      if (data && data.success) {
+        // Show success message
+        if (action === 'accept') {
+          alert('Assignment accepted! The request is now available in your Available Requests section.');
+        } else if (action === 'decline') {
+          alert('Assignment declined.');
+        }
+        
+        // Refresh both assigned requests and available requests
       await load();
+        // Trigger a page refresh to update the Available Requests section
+        window.location.reload();
+      } else {
+        alert('Failed to respond to assignment: ' + (data.message || 'Unknown error'));
+      }
+      
       return data && data.success ? (data.status || null) : null;
-    } catch {
+    } catch (error) {
+      console.error('Error responding to assignment:', error);
+      alert('Network error occurred. Please try again.');
       return null;
     }
   };
@@ -1767,7 +1841,7 @@ const AssignedRequests = ({ onCreateFromAssigned }) => {
                 {a.message && <p className="item-description">Message: {a.message}</p>}
 
                 {/* Interactive requirement details */}
-                {(() => {
+                {expandedAssignments[a.assignment_id] && (() => {
                   const R = normalizeRequirements(a.layout_request.requirements, a.layout_request.requirements_parsed);
                   const chips = [
                     R.rooms ? { label: 'Rooms', value: R.rooms } : null,
@@ -1839,6 +1913,12 @@ const AssignedRequests = ({ onCreateFromAssigned }) => {
               </div>
               <div className="item-actions">
                 <button className="btn btn-secondary" onClick={load}>Refresh</button>
+                <button
+                  className="btn"
+                  onClick={() => setExpandedAssignments(s => ({...s, [a.assignment_id]: !s[a.assignment_id]}))}
+                >
+                  {expandedAssignments[a.assignment_id] ? 'Hide Details' : 'Details'}
+                </button>
                 {a.assignment_status === 'sent' && (
                   <>
                     <button className="btn btn-success" onClick={() => respond(a.assignment_id, 'accept')}>Accept</button>
@@ -1870,25 +1950,255 @@ const AssignedRequests = ({ onCreateFromAssigned }) => {
 };
 
 // Request Item Component
-const RequestItem = ({ request, onCreateDesign }) => (
-  <div className="list-item">
+const RequestItem = ({ request, onCreateDesign }) => {
+  const [showDetails, setShowDetails] = useState(false);
+  
+  // Parse requirements if it's a JSON string
+  const requirements = typeof request.requirements === 'string' 
+    ? JSON.parse(request.requirements || '{}') 
+    : request.requirements || {};
+  
+  // Parse other JSON fields
+  const siteImages = request.site_images ? JSON.parse(request.site_images) : [];
+  const referenceImages = request.reference_images ? JSON.parse(request.reference_images) : [];
+  const roomImages = request.room_images ? JSON.parse(request.room_images) : {};
+  const floorRooms = request.floor_rooms ? JSON.parse(request.floor_rooms) : {};
+  
+  return (
+    <div className="list-item" style={{ marginBottom: '20px' }}>
     <div className="item-icon">📋</div>
-    <div className="item-content">
+      <div className="item-content" style={{ flex: 1 }}>
       <h4 className="item-title">{request.client_name} - {request.plot_size} sq ft</h4>
       <p className="item-subtitle">Budget: {request.budget_range}</p>
       <p className="item-meta">
         Location: {request.location || 'Not specified'} • 
         Submitted: {new Date(request.created_at).toLocaleString()}
       </p>
-      <NeatJsonCard raw={request.requirements} title="Requirements" />
+        {showDetails && (
+          <>
+            {/* Neat Details Card with chips */}
+            <div className="details-card" style={{ marginTop: '12px' }}>
+              <div className="details-header"><strong>Requirements</strong></div>
+              <div className="details-grid">
+                <div>
+                  <h5>Site & Budget</h5>
+                  <div className="chips">
+                    <span className="chip"><strong>Plot:</strong> {request.plot_size || '—'}</span>
+                    <span className="chip"><strong>Budget:</strong> {request.budget_range || '—'}</span>
+                    <span className="chip"><strong>Location:</strong> {request.location || '—'}</span>
+                    <span className="chip"><strong>Timeline:</strong> {request.timeline || '—'}</span>
+                    {(requirements.plot_shape || request.plot_shape) && (
+                      <span className="chip"><strong>Plot shape:</strong> {requirements.plot_shape || request.plot_shape}</span>
+                    )}
+                    {(requirements.topography || request.topography) && (
+                      <span className="chip"><strong>Topography:</strong> {requirements.topography || request.topography}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h5>Preferences</h5>
+                  <div className="chips">
+                    <span className="chip"><strong>Type:</strong> {request.layout_type || 'custom'}</span>
+                    {(request.preferred_style || requirements.aesthetic) && (
+                      <span className="chip"><strong>Style:</strong> {request.preferred_style || requirements.aesthetic}</span>
+                    )}
+                    {request.orientation && (
+                      <span className="chip"><strong>Orientation:</strong> {request.orientation}</span>
+                    )}
+                    {request.num_floors && (
+                      <span className="chip"><strong>Floors:</strong> {request.num_floors}</span>
+                    )}
+                    {requirements.family_needs && (
+                      <span className="chip"><strong>Family needs:</strong> {Array.isArray(requirements.family_needs) ? requirements.family_needs.join(', ') : requirements.family_needs}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="span-2">
+                  <h5>Notes</h5>
+                  <p className="item-description">{requirements.notes || '—'}</p>
+                  {!requirements.notes && (requirements.raw || request.requirements) && (
+                    <div className="muted" style={{ fontSize: 12 }}>Original notes available in raw request.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Basic Details */}
+            <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+                <div><strong>Plot Shape:</strong> {requirements.plot_shape || 'Not specified'}</div>
+                <div><strong>Topography:</strong> {requirements.topography || 'Not specified'}</div>
+                <div><strong>Floors:</strong> {request.num_floors || requirements.num_floors || 'Not specified'}</div>
+                <div><strong>Style:</strong> {request.preferred_style || requirements.aesthetic || 'Not specified'}</div>
+                <div><strong>Timeline:</strong> {request.timeline || 'Not specified'}</div>
+                <div><strong>Orientation:</strong> {request.orientation || 'Not specified'}</div>
+              </div>
+              {requirements.family_needs && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Family Needs:</strong> {Array.isArray(requirements.family_needs) ? requirements.family_needs.join(', ') : requirements.family_needs}
+                </div>
+              )}
+              {requirements.rooms && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Room Requirements:</strong> {Array.isArray(requirements.rooms) ? requirements.rooms.join(', ') : requirements.rooms}
+                </div>
+              )}
+              {request.site_considerations && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Site Considerations:</strong> {request.site_considerations}
+                </div>
+              )}
+              {request.material_preferences && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Material Preferences:</strong> {request.material_preferences}
+                </div>
+              )}
+              {request.budget_allocation && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Budget Allocation:</strong> {request.budget_allocation}
+                </div>
+              )}
+              {requirements.notes && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Additional Notes:</strong> {requirements.notes}
+                </div>
+              )}
+            </div>
+
+            {/* Site Images */}
+            {siteImages.length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Site Images:</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
+                  {siteImages.map((image, index) => (
+                    <div key={index} style={{ textAlign: 'center' }}>
+                      <img 
+                        src={image.url} 
+                        alt={image.name}
+                        style={{ 
+                          width: '100%', 
+                          height: '80px', 
+                          objectFit: 'cover', 
+                          borderRadius: '6px',
+                          border: '1px solid #e5e7eb'
+                        }}
+                      />
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                        {image.name.length > 15 ? image.name.substring(0, 15) + '...' : image.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reference Images */}
+            {referenceImages.length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Reference Images:</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
+                  {referenceImages.map((image, index) => (
+                    <div key={index} style={{ textAlign: 'center' }}>
+                      <img 
+                        src={image.url} 
+                        alt={image.name}
+                        style={{ 
+                          width: '100%', 
+                          height: '80px', 
+                          objectFit: 'cover', 
+                          borderRadius: '6px',
+                          border: '1px solid #e5e7eb'
+                        }}
+                      />
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                        {image.name.length > 15 ? image.name.substring(0, 15) + '...' : image.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Floor-wise Room Planning */}
+            {Object.keys(floorRooms).length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Floor-wise Room Planning:</h5>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                  {Object.entries(floorRooms).map(([floor, rooms]) => (
+                    <div key={floor} style={{ padding: '8px', background: '#f1f5f9', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <strong>{floor.replace('floor', 'Floor ')}:</strong>
+                      <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                        {Object.entries(rooms).map(([roomType, count]) => (
+                          <div key={roomType}>{roomType}: {count}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Room-specific Images */}
+            {Object.keys(roomImages).length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Room-specific Images:</h5>
+                {Object.entries(roomImages).map(([roomType, images]) => (
+                  <div key={roomType} style={{ marginBottom: '12px' }}>
+                    <strong style={{ fontSize: '13px' }}>{roomType.replace('_', ' ').toUpperCase()}:</strong>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '6px', marginTop: '4px' }}>
+                      {images.map((image, index) => (
+                        <div key={index} style={{ textAlign: 'center' }}>
+                          <img 
+                            src={image.url} 
+                            alt={image.name}
+                            style={{ 
+                              width: '100%', 
+                              height: '60px', 
+                              objectFit: 'cover', 
+                              borderRadius: '4px',
+                              border: '1px solid #e5e7eb'
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Development Laws */}
+            {requirements.development_laws && (
+              <div style={{ marginTop: '12px', padding: '8px', background: '#fef3c7', borderRadius: '6px', border: '1px solid #f59e0b' }}>
+                <strong>Development Laws/Restrictions:</strong> {requirements.development_laws}
+              </div>
+            )}
+
+            {/* Contact Information */}
+            <div style={{ marginTop: '12px', padding: '8px', background: '#ecfdf5', borderRadius: '6px', border: '1px solid #10b981' }}>
+              <strong>Client Contact:</strong>
+              <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                <div>Name: {request.first_name} {request.last_name}</div>
+                <div>Email: {request.email}</div>
+                {request.phone && <div>Phone: {request.phone}</div>}
+                {request.address && <div>Address: {request.address}</div>}
+                {request.city && <div>City: {request.city}, {request.state}</div>}
+              </div>
+            </div>
+          </>
+        )}
     </div>
     <div className="item-actions">
+        <button className="btn" onClick={() => setShowDetails(s => !s)}>
+          {showDetails ? 'Hide Details' : 'Details'}
+        </button>
       <button className="btn btn-primary" onClick={onCreateDesign}>
         Create Design
       </button>
     </div>
   </div>
 );
+};
 
 // Design Item Component
 const DesignItem = ({ design, user }) => (

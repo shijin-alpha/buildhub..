@@ -23,7 +23,8 @@ export default function HomeownerRequestWizard() {
     site_considerations: '', // Additional site considerations
     material_preferences: [], // Material preferences array
     budget_allocation: '', // Budget allocation preferences
-    reference_images: [] // Uploaded reference images
+    reference_images: [], // Uploaded reference images
+    site_images: [] // Site photos and scans
   });
   const [loading, setLoading] = useState(false);
   const next = () => setStep(s => Math.min(s + 1, steps.length - 1));
@@ -191,29 +192,41 @@ export default function HomeownerRequestWizard() {
     setLoading(true);
     try {
       // 1) Create the layout request
+      const submitData = {
+        plot_size: data.plot_size,
+        budget_range: data.budget_range === 'Custom' ? data.custom_budget : data.budget_range,
+        requirements: data.requirements,
+        location: data.location,
+        timeline: data.timeline,
+        selected_layout_id: data.selected_layout_id,
+        layout_type: data.layout_type,
+        // packed structured fields used by backend
+        plot_shape: data.plot_shape, 
+        topography: data.topography, 
+        development_laws: data.development_laws,
+        family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(', ') : data.family_needs, 
+        rooms: Array.isArray(data.rooms) ? data.rooms.join(', ') : data.rooms, 
+        aesthetic: data.aesthetic,
+        floor_rooms: JSON.stringify(data.floor_rooms), // Send floor-wise room planning as JSON
+        // New fields
+        orientation: data.orientation,
+        site_considerations: data.site_considerations,
+        material_preferences: Array.isArray(data.material_preferences) ? data.material_preferences.join(', ') : data.material_preferences,
+        budget_allocation: data.budget_allocation,
+        num_floors: data.num_floors,
+        preferred_style: data.aesthetic, // Use aesthetic as preferred_style
+        reference_images: data.reference_images || [],
+        site_images: data.site_images || [], // Site images
+        room_images: data.room_images || {} // Room-specific images
+      };
+      
+      console.log('Submitting data:', submitData); // Debug log
+      
       const res = await fetch('/buildhub/backend/api/homeowner/submit_request.php', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          plot_size: data.plot_size,
-          budget_range: data.budget_range === 'Custom' ? data.custom_budget : data.budget_range,
-          requirements: data.requirements,
-          location: data.location,
-          timeline: data.timeline,
-          selected_layout_id: data.selected_layout_id,
-          layout_type: data.layout_type,
-          // packed structured fields used by backend
-          plot_shape: data.plot_shape, topography: data.topography, development_laws: data.development_laws,
-          family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(', ') : data.family_needs, 
-          rooms: Array.isArray(data.rooms) ? data.rooms.join(', ') : data.rooms, 
-          aesthetic: data.aesthetic,
-          floor_rooms: JSON.stringify(data.floor_rooms), // Send floor-wise room planning as JSON
-          // New fields
-          orientation: data.orientation,
-          site_considerations: data.site_considerations,
-          material_preferences: Array.isArray(data.material_preferences) ? data.material_preferences.join(', ') : data.material_preferences,
-          budget_allocation: data.budget_allocation,
-          reference_images: data.reference_images || [],
-          room_images: data.room_images || {} // Room-specific images
-        })
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        credentials: 'include',
+        body: JSON.stringify(submitData)
       });
       const json = await res.json();
       if (!json.success) { alert(json.message || 'Failed to submit'); return; }
@@ -373,6 +386,96 @@ export default function HomeownerRequestWizard() {
               <label>Local Development Laws / Restrictions</label>
               <input value={data.development_laws} onChange={e=>setData({...data, development_laws:e.target.value})} placeholder="Setbacks, FSI/FAR, height limits" />
             </div>
+          </div>
+          
+          {/* Site Images Section */}
+          <div className="field" style={{ marginTop: '24px' }}>
+            <label>Site Images</label>
+            <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '16px'}}>
+              Upload photos of your site, plot, or any relevant images that show the current condition, 
+              surroundings, or specific features of your property. This helps architects understand your site better.
+            </p>
+            <div className="image-upload-area">
+              <input
+                type="file"
+                id="site-images"
+                multiple
+                accept="image/*"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files);
+                  if (files.length === 0) return;
+                  
+                  // Upload files to server
+                  const formData = new FormData();
+                  files.forEach(file => {
+                    formData.append('site_images[]', file);
+                  });
+                  
+                  try {
+                    const response = await fetch('/buildhub/backend/api/upload_site_images.php', {
+                      method: 'POST',
+                      body: formData,
+                      credentials: 'include'
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                      const newImages = result.images.map(img => ({
+                        id: img.id,
+                        file: null, // Don't store file object for uploaded images
+                        name: img.name,
+                        size: img.size,
+                        url: img.url
+                      }));
+                      
+                      setData(prev => ({
+                        ...prev,
+                        site_images: [...(prev.site_images || []), ...newImages]
+                      }));
+                    } else {
+                      alert('Failed to upload images: ' + result.message);
+                    }
+                  } catch (error) {
+                    console.error('Upload error:', error);
+                    alert('Failed to upload images. Please try again.');
+                  }
+                }}
+                style={{display: 'none'}}
+              />
+              <label htmlFor="site-images" className="upload-button">
+                <span className="upload-icon">📷</span>
+                <span>Choose Site Images</span>
+              </label>
+            </div>
+            
+            {data.site_images && data.site_images.length > 0 && (
+              <div className="uploaded-images">
+                <h4 style={{margin: '16px 0 8px 0', fontSize: '14px', fontWeight: '600'}}>Uploaded Site Images:</h4>
+                <div className="image-grid">
+                  {data.site_images.map((image, index) => (
+                    <div key={image.id} className="image-item">
+                      <img src={image.url} alt={image.name} />
+                      <div className="image-info">
+                        <span className="image-name">{image.name}</span>
+                        <span className="image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="remove-image-btn"
+                        onClick={() => {
+                          setData(prev => ({
+                            ...prev,
+                            site_images: prev.site_images.filter(img => img.id !== image.id)
+                          }));
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
@@ -884,11 +987,11 @@ export default function HomeownerRequestWizard() {
               </div>
             </div>
 
-            {data.reference_images && data.reference_images.length > 0 && (
+            {data.site_images && data.site_images.length > 0 && (
               <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>General Reference Images</div>
+                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Site Images</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
-                  {data.reference_images.map((image, index) => (
+                  {data.site_images.map((image, index) => (
                     <div key={image.id} style={{ textAlign: 'center' }}>
                       <img 
                         src={image.url} 
@@ -909,6 +1012,7 @@ export default function HomeownerRequestWizard() {
                 </div>
               </div>
             )}
+
 
             {/* Room-specific Images */}
             {data.room_images && Object.keys(data.room_images).length > 0 && (
@@ -1120,70 +1224,6 @@ export default function HomeownerRequestWizard() {
             </div>
           )}
           
-          {/* Reference Images Section */}
-          <div className="field" style={{ marginTop: '24px' }}>
-            <label>Reference Images for Architect</label>
-            <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '16px'}}>
-              Upload images that show your preferred style, layout, or specific features you'd like in your home. 
-              This helps architects understand your vision better.
-            </p>
-            <div className="image-upload-area">
-              <input
-                type="file"
-                id="reference-images"
-                multiple
-                accept="image/*"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files);
-                  const newImages = files.map(file => ({
-                    id: Date.now() + Math.random(),
-                    file: file,
-                    name: file.name,
-                    size: file.size,
-                    url: URL.createObjectURL(file)
-                  }));
-                  setData(prev => ({
-                    ...prev,
-                    reference_images: [...(prev.reference_images || []), ...newImages]
-                  }));
-                }}
-                style={{display: 'none'}}
-              />
-              <label htmlFor="reference-images" className="upload-button">
-                <span className="upload-icon">📷</span>
-                <span>Choose Images</span>
-              </label>
-            </div>
-            
-            {data.reference_images && data.reference_images.length > 0 && (
-              <div className="uploaded-images">
-                <h4 style={{margin: '16px 0 8px 0', fontSize: '14px', fontWeight: '600'}}>Uploaded Images:</h4>
-                <div className="image-grid">
-                  {data.reference_images.map((image, index) => (
-                    <div key={image.id} className="image-item">
-                      <img src={image.url} alt={image.name} />
-                      <div className="image-info">
-                        <span className="image-name">{image.name}</span>
-                        <span className="image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="remove-image-btn"
-                        onClick={() => {
-                          setData(prev => ({
-                            ...prev,
-                            reference_images: prev.reference_images.filter(img => img.id !== image.id)
-                          }));
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
 

@@ -22,11 +22,24 @@ try {
         exit;
     }
     
-    // Get JSON input
-    $input = json_decode(file_get_contents('php://input'), true);
+    // Get JSON or form input robustly
+    $raw = file_get_contents('php://input');
+    $input = json_decode($raw, true);
+    if (!is_array($input)) { $input = $_POST; }
+    
+    // Debug: Log received data
+    error_log('Received raw length: ' . strlen($raw));
+    error_log('Received data: ' . json_encode($input));
     
     // Validate required fields
-    if (!isset($input['plot_size']) || !isset($input['budget_range'])) {
+    // Normalize and validate required fields
+    $input['plot_size'] = $input['plot_size'] ?? ($input['plot_size'] ?? null);
+    $input['budget_range'] = $input['budget_range'] ?? ($input['budget_range'] ?? null);
+    if (empty($input['plot_size']) || empty($input['budget_range'])) {
+        error_log('Missing required fields: ' . json_encode([
+            'plot_size' => $input['plot_size'] ?? null,
+            'budget_range' => $input['budget_range'] ?? null,
+        ]));
         echo json_encode([
             'success' => false,
             'message' => 'Missing required fields'
@@ -49,6 +62,20 @@ try {
     $family_needs = $input['family_needs'] ?? null;
     $rooms = $input['rooms'] ?? null;
     $aesthetic = $input['aesthetic'] ?? null;
+    
+    // Additional detailed fields
+    $orientation = $input['orientation'] ?? null;
+    $site_considerations = $input['site_considerations'] ?? null;
+    $material_preferences = $input['material_preferences'] ?? null;
+    $budget_allocation = $input['budget_allocation'] ?? null;
+    $num_floors = $input['num_floors'] ?? null;
+    $preferred_style = $input['preferred_style'] ?? null;
+    $floor_rooms = $input['floor_rooms'] ?? null;
+    
+    // Image fields
+    $site_images = $input['site_images'] ?? [];
+    $reference_images = $input['reference_images'] ?? [];
+    $room_images = $input['room_images'] ?? [];
     
     // Create layout_requests table if it doesn't exist (align with existing DB schema only)
     $create_table_query = "CREATE TABLE IF NOT EXISTS layout_requests (
@@ -81,6 +108,16 @@ try {
         'rooms' => $rooms,
         'aesthetic' => $aesthetic,
         'notes' => $requirements,
+        'orientation' => $orientation,
+        'site_considerations' => $site_considerations,
+        'material_preferences' => $material_preferences,
+        'budget_allocation' => $budget_allocation,
+        'num_floors' => $num_floors,
+        'preferred_style' => $preferred_style,
+        'floor_rooms' => $floor_rooms,
+        'site_images' => $site_images,
+        'reference_images' => $reference_images,
+        'room_images' => $room_images,
     ];
     $requirements_json = json_encode($requirements_payload);
     
@@ -96,11 +133,15 @@ try {
     }
 
     if (!$requestId) {
-        // Insert layout request into existing columns only
+        // Insert layout request with all detailed fields
         $query = "INSERT INTO layout_requests (
-                    user_id, homeowner_id, plot_size, budget_range, requirements, location, timeline, selected_layout_id, layout_type
+                    user_id, homeowner_id, plot_size, budget_range, requirements, location, timeline, selected_layout_id, layout_type,
+                    orientation, site_considerations, material_preferences, budget_allocation, num_floors, preferred_style, floor_rooms,
+                    site_images, reference_images, room_images
                   ) VALUES (
-                    :user_id, :homeowner_id, :plot_size, :budget_range, :requirements, :location, :timeline, :selected_layout_id, :layout_type
+                    :user_id, :homeowner_id, :plot_size, :budget_range, :requirements, :location, :timeline, :selected_layout_id, :layout_type,
+                    :orientation, :site_considerations, :material_preferences, :budget_allocation, :num_floors, :preferred_style, :floor_rooms,
+                    :site_images, :reference_images, :room_images
                   )";
         
         $stmt = $db->prepare($query);
@@ -113,6 +154,20 @@ try {
         $stmt->bindParam(':timeline', $timeline);
         $stmt->bindParam(':selected_layout_id', $selected_layout_id);
         $stmt->bindParam(':layout_type', $layout_type);
+        $stmt->bindParam(':orientation', $orientation);
+        $stmt->bindParam(':site_considerations', $site_considerations);
+        $stmt->bindParam(':material_preferences', $material_preferences);
+        $stmt->bindParam(':budget_allocation', $budget_allocation);
+        $stmt->bindParam(':num_floors', $num_floors);
+        $stmt->bindParam(':preferred_style', $preferred_style);
+        $stmt->bindParam(':floor_rooms', $floor_rooms);
+        // Pre-encode arrays to avoid passing expressions by reference
+        $site_images_json = json_encode($site_images);
+        $reference_images_json = json_encode($reference_images);
+        $room_images_json = json_encode($room_images);
+        $stmt->bindParam(':site_images', $site_images_json);
+        $stmt->bindParam(':reference_images', $reference_images_json);
+        $stmt->bindParam(':room_images', $room_images_json);
         
         if ($stmt->execute()) {
             $requestId = (int)$db->lastInsertId();
@@ -193,6 +248,7 @@ try {
             'message' => 'Layout request submitted successfully',
             'request_id' => $requestId
         ]);
+        exit;
     } else {
         echo json_encode([
             'success' => false,
