@@ -1432,6 +1432,46 @@ body {
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
+/* Multi-select dropdown styles */
+.form-group select.multi-select {
+  height: 120px;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background-color: white;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.form-group select.multi-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.form-group select.multi-select option {
+  padding: 0.5rem;
+  background-color: white;
+  color: #374151;
+}
+
+.form-group select.multi-select option:hover {
+  background-color: #f3f4f6;
+}
+
+.form-group select.multi-select option:checked {
+  background-color: #dbeafe;
+  color: #1e40af;
+  font-weight: 500;
+}
+
+.form-text {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  display: block;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

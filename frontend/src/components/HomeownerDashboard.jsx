@@ -45,15 +45,16 @@ const HomeownerDashboard = () => {
     num_floors: '',
     topography: '',
     development_laws: '',
-    family_needs: '',
-    rooms: '',
+    family_needs: [], // Changed to array for multi-select
+    rooms: [], // Changed to array for multi-select
     aesthetic: '',
     style_preferences: {}, // AI recommendation style preferences
     location: '',
     timeline: '',
     requirements: '',
     selected_layout_id: null,
-    layout_type: 'custom'
+    layout_type: 'custom',
+    custom_budget: '' // Added for custom budget input
   });
   const [previewLayout, setPreviewLayout] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -883,14 +884,27 @@ const HomeownerDashboard = () => {
       return;
     }
 
+    // Handle custom budget
+    if (requestData.budget_range === 'Custom' && !requestData.custom_budget) {
+      setError('Please enter a custom budget amount');
+      return;
+    }
+
     try {
       setLoading(true);
+      
+      // Prepare data for submission
+      const submitData = {
+        ...requestData,
+        budget_range: requestData.budget_range === 'Custom' ? requestData.custom_budget : requestData.budget_range
+      };
+      
       const response = await fetch('/buildhub/backend/api/homeowner/submit_request.php', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData)
+        body: JSON.stringify(submitData)
       });
 
       const result = await response.json();
@@ -920,15 +934,16 @@ const HomeownerDashboard = () => {
           plot_shape: '',
           topography: '',
           development_laws: '',
-          family_needs: '',
-          rooms: '',
+          family_needs: [], // Reset to empty array
+          rooms: [], // Reset to empty array
           budget_range: '',
           aesthetic: '',
           requirements: '',
           location: '',
           timeline: '',
           selected_layout_id: null,
-          layout_type: 'custom'
+          layout_type: 'custom',
+          custom_budget: '' // Reset custom budget
         });
         fetchMyRequests();
       } else {
@@ -1933,17 +1948,37 @@ const HomeownerDashboard = () => {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Budget (₹) *</label>
-                      <input
-                        type="number"
-                        placeholder="Enter your budget in rupees"
+                      <label>Budget Range (₹) *</label>
+                      <select
                         value={requestData.budget_range}
                         onChange={(e) => setRequestData({...requestData, budget_range: e.target.value})}
-                        min="0"
-                        step="10000"
                         required
                         className="form-control"
-                      />
+                      >
+                        <option value="">Select budget range</option>
+                        <option value="5-10 Lakhs">₹5-10 Lakhs</option>
+                        <option value="10-20 Lakhs">₹10-20 Lakhs</option>
+                        <option value="20-30 Lakhs">₹20-30 Lakhs</option>
+                        <option value="30-50 Lakhs">₹30-50 Lakhs</option>
+                        <option value="50-75 Lakhs">₹50-75 Lakhs</option>
+                        <option value="75 Lakhs - 1 Crore">₹75 Lakhs - 1 Crore</option>
+                        <option value="1-2 Crores">₹1-2 Crores</option>
+                        <option value="2-5 Crores">₹2-5 Crores</option>
+                        <option value="5+ Crores">₹5+ Crores</option>
+                        <option value="Custom">Custom Amount</option>
+                      </select>
+                      {requestData.budget_range === 'Custom' && (
+                        <input
+                          type="number"
+                          placeholder="Enter custom budget amount in rupees"
+                          value={requestData.custom_budget || ''}
+                          onChange={(e) => setRequestData({...requestData, custom_budget: e.target.value})}
+                          min="0"
+                          step="10000"
+                          className="form-control"
+                          style={{marginTop: '8px'}}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1954,38 +1989,61 @@ const HomeownerDashboard = () => {
                   <div className="form-row">
                     <div className="form-group">
                       <label>Plot Shape</label>
-                      <input
-                        type="text"
+                      <select
                         value={requestData.plot_shape}
                         onChange={(e) => setRequestData({...requestData, plot_shape: e.target.value})}
-                        placeholder="e.g., Rectangular, Square, Irregular"
                         className="form-control"
-                      />
+                      >
+                        <option value="">Select plot shape</option>
+                        <option value="Rectangular">Rectangular</option>
+                        <option value="Square">Square</option>
+                        <option value="L-shaped">L-shaped</option>
+                        <option value="U-shaped">U-shaped</option>
+                        <option value="Triangular">Triangular</option>
+                        <option value="Irregular">Irregular</option>
+                        <option value="Corner Plot">Corner Plot</option>
+                        <option value="Trapezoidal">Trapezoidal</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
                     <div className="form-group">
                       <label>Number of Floors *</label>
-                      <input
-                        type="number"
+                      <select
                         value={requestData.num_floors}
                         onChange={(e) => setRequestData({...requestData, num_floors: e.target.value})}
-                        placeholder="e.g., 1, 2, 3"
-                        min="1"
                         required
                         className="form-control"
-                      />
+                      >
+                        <option value="">Select number of floors</option>
+                        <option value="1">1 Floor (Ground Floor Only)</option>
+                        <option value="2">2 Floors (G+1)</option>
+                        <option value="3">3 Floors (G+2)</option>
+                        <option value="4">4 Floors (G+3)</option>
+                        <option value="5">5 Floors (G+4)</option>
+                        <option value="6+">6+ Floors</option>
+                      </select>
                     </div>
                   </div>
                   
                   <div className="form-row">
                     <div className="form-group">
                       <label>Topography</label>
-                      <input
-                        type="text"
+                      <select
                         value={requestData.topography}
                         onChange={(e) => setRequestData({...requestData, topography: e.target.value})}
-                        placeholder="e.g., Flat, Sloped, Rocky"
                         className="form-control"
-                      />
+                      >
+                        <option value="">Select topography</option>
+                        <option value="Flat">Flat</option>
+                        <option value="Slightly Sloped">Slightly Sloped</option>
+                        <option value="Moderately Sloped">Moderately Sloped</option>
+                        <option value="Steeply Sloped">Steeply Sloped</option>
+                        <option value="Rocky">Rocky</option>
+                        <option value="Sandy">Sandy</option>
+                        <option value="Clayey">Clayey</option>
+                        <option value="Mixed Terrain">Mixed Terrain</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
                     <div className="form-group">
                       <label>Local Development Laws / Restrictions</label>
@@ -2006,23 +2064,65 @@ const HomeownerDashboard = () => {
                   <div className="form-row">
                     <div className="form-group">
                       <label>Family Needs</label>
-                      <input
-                        type="text"
-                        value={requestData.family_needs}
-                        onChange={(e) => setRequestData({...requestData, family_needs: e.target.value})}
-                        placeholder="e.g., Elder-friendly, Work-from-home, Kids play area"
-                        className="form-control"
-                      />
+                      <select
+                        multiple
+                        value={Array.isArray(requestData.family_needs) ? requestData.family_needs : []}
+                        onChange={(e) => {
+                          const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                          setRequestData({...requestData, family_needs: selectedOptions});
+                        }}
+                        className="form-control multi-select"
+                        style={{height: '120px'}}
+                      >
+                        <option value="Elder-friendly">Elder-friendly</option>
+                        <option value="Work-from-home">Work-from-home</option>
+                        <option value="Kids play area">Kids play area</option>
+                        <option value="Pet-friendly">Pet-friendly</option>
+                        <option value="Wheelchair accessible">Wheelchair accessible</option>
+                        <option value="Home office">Home office</option>
+                        <option value="Guest accommodation">Guest accommodation</option>
+                        <option value="Storage space">Storage space</option>
+                        <option value="Garden/Outdoor space">Garden/Outdoor space</option>
+                        <option value="Security features">Security features</option>
+                        <option value="Energy efficient">Energy efficient</option>
+                        <option value="Low maintenance">Low maintenance</option>
+                      </select>
+                      <small className="form-text text-muted">Hold Ctrl/Cmd to select multiple options</small>
                     </div>
                     <div className="form-group">
                       <label>Rooms</label>
-                      <input
-                        type="text"
-                        value={requestData.rooms}
-                        onChange={(e) => setRequestData({...requestData, rooms: e.target.value})}
-                        placeholder="e.g., 3 Bedrooms, 1 Study, 1 Puja Room"
-                        className="form-control"
-                      />
+                      <select
+                        multiple
+                        value={Array.isArray(requestData.rooms) ? requestData.rooms : []}
+                        onChange={(e) => {
+                          const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                          setRequestData({...requestData, rooms: selectedOptions});
+                        }}
+                        className="form-control multi-select"
+                        style={{height: '120px'}}
+                      >
+                        <option value="1 Bedroom">1 Bedroom</option>
+                        <option value="2 Bedrooms">2 Bedrooms</option>
+                        <option value="3 Bedrooms">3 Bedrooms</option>
+                        <option value="4 Bedrooms">4 Bedrooms</option>
+                        <option value="5+ Bedrooms">5+ Bedrooms</option>
+                        <option value="1 Bathroom">1 Bathroom</option>
+                        <option value="2 Bathrooms">2 Bathrooms</option>
+                        <option value="3 Bathrooms">3 Bathrooms</option>
+                        <option value="4+ Bathrooms">4+ Bathrooms</option>
+                        <option value="Living Room">Living Room</option>
+                        <option value="Dining Room">Dining Room</option>
+                        <option value="Kitchen">Kitchen</option>
+                        <option value="Study Room">Study Room</option>
+                        <option value="Puja Room">Puja Room</option>
+                        <option value="Guest Room">Guest Room</option>
+                        <option value="Store Room">Store Room</option>
+                        <option value="Balcony">Balcony</option>
+                        <option value="Terrace">Terrace</option>
+                        <option value="Garage">Garage</option>
+                        <option value="Utility Area">Utility Area</option>
+                      </select>
+                      <small className="form-text text-muted">Hold Ctrl/Cmd to select multiple options</small>
                     </div>
                   </div>
 
@@ -2030,13 +2130,31 @@ const HomeownerDashboard = () => {
                   <div className="form-row">
                     <div className="form-group">
                       <label>House Aesthetic / Style</label>
-                      <input
-                        type="text"
+                      <select
                         value={requestData.aesthetic}
                         onChange={(e) => setRequestData({...requestData, aesthetic: e.target.value})}
-                        placeholder="e.g., Modern, Traditional, Minimalist"
                         className="form-control"
-                      />
+                      >
+                        <option value="">Select house style</option>
+                        <option value="Modern">Modern</option>
+                        <option value="Contemporary">Contemporary</option>
+                        <option value="Traditional">Traditional</option>
+                        <option value="Minimalist">Minimalist</option>
+                        <option value="Luxury">Luxury</option>
+                        <option value="Mediterranean">Mediterranean</option>
+                        <option value="Colonial">Colonial</option>
+                        <option value="Victorian">Victorian</option>
+                        <option value="Art Deco">Art Deco</option>
+                        <option value="Scandinavian">Scandinavian</option>
+                        <option value="Industrial">Industrial</option>
+                        <option value="Rustic">Rustic</option>
+                        <option value="Farmhouse">Farmhouse</option>
+                        <option value="Craftsman">Craftsman</option>
+                        <option value="Tudor">Tudor</option>
+                        <option value="Ranch">Ranch</option>
+                        <option value="Cape Cod">Cape Cod</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
                   </div>
 

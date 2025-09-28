@@ -5,6 +5,62 @@ import SearchableDropdown from './SearchableDropdown';
 import { indianCities } from '../data/indianCities';
 
 export default function HomeownerRequestWizard() {
+  const steps = ['Preliminary', 'Site', 'Family', 'Budget', 'Orientation', 'Materials', 'Preferences', 'Review', 'Architect', 'Submit'];
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState({
+    plot_size: '', plot_shape: '', topography: '', development_laws: '',
+    family_needs: [], rooms: [], budget_range: '', aesthetic: '', // Changed to arrays for multi-select
+    requirements: '', location: '', timeline: '', num_floors: '',
+    selected_layout_id: null, layout_type: 'custom',
+    selected_architect_ids: [],
+    custom_budget: '', // Added for custom budget input
+    floor_rooms: {}, // New: floor-wise room planning { floor1: { bedrooms: 2, bathrooms: 1, ... }, floor2: {...} }
+    expandedFloors: { 1: true }, // Track which floors are expanded
+    room_images: {}, // New: images per room type { bedrooms: [images], kitchen: [images], ... }
+    expandedRoomImages: {}, // Track which room image sections are expanded
+    // New sections
+    orientation: '', // Site orientation preferences
+    site_considerations: '', // Additional site considerations
+    material_preferences: [], // Material preferences array
+    budget_allocation: '', // Budget allocation preferences
+    reference_images: [] // Uploaded reference images
+  });
+  const [loading, setLoading] = useState(false);
+  const next = () => setStep(s => Math.min(s + 1, steps.length - 1));
+  const prev = () => setStep(s => Math.max(s - 1, 0));
+
+  // Room types definition - moved to component level for accessibility
+  const roomTypes = [
+    { key: 'master_bedroom', label: 'Master Bedroom', icon: '👑', short: 'MB', max: 2 },
+    { key: 'bedrooms', label: 'Bedrooms', icon: '🛏️', short: 'BR', max: 8 },
+    { key: 'attached_bathrooms', label: 'Attached Bathrooms', icon: '🚿', short: 'AB', max: 8 },
+    { key: 'common_bathrooms', label: 'Common Bathrooms', icon: '🚽', short: 'CB', max: 6 },
+    { key: 'living_room', label: 'Living Room', icon: '🛋️', short: 'LR', max: 3 },
+    { key: 'dining_room', label: 'Dining Room', icon: '🍽️', short: 'DR', max: 2 },
+    { key: 'kitchen', label: 'Kitchen', icon: '🍳', short: 'K', max: 2 },
+    { key: 'study_room', label: 'Study Room', icon: '📚', short: 'SR', max: 3 },
+    { key: 'prayer_room', label: 'Prayer Room', icon: '🕉️', short: 'PR', max: 2 },
+    { key: 'guest_room', label: 'Guest Room', icon: '🏠', short: 'GR', max: 3 },
+    { key: 'store_room', label: 'Store Room', icon: '📦', short: 'STR', max: 4 },
+    { key: 'balcony', label: 'Balcony', icon: '🌅', short: 'B', max: 5, excludeFromGroundFloor: true },
+    { key: 'terrace', label: 'Terrace', icon: '🏞️', short: 'T', max: 2, excludeFromGroundFloor: true },
+    { key: 'garage', label: 'Garage', icon: '🚗', short: 'G', max: 3 },
+    { key: 'utility_area', label: 'Utility Area', icon: '🔧', short: 'UA', max: 2 }
+  ];
+
+  // Architect directory state (reusing existing backend endpoints/logic)
+  const [architects, setArchitects] = useState([]);
+  const [archLoading, setArchLoading] = useState(false);
+  const [archError, setArchError] = useState('');
+  const [archSearch, setArchSearch] = useState('');
+  const [archSpec, setArchSpec] = useState('');
+  const [archMinExp, setArchMinExp] = useState('');
+  const [sortKey, setSortKey] = useState('best');
+  // Expanded details and reviews for selected architect
+  const [expandedArchitectId, setExpandedArchitectId] = useState(null);
+  const [reviewsCache, setReviewsCache] = useState({}); // { [architectId]: { reviews, avg_rating, review_count } }
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+
   // Prefill from URL query params when applicable (from library or deep link)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -53,32 +109,6 @@ export default function HomeownerRequestWizard() {
       })();
     }
   }, []);
-
-  const steps = ['Preliminary', 'Site', 'Family', 'Budget', 'Preferences', 'Review', 'Architect', 'Submit'];
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState({
-    plot_size: '', plot_shape: '', topography: '', development_laws: '',
-    family_needs: '', rooms: '', budget_range: '', aesthetic: '',
-    requirements: '', location: '', timeline: '', num_floors: '',
-    selected_layout_id: null, layout_type: 'custom',
-    selected_architect_ids: []
-  });
-  const [loading, setLoading] = useState(false);
-  const next = () => setStep(s => Math.min(s + 1, steps.length - 1));
-  const prev = () => setStep(s => Math.max(s - 1, 0));
-
-  // Architect directory state (reusing existing backend endpoints/logic)
-  const [architects, setArchitects] = useState([]);
-  const [archLoading, setArchLoading] = useState(false);
-  const [archError, setArchError] = useState('');
-  const [archSearch, setArchSearch] = useState('');
-  const [archSpec, setArchSpec] = useState('');
-  const [archMinExp, setArchMinExp] = useState('');
-  const [sortKey, setSortKey] = useState('best');
-  // Expanded details and reviews for selected architect
-  const [expandedArchitectId, setExpandedArchitectId] = useState(null);
-  const [reviewsCache, setReviewsCache] = useState({}); // { [architectId]: { reviews, avg_rating, review_count } }
-  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   const sortedArchitects = useMemo(() => {
     const list = [...architects];
@@ -153,7 +183,7 @@ export default function HomeownerRequestWizard() {
 
   // Auto-load architects when entering the Architect step
   useEffect(() => {
-    if (step === 6) fetchArchitects({ search: archSearch, specialization: archSpec, min_experience: archMinExp });
+    if (step === 8) fetchArchitects({ search: archSearch, specialization: archSpec, min_experience: archMinExp });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
@@ -164,7 +194,7 @@ export default function HomeownerRequestWizard() {
       const res = await fetch('/buildhub/backend/api/homeowner/submit_request.php', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           plot_size: data.plot_size,
-          budget_range: data.budget_range,
+          budget_range: data.budget_range === 'Custom' ? data.custom_budget : data.budget_range,
           requirements: data.requirements,
           location: data.location,
           timeline: data.timeline,
@@ -172,7 +202,17 @@ export default function HomeownerRequestWizard() {
           layout_type: data.layout_type,
           // packed structured fields used by backend
           plot_shape: data.plot_shape, topography: data.topography, development_laws: data.development_laws,
-          family_needs: data.family_needs, rooms: data.rooms, aesthetic: data.aesthetic,
+          family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(', ') : data.family_needs, 
+          rooms: Array.isArray(data.rooms) ? data.rooms.join(', ') : data.rooms, 
+          aesthetic: data.aesthetic,
+          floor_rooms: JSON.stringify(data.floor_rooms), // Send floor-wise room planning as JSON
+          // New fields
+          orientation: data.orientation,
+          site_considerations: data.site_considerations,
+          material_preferences: Array.isArray(data.material_preferences) ? data.material_preferences.join(', ') : data.material_preferences,
+          budget_allocation: data.budget_allocation,
+          reference_images: data.reference_images || [],
+          room_images: data.room_images || {} // Room-specific images
         })
       });
       const json = await res.json();
@@ -236,15 +276,34 @@ export default function HomeownerRequestWizard() {
               <input type="number" value={data.plot_size} onChange={e=>setData({...data, plot_size:e.target.value})} min={100} />
             </div>
             <div className="field">
-              <label>Budget (₹)</label>
-              <input 
-                type="number" 
-                placeholder="Enter your budget in rupees" 
-                value={data.budget_range} 
-                onChange={e=>setData({...data, budget_range:e.target.value})} 
-                min="0" 
-                step="10000" 
-              />
+              <label>Budget Range (₹)</label>
+              <select
+                value={data.budget_range}
+                onChange={e=>setData({...data, budget_range:e.target.value})}
+              >
+                <option value="">Select budget range</option>
+                <option value="5-10 Lakhs">₹5-10 Lakhs</option>
+                <option value="10-20 Lakhs">₹10-20 Lakhs</option>
+                <option value="20-30 Lakhs">₹20-30 Lakhs</option>
+                <option value="30-50 Lakhs">₹30-50 Lakhs</option>
+                <option value="50-75 Lakhs">₹50-75 Lakhs</option>
+                <option value="75 Lakhs - 1 Crore">₹75 Lakhs - 1 Crore</option>
+                <option value="1-2 Crores">₹1-2 Crores</option>
+                <option value="2-5 Crores">₹2-5 Crores</option>
+                <option value="5+ Crores">₹5+ Crores</option>
+                <option value="Custom">Custom Amount</option>
+              </select>
+              {data.budget_range === 'Custom' && (
+                <input
+                  type="number"
+                  placeholder="Enter custom budget amount in rupees"
+                  value={data.custom_budget || ''}
+                  onChange={e=>setData({...data, custom_budget:e.target.value})}
+                  min="0"
+                  step="10000"
+                  style={{marginTop: '8px'}}
+                />
+              )}
             </div>
           </div>
           <div className="wizard-footer">
@@ -259,23 +318,56 @@ export default function HomeownerRequestWizard() {
           <div className="section-body grid-2">
             <div className="field">
               <label>Plot Shape</label>
-              <input value={data.plot_shape} onChange={e=>setData({...data, plot_shape:e.target.value})} placeholder="Rectangular, Square, etc." />
+              <select
+                value={data.plot_shape}
+                onChange={e=>setData({...data, plot_shape:e.target.value})}
+              >
+                <option value="">Select plot shape</option>
+                <option value="Rectangular">Rectangular</option>
+                <option value="Square">Square</option>
+                <option value="L-shaped">L-shaped</option>
+                <option value="U-shaped">U-shaped</option>
+                <option value="Triangular">Triangular</option>
+                <option value="Irregular">Irregular</option>
+                <option value="Corner Plot">Corner Plot</option>
+                <option value="Trapezoidal">Trapezoidal</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
             <div className="field">
               <label>Number of Floors</label>
-              <input 
-                type="number" 
-                value={data.num_floors} 
-                onChange={e=>setData({...data, num_floors:e.target.value})} 
-                placeholder="e.g., 1, 2, 3" 
-                min="1" 
-              />
+              <select
+                value={data.num_floors}
+                onChange={e=>setData({...data, num_floors:e.target.value})}
+              >
+                <option value="">Select number of floors</option>
+                <option value="1">1 Floor (Ground Floor Only)</option>
+                <option value="2">2 Floors (G+1)</option>
+                <option value="3">3 Floors (G+2)</option>
+                <option value="4">4 Floors (G+3)</option>
+                <option value="5">5 Floors (G+4)</option>
+                <option value="6+">6+ Floors</option>
+              </select>
             </div>
           </div>
           <div className="section-body grid-2">
             <div className="field">
               <label>Topography</label>
-              <input value={data.topography} onChange={e=>setData({...data, topography:e.target.value})} placeholder="Flat, Sloped, Rocky" />
+              <select
+                value={data.topography}
+                onChange={e=>setData({...data, topography:e.target.value})}
+              >
+                <option value="">Select topography</option>
+                <option value="Flat">Flat</option>
+                <option value="Slightly Sloped">Slightly Sloped</option>
+                <option value="Moderately Sloped">Moderately Sloped</option>
+                <option value="Steeply Sloped">Steeply Sloped</option>
+                <option value="Rocky">Rocky</option>
+                <option value="Sandy">Sandy</option>
+                <option value="Clayey">Clayey</option>
+                <option value="Mixed Terrain">Mixed Terrain</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
             <div className="field">
               <label>Local Development Laws / Restrictions</label>
@@ -295,11 +387,236 @@ export default function HomeownerRequestWizard() {
           <div className="section-body grid-2">
             <div className="field">
               <label>Family Needs</label>
-              <input value={data.family_needs} onChange={e=>setData({...data, family_needs:e.target.value})} placeholder="Elder-friendly, WFH, Kids play area" />
+              <div className="interactive-options">
+                {[
+                  { key: 'Elder-friendly', label: 'Elder-friendly', icon: '👴' },
+                  { key: 'Work-from-home', label: 'Work-from-home', icon: '💻' },
+                  { key: 'Kids play area', label: 'Kids play area', icon: '🧸' },
+                  { key: 'Pet-friendly', label: 'Pet-friendly', icon: '🐕' },
+                  { key: 'Wheelchair accessible', label: 'Wheelchair accessible', icon: '♿' },
+                  { key: 'Home office', label: 'Home office', icon: '🏢' },
+                  { key: 'Guest accommodation', label: 'Guest accommodation', icon: '🛏️' },
+                  { key: 'Storage space', label: 'Storage space', icon: '📦' },
+                  { key: 'Garden/Outdoor space', label: 'Garden/Outdoor space', icon: '🌿' },
+                  { key: 'Security features', label: 'Security features', icon: '🔒' },
+                  { key: 'Energy efficient', label: 'Energy efficient', icon: '⚡' },
+                  { key: 'Low maintenance', label: 'Low maintenance', icon: '🔧' }
+                ].map(option => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={`interactive-option ${Array.isArray(data.family_needs) && data.family_needs.includes(option.key) ? 'selected' : ''}`}
+                    onClick={() => {
+                      const currentNeeds = Array.isArray(data.family_needs) ? data.family_needs : [];
+                      const newNeeds = currentNeeds.includes(option.key)
+                        ? currentNeeds.filter(item => item !== option.key)
+                        : [...currentNeeds, option.key];
+                      setData({...data, family_needs: newNeeds});
+                    }}
+                  >
+                    <span className="option-icon">{option.icon}</span>
+                    <span className="option-label">{option.label}</span>
+                    {Array.isArray(data.family_needs) && data.family_needs.includes(option.key) && (
+                      <span className="option-check">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="field">
-              <label>Rooms</label>
-              <input value={data.rooms} onChange={e=>setData({...data, rooms:e.target.value})} placeholder="3 Bedrooms, 1 Study" />
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label>Room Planning by Floor</label>
+              <div className="compact-floor-planning">
+                {(() => {
+                  const numFloors = parseInt(data.num_floors) || 1;
+                  const floors = Array.from({ length: numFloors }, (_, i) => i + 1);
+
+                  return floors.map(floorNum => {
+                    const floorKey = `floor${floorNum}`;
+                    const isExpanded = data.expandedFloors?.[floorNum] ?? (floorNum === 1); // Expand first floor by default
+                    
+                    return (
+                      <div key={floorNum} className="compact-floor-section">
+                        <div 
+                          className="floor-header"
+                          onClick={() => {
+                            setData(prev => ({
+                              ...prev,
+                              expandedFloors: {
+                                ...prev.expandedFloors,
+                                [floorNum]: !isExpanded
+                              }
+                            }));
+                          }}
+                        >
+                          <div className="floor-title">
+                            <span className="floor-icon">🏢</span>
+                            <span>{floorNum === 1 ? 'Ground Floor' : `Floor ${floorNum}`}</span>
+                          </div>
+                          <div className="floor-summary">
+                            {(() => {
+                              const floorData = data.floor_rooms[floorKey] || {};
+                              const totalRooms = Object.values(floorData).reduce((sum, count) => sum + count, 0);
+                              const roomSummary = Object.entries(floorData)
+                                .filter(([_, count]) => count > 0)
+                                .map(([roomType, count]) => {
+                                  const room = roomTypes.find(r => r.key === roomType);
+                                  // Only include rooms that are available for this floor
+                                  if (floorNum === 1 && room?.excludeFromGroundFloor) {
+                                    return null;
+                                  }
+                                  return `${room?.short || roomType}: ${count}`;
+                                })
+                                .filter(Boolean)
+                                .join(', ');
+                              return totalRooms > 0 ? roomSummary : 'No rooms specified';
+                            })()}
+                          </div>
+                          <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
+                        </div>
+                        
+                        {isExpanded && (
+                          <div className="room-planning-grid">
+                            <div className="room-planning-header">
+                              <span className="room-type-label">Room Type</span>
+                              <span className="quantity-label">Quantity</span>
+                            </div>
+                            {roomTypes
+                              .filter(roomType => {
+                                // Exclude balcony and terrace from ground floor
+                                if (floorNum === 1 && roomType.excludeFromGroundFloor) {
+                                  return false;
+                                }
+                                return true;
+                              })
+                              .map(roomType => {
+                                const currentValue = data.floor_rooms[floorKey]?.[roomType.key] || 0;
+                              
+                              return (
+                                <div key={roomType.key} className="room-planning-item">
+                                  <div className="room-info">
+                                    <span className="room-icon">{roomType.icon}</span>
+                                    <div className="room-details">
+                                      <span className="room-name">{roomType.label}</span>
+                                      <span className="room-limit">(Max: {roomType.max})</span>
+                                    </div>
+                                  </div>
+                        <div className="quantity-selector">
+                          <button
+                            type="button"
+                            className="quantity-btn decrease"
+                            onClick={() => {
+                              const newValue = Math.max(0, currentValue - 1);
+                              setData(prev => ({
+                                ...prev,
+                                floor_rooms: {
+                                  ...prev.floor_rooms,
+                                  [floorKey]: {
+                                    ...prev.floor_rooms[floorKey],
+                                    [roomType.key]: newValue
+                                  }
+                                }
+                              }));
+                            }}
+                            disabled={currentValue === 0}
+                            title="Decrease quantity"
+                          >
+                            Remove
+                          </button>
+                          <div className="quantity-display">
+                            <span className="quantity-number">{currentValue}</span>
+                            <span className="quantity-text">rooms</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="quantity-btn increase"
+                            onClick={() => {
+                              const newValue = Math.min(roomType.max, currentValue + 1);
+                              setData(prev => ({
+                                ...prev,
+                                floor_rooms: {
+                                  ...prev.floor_rooms,
+                                  [floorKey]: {
+                                    ...prev.floor_rooms[floorKey],
+                                    [roomType.key]: newValue
+                                  }
+                                }
+                              }));
+                            }}
+                            disabled={currentValue >= roomType.max}
+                            title="Add more rooms"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        
+                        {/* Room-specific image upload */}
+                        <div className="room-image-upload">
+                          <input
+                            type="file"
+                            id={`room-images-${roomType.key}-${floorNum}`}
+                            multiple
+                            accept="image/*"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files);
+                              const newImages = files.map(file => ({
+                                id: Date.now() + Math.random(),
+                                file: file,
+                                name: file.name,
+                                size: file.size,
+                                url: URL.createObjectURL(file)
+                              }));
+                              setData(prev => ({
+                                ...prev,
+                                room_images: {
+                                  ...prev.room_images,
+                                  [roomType.key]: [...(prev.room_images[roomType.key] || []), ...newImages]
+                                }
+                              }));
+                            }}
+                            style={{display: 'none'}}
+                          />
+                          <label 
+                            htmlFor={`room-images-${roomType.key}-${floorNum}`} 
+                            className="room-image-btn"
+                            title={`Upload reference images for ${roomType.label}`}
+                          >
+                            <span className="room-image-icon">📷</span>
+                            <span className="room-image-text">Add Images</span>
+                          </label>
+                          
+                          {/* Show uploaded images count and manage button */}
+                          {data.room_images[roomType.key] && data.room_images[roomType.key].length > 0 && (
+                            <div className="room-images-count">
+                              <span>{data.room_images[roomType.key].length} image(s)</span>
+                              <button
+                                type="button"
+                                className="manage-images-btn"
+                                onClick={() => {
+                                  // Toggle expanded state for this room type
+                                  setData(prev => ({
+                                    ...prev,
+                                    expandedRoomImages: {
+                                      ...prev.expandedRoomImages,
+                                      [roomType.key]: !prev.expandedRoomImages?.[roomType.key]
+                                    }
+                                  }));
+                                }}
+                              >
+                                {data.expandedRoomImages?.[roomType.key] ? 'Hide' : 'Manage'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
             </div>
           </div>
           <div className="wizard-footer">
@@ -341,11 +658,139 @@ export default function HomeownerRequestWizard() {
 
       {step === 4 && (
         <div className="section">
+          <div className="section-header">Orientation & Site Considerations</div>
+          <div className="section-body grid-2">
+            <div className="field">
+              <label>Preferred Orientation</label>
+              <select
+                value={data.orientation}
+                onChange={e=>setData({...data, orientation:e.target.value})}
+              >
+                <option value="">Select preferred orientation</option>
+                <option value="North-facing">North-facing (Best for natural light)</option>
+                <option value="South-facing">South-facing (Good for warmth)</option>
+                <option value="East-facing">East-facing (Morning sun)</option>
+                <option value="West-facing">West-facing (Evening sun)</option>
+                <option value="North-East">North-East (Balanced light)</option>
+                <option value="North-West">North-West (Balanced light)</option>
+                <option value="South-East">South-East (Morning & afternoon sun)</option>
+                <option value="South-West">South-West (Afternoon & evening sun)</option>
+                <option value="No preference">No specific preference</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Site Considerations</label>
+              <textarea 
+                rows={4} 
+                value={data.site_considerations} 
+                onChange={e=>setData({...data, site_considerations:e.target.value})} 
+                placeholder="Any specific site considerations: views, privacy, noise, access, etc."
+              />
+            </div>
+          </div>
+          <div className="wizard-footer">
+            <button className="btn btn-secondary" onClick={prev}>Back</button>
+            <button className="btn btn-primary" onClick={next}>Next</button>
+          </div>
+        </div>
+      )}
+
+      {step === 5 && (
+        <div className="section">
+          <div className="section-header">Budget & Material Preferences</div>
+          <div className="section-body grid-2">
+            <div className="field">
+              <label>Budget Allocation Preference</label>
+              <select
+                value={data.budget_allocation}
+                onChange={e=>setData({...data, budget_allocation:e.target.value})}
+              >
+                <option value="">Select budget allocation preference</option>
+                <option value="Quality over quantity">Quality over quantity (Premium materials)</option>
+                <option value="Balanced approach">Balanced approach (Good quality, reasonable cost)</option>
+                <option value="Cost-effective">Cost-effective (Budget-friendly materials)</option>
+                <option value="Eco-friendly focus">Eco-friendly focus (Sustainable materials)</option>
+                <option value="Luxury finish">Luxury finish (High-end materials throughout)</option>
+                <option value="Mixed approach">Mixed approach (Premium in key areas, standard elsewhere)</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Material Preferences</label>
+              <div className="interactive-options">
+                {[
+                  { key: 'Marble', label: 'Marble', icon: '🏛️' },
+                  { key: 'Granite', label: 'Granite', icon: '🪨' },
+                  { key: 'Wood', label: 'Wood', icon: '🪵' },
+                  { key: 'Ceramic Tiles', label: 'Ceramic Tiles', icon: '🔲' },
+                  { key: 'Vitrified Tiles', label: 'Vitrified Tiles', icon: '⬜' },
+                  { key: 'Natural Stone', label: 'Natural Stone', icon: '🗿' },
+                  { key: 'Glass', label: 'Glass', icon: '🪟' },
+                  { key: 'Steel', label: 'Steel', icon: '🔩' },
+                  { key: 'Concrete', label: 'Concrete', icon: '🏗️' },
+                  { key: 'Brick', label: 'Brick', icon: '🧱' },
+                  { key: 'Eco-friendly', label: 'Eco-friendly Materials', icon: '🌱' },
+                  { key: 'Smart Materials', label: 'Smart Materials', icon: '🤖' }
+                ].map(option => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={`interactive-option ${Array.isArray(data.material_preferences) && data.material_preferences.includes(option.key) ? 'selected' : ''}`}
+                    onClick={() => {
+                      const currentMaterials = Array.isArray(data.material_preferences) ? data.material_preferences : [];
+                      const newMaterials = currentMaterials.includes(option.key)
+                        ? currentMaterials.filter(item => item !== option.key)
+                        : [...currentMaterials, option.key];
+                      setData({...data, material_preferences: newMaterials});
+                    }}
+                  >
+                    <span className="option-icon">{option.icon}</span>
+                    <span className="option-label">{option.label}</span>
+                    {Array.isArray(data.material_preferences) && data.material_preferences.includes(option.key) && (
+                      <span className="option-check">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="wizard-footer">
+            <button className="btn btn-secondary" onClick={prev}>Back</button>
+            <button className="btn btn-primary" onClick={next}>Next</button>
+          </div>
+        </div>
+      )}
+
+
+      {step === 6 && (
+        <div className="section">
           <div className="section-header">Preferences</div>
           <div className="section-body grid-2">
             <div className="field">
               <label>House Aesthetic / Style</label>
-              <input value={data.aesthetic} onChange={e=>setData({...data, aesthetic:e.target.value})} placeholder="Modern, Traditional, Minimalist" />
+              <select
+                value={data.aesthetic}
+                onChange={e=>setData({...data, aesthetic:e.target.value})}
+              >
+                <option value="">Select house style</option>
+                <option value="Modern">Modern</option>
+                <option value="Contemporary">Contemporary</option>
+                <option value="Traditional">Traditional</option>
+                <option value="Minimalist">Minimalist</option>
+                <option value="Luxury">Luxury</option>
+                <option value="Mediterranean">Mediterranean</option>
+                <option value="Colonial">Colonial</option>
+                <option value="Victorian">Victorian</option>
+                <option value="Art Deco">Art Deco</option>
+                <option value="Scandinavian">Scandinavian</option>
+                <option value="Industrial">Industrial</option>
+                <option value="Rustic">Rustic</option>
+                <option value="Farmhouse">Farmhouse</option>
+                <option value="Craftsman">Craftsman</option>
+                <option value="Tudor">Tudor</option>
+                <option value="Ranch">Ranch</option>
+                <option value="Cape Cod">Cape Cod</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
             <div className="field">
               <label>Additional Notes</label>
@@ -359,7 +804,7 @@ export default function HomeownerRequestWizard() {
         </div>
       )}
 
-      {step === 5 && (
+      {step === 7 && (
         <div className="section">
           <div className="section-header">Review</div>
           <div className="section-body">
@@ -378,7 +823,7 @@ export default function HomeownerRequestWizard() {
                   <span>Plot Size</span><strong>{data.plot_size || 'N/A'}</strong>
                 </div>
                 <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Budget</span><strong>{data.budget_range || 'N/A'}</strong>
+                  <span>Budget</span><strong>{data.budget_range === 'Custom' ? data.custom_budget : (data.budget_range || 'N/A')}</strong>
                 </div>
                 <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
                   <span>Location</span><strong>{data.location || 'N/A'}</strong>
@@ -409,14 +854,138 @@ export default function HomeownerRequestWizard() {
               </div>
 
               {/* Family */}
+            <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
+              <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Family</div>
+              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
+                <span>Family Needs</span><strong>{Array.isArray(data.family_needs) && data.family_needs.length > 0 ? data.family_needs.join(', ') : 'N/A'}</strong>
+              </div>
+              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
+                <span>Rooms</span><strong>{Array.isArray(data.rooms) && data.rooms.length > 0 ? data.rooms.join(', ') : 'N/A'}</strong>
+              </div>
+            </div>
+
+            <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
+              <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Orientation & Site</div>
+              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
+                <span>Orientation</span><strong>{data.orientation || 'N/A'}</strong>
+              </div>
+              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
+                <span>Site Considerations</span><strong>{data.site_considerations || 'N/A'}</strong>
+              </div>
+            </div>
+
+            <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
+              <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Materials & Budget</div>
+              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
+                <span>Budget Allocation</span><strong>{data.budget_allocation || 'N/A'}</strong>
+              </div>
+              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
+                <span>Material Preferences</span><strong>{Array.isArray(data.material_preferences) && data.material_preferences.length > 0 ? data.material_preferences.join(', ') : 'N/A'}</strong>
+              </div>
+            </div>
+
+            {data.reference_images && data.reference_images.length > 0 && (
               <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Family</div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Family Needs</span><strong>{data.family_needs || 'N/A'}</strong>
+                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>General Reference Images</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
+                  {data.reference_images.map((image, index) => (
+                    <div key={image.id} style={{ textAlign: 'center' }}>
+                      <img 
+                        src={image.url} 
+                        alt={image.name}
+                        style={{ 
+                          width: '100%', 
+                          height: '80px', 
+                          objectFit: 'cover', 
+                          borderRadius: '6px',
+                          border: '1px solid #e5e7eb'
+                        }}
+                      />
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                        {image.name.length > 15 ? image.name.substring(0, 15) + '...' : image.name}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Rooms</span><strong>{data.rooms || 'N/A'}</strong>
-                </div>
+              </div>
+            )}
+
+            {/* Room-specific Images */}
+            {data.room_images && Object.keys(data.room_images).length > 0 && (
+              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
+                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Room-Specific Reference Images</div>
+                {Object.entries(data.room_images).map(([roomTypeKey, images]) => {
+                  if (!images || images.length === 0) return null;
+                  
+                  const roomType = roomTypes.find(r => r.key === roomTypeKey);
+                  
+                  return (
+                    <div key={roomTypeKey} style={{ marginBottom: '16px' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '8px', color: '#374151', fontSize: '14px' }}>
+                        {roomType?.icon} {roomType?.label} ({images.length} images)
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '6px' }}>
+                        {images.map((image, index) => (
+                          <div key={image.id} style={{ textAlign: 'center' }}>
+                            <img 
+                              src={image.url} 
+                              alt={image.name}
+                              style={{ 
+                                width: '100%', 
+                                height: '60px', 
+                                objectFit: 'cover', 
+                                borderRadius: '4px',
+                                border: '1px solid #e5e7eb'
+                              }}
+                            />
+                            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
+                              {image.name.length > 12 ? image.name.substring(0, 12) + '...' : image.name}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+              {/* Floor-wise Room Planning */}
+              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
+                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Room Planning by Floor</div>
+                {(() => {
+                  const numFloors = parseInt(data.num_floors) || 1;
+                  const floors = Array.from({ length: numFloors }, (_, i) => i + 1);
+                  
+                  return floors.map(floorNum => {
+                    const floorKey = `floor${floorNum}`;
+                    const floorData = data.floor_rooms[floorKey] || {};
+                    const hasRooms = Object.values(floorData).some(count => count > 0);
+                    
+                    if (!hasRooms) return null;
+                    
+                    return (
+                      <div key={floorNum} style={{ marginBottom: '12px', padding: '8px', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
+                        <div style={{ fontWeight: '600', marginBottom: '6px', color: '#374151' }}>
+                          {floorNum === 1 ? 'Ground Floor' : `Floor ${floorNum}`}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '4px' }}>
+                          {Object.entries(floorData).map(([roomType, count]) => {
+                            if (count === 0) return null;
+                            return (
+                              <div key={roomType} style={{ fontSize: '12px', color: '#6b7280' }}>
+                                {roomType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}: {count}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+                {Object.keys(data.floor_rooms).length === 0 && (
+                  <div style={{ color: '#6b7280', fontSize: '14px' }}>No room planning specified</div>
+                )}
               </div>
 
               {/* Preferences */}
@@ -453,7 +1022,7 @@ export default function HomeownerRequestWizard() {
                   fetch('/buildhub/backend/api/homeowner/submit_request.php', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
                       plot_size: data.plot_size,
-                      budget_range: data.budget_range,
+                      budget_range: data.budget_range === 'Custom' ? data.custom_budget : data.budget_range,
                       requirements: data.requirements,
                       location: data.location,
                       timeline: data.timeline,
@@ -461,7 +1030,10 @@ export default function HomeownerRequestWizard() {
                       layout_type: 'library',
                       // packed fields
                       plot_shape: data.plot_shape, topography: data.topography, development_laws: data.development_laws,
-                      family_needs: data.family_needs, rooms: data.rooms, aesthetic: data.aesthetic,
+                      family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(', ') : data.family_needs, 
+                      rooms: Array.isArray(data.rooms) ? data.rooms.join(', ') : data.rooms, 
+                      aesthetic: data.aesthetic,
+                      floor_rooms: JSON.stringify(data.floor_rooms), // Send floor-wise room planning as JSON
                       // activate for contractors
                       activate_for_contractors: true
                     })
@@ -478,10 +1050,144 @@ export default function HomeownerRequestWizard() {
               <button className="btn btn-primary" onClick={next}>Customize with Architect</button>
             </div>
           </div>
+          
+          {/* Room Images Management */}
+          {data.room_images && Object.keys(data.room_images).length > 0 && (
+            <div className="field" style={{ marginTop: '24px' }}>
+              <label>Room-Specific Images</label>
+              <div className="room-images-management">
+                {Object.entries(data.room_images).map(([roomTypeKey, images]) => {
+                  if (!images || images.length === 0) return null;
+                  
+                  const roomType = roomTypes.find(r => r.key === roomTypeKey);
+                  const isExpanded = data.expandedRoomImages?.[roomTypeKey];
+                  
+                  return (
+                    <div key={roomTypeKey} className="room-images-section">
+                      <div className="room-images-header">
+                        <span className="room-images-title">
+                          {roomType?.icon} {roomType?.label} Images ({images.length})
+                        </span>
+                        <button
+                          type="button"
+                          className="toggle-images-btn"
+                          onClick={() => {
+                            setData(prev => ({
+                              ...prev,
+                              expandedRoomImages: {
+                                ...prev.expandedRoomImages,
+                                [roomTypeKey]: !prev.expandedRoomImages?.[roomTypeKey]
+                              }
+                            }));
+                          }}
+                        >
+                          {isExpanded ? '▼' : '▶'}
+                        </button>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="room-images-grid">
+                          {images.map((image, index) => (
+                            <div key={image.id} className="room-image-item">
+                              <img src={image.url} alt={image.name} />
+                              <div className="room-image-info">
+                                <span className="room-image-name">{image.name}</span>
+                                <span className="room-image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
+                              </div>
+                              <button
+                                type="button"
+                                className="remove-room-image-btn"
+                                onClick={() => {
+                                  setData(prev => ({
+                                    ...prev,
+                                    room_images: {
+                                      ...prev.room_images,
+                                      [roomTypeKey]: prev.room_images[roomTypeKey].filter(img => img.id !== image.id)
+                                    }
+                                  }));
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
+          {/* Reference Images Section */}
+          <div className="field" style={{ marginTop: '24px' }}>
+            <label>Reference Images for Architect</label>
+            <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '16px'}}>
+              Upload images that show your preferred style, layout, or specific features you'd like in your home. 
+              This helps architects understand your vision better.
+            </p>
+            <div className="image-upload-area">
+              <input
+                type="file"
+                id="reference-images"
+                multiple
+                accept="image/*"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files);
+                  const newImages = files.map(file => ({
+                    id: Date.now() + Math.random(),
+                    file: file,
+                    name: file.name,
+                    size: file.size,
+                    url: URL.createObjectURL(file)
+                  }));
+                  setData(prev => ({
+                    ...prev,
+                    reference_images: [...(prev.reference_images || []), ...newImages]
+                  }));
+                }}
+                style={{display: 'none'}}
+              />
+              <label htmlFor="reference-images" className="upload-button">
+                <span className="upload-icon">📷</span>
+                <span>Choose Images</span>
+              </label>
+            </div>
+            
+            {data.reference_images && data.reference_images.length > 0 && (
+              <div className="uploaded-images">
+                <h4 style={{margin: '16px 0 8px 0', fontSize: '14px', fontWeight: '600'}}>Uploaded Images:</h4>
+                <div className="image-grid">
+                  {data.reference_images.map((image, index) => (
+                    <div key={image.id} className="image-item">
+                      <img src={image.url} alt={image.name} />
+                      <div className="image-info">
+                        <span className="image-name">{image.name}</span>
+                        <span className="image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="remove-image-btn"
+                        onClick={() => {
+                          setData(prev => ({
+                            ...prev,
+                            reference_images: prev.reference_images.filter(img => img.id !== image.id)
+                          }));
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {step === 6 && (
+      {step === 8 && (
         <div className="section">
           <div className="section-header">Choose Architect</div>
           <div className="section-body">
@@ -629,7 +1335,7 @@ export default function HomeownerRequestWizard() {
         </div>
       )}
 
-      {step === 7 && (
+      {step === 9 && (
         <div className="section">
           <div className="section-header">Submit</div>
           <div className="section-body">
