@@ -22,7 +22,7 @@ try {
     }
     
     // Check if files were uploaded
-    if (!isset($_FILES['site_images']) || empty($_FILES['site_images']['name'])) {
+    if (!isset($_FILES['room_images']) || empty($_FILES['room_images']['name'])) {
         echo json_encode([
             'success' => false,
             'message' => 'No files uploaded'
@@ -31,13 +31,13 @@ try {
     }
     
     // Create uploads directory if it doesn't exist
-    $upload_dir = __DIR__ . '/../uploads/site_images/';
+    $upload_dir = __DIR__ . '/../uploads/room_images/';
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0755, true);
     }
     
     $uploaded_images = [];
-    $files = $_FILES['site_images'];
+    $files = $_FILES['room_images'];
     
     // Handle multiple files
     $file_count = is_array($files['name']) ? count($files['name']) : 1;
@@ -80,7 +80,7 @@ try {
                 'id' => uniqid(),
                 'name' => $file_name,
                 'size' => $file_size,
-                'url' => '/buildhub/backend/uploads/site_images/' . $unique_name
+                'url' => '/buildhub/backend/uploads/room_images/' . $unique_name
             ];
         }
     }

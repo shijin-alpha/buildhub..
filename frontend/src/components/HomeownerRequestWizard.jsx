@@ -16,8 +16,8 @@ export default function HomeownerRequestWizard() {
     custom_budget: '', // Added for custom budget input
     floor_rooms: {}, // New: floor-wise room planning { floor1: { bedrooms: 2, bathrooms: 1, ... }, floor2: {...} }
     expandedFloors: { 1: true }, // Track which floors are expanded
-    room_images: {}, // New: images per room type { bedrooms: [images], kitchen: [images], ... }
-    expandedRoomImages: {}, // Track which room image sections are expanded
+    room_images: {}, // New: floor-specific images { floor1: { bedrooms: [images], kitchen: [images] }, floor2: { ... } }
+    expandedRoomImages: {}, // Track which room image sections are expanded { floor1: { bedrooms: true }, floor2: { ... } }
     // New sections
     orientation: '', // Site orientation preferences
     site_considerations: '', // Additional site considerations
@@ -659,54 +659,115 @@ export default function HomeownerRequestWizard() {
                             id={`room-images-${roomType.key}-${floorNum}`}
                             multiple
                             accept="image/*"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const files = Array.from(e.target.files);
-                              const newImages = files.map(file => ({
-                                id: Date.now() + Math.random(),
-                                file: file,
-                                name: file.name,
-                                size: file.size,
-                                url: URL.createObjectURL(file)
-                              }));
-                              setData(prev => ({
-                                ...prev,
-                                room_images: {
-                                  ...prev.room_images,
-                                  [roomType.key]: [...(prev.room_images[roomType.key] || []), ...newImages]
+                              if (files.length === 0) return;
+                              
+                              // Upload files to server
+                              const formData = new FormData();
+                              files.forEach(file => {
+                                formData.append('room_images[]', file);
+                              });
+                              
+                              try {
+                                const response = await fetch('/buildhub/backend/api/upload_room_images.php', {
+                                  method: 'POST',
+                                  body: formData,
+                                  credentials: 'include'
+                                });
+                                
+                                const result = await response.json();
+                                if (result.success) {
+                                  const newImages = result.images.map(img => ({
+                                    ...img,
+                                    floor: floorNum // Add floor information
+                                  }));
+                                  
+                                  setData(prev => ({
+                                    ...prev,
+                                    room_images: {
+                                      ...prev.room_images,
+                                      [`floor${floorNum}`]: {
+                                        ...prev.room_images[`floor${floorNum}`],
+                                        [roomType.key]: [...(prev.room_images[`floor${floorNum}`]?.[roomType.key] || []), ...newImages]
+                                      }
+                                    }
+                                  }));
+                                } else {
+                                  alert('Failed to upload room images: ' + result.message);
                                 }
-                              }));
+                              } catch (error) {
+                                console.error('Error uploading room images:', error);
+                                alert('Failed to upload room images. Please try again.');
+                              }
                             }}
                             style={{display: 'none'}}
                           />
                           <label 
                             htmlFor={`room-images-${roomType.key}-${floorNum}`} 
                             className="room-image-btn"
-                            title={`Upload reference images for ${roomType.label}`}
+                            title={`Upload reference images for ${roomType.label} on Floor ${floorNum}`}
                           >
                             <span className="room-image-icon">📷</span>
                             <span className="room-image-text">Add Images</span>
                           </label>
                           
                           {/* Show uploaded images count and manage button */}
-                          {data.room_images[roomType.key] && data.room_images[roomType.key].length > 0 && (
+                          {data.room_images[`floor${floorNum}`]?.[roomType.key] && data.room_images[`floor${floorNum}`][roomType.key].length > 0 && (
                             <div className="room-images-count">
-                              <span>{data.room_images[roomType.key].length} image(s)</span>
+                              <span>{data.room_images[`floor${floorNum}`][roomType.key].length} image(s)</span>
                               <button
                                 type="button"
                                 className="manage-images-btn"
                                 onClick={() => {
-                                  // Toggle expanded state for this room type
+                                  // Toggle expanded state for this room type on this floor
                                   setData(prev => ({
                                     ...prev,
                                     expandedRoomImages: {
                                       ...prev.expandedRoomImages,
-                                      [roomType.key]: !prev.expandedRoomImages?.[roomType.key]
+                                      [`floor${floorNum}`]: {
+                                        ...prev.expandedRoomImages[`floor${floorNum}`],
+                                        [roomType.key]: !prev.expandedRoomImages?.[`floor${floorNum}`]?.[roomType.key]
+                                      }
                                     }
                                   }));
                                 }}
                               >
-                                {data.expandedRoomImages?.[roomType.key] ? 'Hide' : 'Manage'}
+                                {data.expandedRoomImages?.[`floor${floorNum}`]?.[roomType.key] ? 'Hide' : 'Manage'}
                               </button>
+                            </div>
+                          )}
+                          
+                          {/* Expanded room images management */}
+                          {data.expandedRoomImages?.[`floor${floorNum}`]?.[roomType.key] && data.room_images[`floor${floorNum}`]?.[roomType.key] && (
+                            <div className="room-images-preview">
+                              {data.room_images[`floor${floorNum}`][roomType.key].map((image, index) => (
+                                <div key={image.id} className="room-image-preview">
+                                  <img src={image.url} alt={image.name} />
+                                  <div className="room-image-preview-info">
+                                    <span className="image-name">{image.name}</span>
+                                    <span className="floor-indicator">Floor {floorNum}</span>
+                                    <button
+                                      type="button"
+                                      className="remove-image-btn"
+                                      onClick={() => {
+                                        setData(prev => ({
+                                          ...prev,
+                                          room_images: {
+                                            ...prev.room_images,
+                                            [`floor${floorNum}`]: {
+                                              ...prev.room_images[`floor${floorNum}`],
+                                              [roomType.key]: prev.room_images[`floor${floorNum}`][roomType.key].filter(img => img.id !== image.id)
+                                            }
+                                          }
+                                        }));
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -1014,40 +1075,54 @@ export default function HomeownerRequestWizard() {
             )}
 
 
-            {/* Room-specific Images */}
+            {/* Room-specific Images by Floor */}
             {data.room_images && Object.keys(data.room_images).length > 0 && (
               <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Room-Specific Reference Images</div>
-                {Object.entries(data.room_images).map(([roomTypeKey, images]) => {
-                  if (!images || images.length === 0) return null;
+                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Room-Specific Reference Images by Floor</div>
+                {Object.entries(data.room_images).map(([floorKey, floorRooms]) => {
+                  if (!floorRooms || Object.keys(floorRooms).length === 0) return null;
                   
-                  const roomType = roomTypes.find(r => r.key === roomTypeKey);
+                  const floorNumber = floorKey.replace('floor', '');
                   
                   return (
-                    <div key={roomTypeKey} style={{ marginBottom: '16px' }}>
-                      <div style={{ fontWeight: '600', marginBottom: '8px', color: '#374151', fontSize: '14px' }}>
-                        {roomType?.icon} {roomType?.label} ({images.length} images)
+                    <div key={floorKey} style={{ marginBottom: '20px' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '12px', color: '#1e40af', fontSize: '15px', borderBottom: '1px solid #e5e7eb', paddingBottom: '4px' }}>
+                        🏢 Floor {floorNumber}
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '6px' }}>
-                        {images.map((image, index) => (
-                          <div key={image.id} style={{ textAlign: 'center' }}>
-                            <img 
-                              src={image.url} 
-                              alt={image.name}
-                              style={{ 
-                                width: '100%', 
-                                height: '60px', 
-                                objectFit: 'cover', 
-                                borderRadius: '4px',
-                                border: '1px solid #e5e7eb'
-                              }}
-                            />
-                            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
-                              {image.name.length > 12 ? image.name.substring(0, 12) + '...' : image.name}
+                      
+                      {Object.entries(floorRooms).map(([roomTypeKey, images]) => {
+                        if (!images || images.length === 0) return null;
+                        
+                        const roomType = roomTypes.find(r => r.key === roomTypeKey);
+                        
+                        return (
+                          <div key={`${floorKey}-${roomTypeKey}`} style={{ marginBottom: '12px', marginLeft: '16px' }}>
+                            <div style={{ fontWeight: '500', marginBottom: '6px', color: '#374151', fontSize: '13px' }}>
+                              {roomType?.icon} {roomType?.label} ({images.length} images)
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '6px' }}>
+                              {images.map((image, index) => (
+                                <div key={image.id} style={{ textAlign: 'center' }}>
+                                  <img 
+                                    src={image.url} 
+                                    alt={image.name}
+                                    style={{ 
+                                      width: '100%', 
+                                      height: '50px', 
+                                      objectFit: 'cover', 
+                                      borderRadius: '4px',
+                                      border: '1px solid #e5e7eb'
+                                    }}
+                                  />
+                                  <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '2px' }}>
+                                    {image.name.length > 10 ? image.name.substring(0, 10) + '...' : image.name}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -1155,68 +1230,89 @@ export default function HomeownerRequestWizard() {
             </div>
           </div>
           
-          {/* Room Images Management */}
+          {/* Room Images Management - Floor Specific */}
           {data.room_images && Object.keys(data.room_images).length > 0 && (
             <div className="field" style={{ marginTop: '24px' }}>
-              <label>Room-Specific Images</label>
+              <label>Room-Specific Images by Floor</label>
               <div className="room-images-management">
-                {Object.entries(data.room_images).map(([roomTypeKey, images]) => {
-                  if (!images || images.length === 0) return null;
+                {Object.entries(data.room_images).map(([floorKey, floorRooms]) => {
+                  if (!floorRooms || Object.keys(floorRooms).length === 0) return null;
                   
-                  const roomType = roomTypes.find(r => r.key === roomTypeKey);
-                  const isExpanded = data.expandedRoomImages?.[roomTypeKey];
+                  const floorNumber = floorKey.replace('floor', '');
                   
                   return (
-                    <div key={roomTypeKey} className="room-images-section">
-                      <div className="room-images-header">
-                        <span className="room-images-title">
-                          {roomType?.icon} {roomType?.label} Images ({images.length})
-                        </span>
-                        <button
-                          type="button"
-                          className="toggle-images-btn"
-                          onClick={() => {
-                            setData(prev => ({
-                              ...prev,
-                              expandedRoomImages: {
-                                ...prev.expandedRoomImages,
-                                [roomTypeKey]: !prev.expandedRoomImages?.[roomTypeKey]
-                              }
-                            }));
-                          }}
-                        >
-                          {isExpanded ? '▼' : '▶'}
-                        </button>
+                    <div key={floorKey} className="floor-images-section">
+                      <div className="floor-images-header">
+                        <h4>Floor {floorNumber} Images</h4>
                       </div>
                       
-                      {isExpanded && (
-                        <div className="room-images-grid">
-                          {images.map((image, index) => (
-                            <div key={image.id} className="room-image-item">
-                              <img src={image.url} alt={image.name} />
-                              <div className="room-image-info">
-                                <span className="room-image-name">{image.name}</span>
-                                <span className="room-image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
-                              </div>
+                      {Object.entries(floorRooms).map(([roomTypeKey, images]) => {
+                        if (!images || images.length === 0) return null;
+                        
+                        const roomType = roomTypes.find(r => r.key === roomTypeKey);
+                        const isExpanded = data.expandedRoomImages?.[floorKey]?.[roomTypeKey];
+                        
+                        return (
+                          <div key={`${floorKey}-${roomTypeKey}`} className="room-images-section">
+                            <div className="room-images-header">
+                              <span className="room-images-title">
+                                {roomType?.icon} {roomType?.label} ({images.length} images)
+                              </span>
                               <button
                                 type="button"
-                                className="remove-room-image-btn"
+                                className="toggle-images-btn"
                                 onClick={() => {
                                   setData(prev => ({
                                     ...prev,
-                                    room_images: {
-                                      ...prev.room_images,
-                                      [roomTypeKey]: prev.room_images[roomTypeKey].filter(img => img.id !== image.id)
+                                    expandedRoomImages: {
+                                      ...prev.expandedRoomImages,
+                                      [floorKey]: {
+                                        ...prev.expandedRoomImages[floorKey],
+                                        [roomTypeKey]: !prev.expandedRoomImages?.[floorKey]?.[roomTypeKey]
+                                      }
                                     }
                                   }));
                                 }}
                               >
-                                ×
+                                {isExpanded ? '▼' : '▶'}
                               </button>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            
+                            {isExpanded && (
+                              <div className="room-images-grid">
+                                {images.map((image, index) => (
+                                  <div key={image.id} className="room-image-item">
+                                    <img src={image.url} alt={image.name} />
+                                    <div className="room-image-info">
+                                      <span className="room-image-name">{image.name}</span>
+                                      <span className="floor-indicator">Floor {floorNumber}</span>
+                                      <span className="room-image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="remove-room-image-btn"
+                                      onClick={() => {
+                                        setData(prev => ({
+                                          ...prev,
+                                          room_images: {
+                                            ...prev.room_images,
+                                            [floorKey]: {
+                                              ...prev.room_images[floorKey],
+                                              [roomTypeKey]: prev.room_images[floorKey][roomTypeKey].filter(img => img.id !== image.id)
+                                            }
+                                          }
+                                        }));
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}

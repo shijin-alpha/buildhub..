@@ -1,62 +1,71 @@
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Methods: GET');
 header('Access-Control-Allow-Headers: Content-Type');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
-
-session_start();
-if (empty($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'architect') {
-  echo json_encode(['success' => false, 'message' => 'Unauthorized']);
-  exit;
-}
 
 require_once '../../config/database.php';
 
 try {
-  $database = new Database();
-  $db = $database->getConnection();
-  $uid = (int)$_SESSION['user_id'];
+    $database = new Database();
+    $db = $database->getConnection();
 
-  // Ensure reviews table exists (for fresh DBs)
-  $db->exec("CREATE TABLE IF NOT EXISTS architect_reviews (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    architect_id INT NOT NULL,
-    homeowner_id INT NOT NULL,
-    design_id INT NULL,
-    rating TINYINT NOT NULL,
-    comment TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )");
+    session_start();
+    $architect_id = $_SESSION['user_id'] ?? null;
 
-  $stmt = $db->prepare("SELECT id, first_name, last_name, email, phone, city, specialization, experience_years FROM users WHERE id = :id AND role = 'architect' LIMIT 1");
-  $stmt->bindValue(':id', $uid, PDO::PARAM_INT);
-  $stmt->execute();
-  $user = $stmt->fetch(PDO::FETCH_ASSOC);
-  if (!$user) { echo json_encode(['success' => false, 'message' => 'Profile not found']); exit; }
+    if (!$architect_id) {
+        echo json_encode(['success' => false, 'message' => 'User not authenticated']);
+        exit;
+    }
 
-  // Ratings
-  $r = $db->prepare("SELECT ROUND(AVG(rating),2) AS avg_rating, COUNT(*) AS review_count FROM architect_reviews WHERE architect_id = :id");
-  $r->bindValue(':id', $uid, PDO::PARAM_INT);
-  $r->execute();
-  $rev = $r->fetch(PDO::FETCH_ASSOC) ?: ['avg_rating' => null, 'review_count' => 0];
+    // Get architect profile from users table
+    $query = "SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.city,
+                     u.specialization, u.experience_years, u.status, u.created_at,
+                     COALESCE(AVG(r.rating), 0) as avg_rating,
+                     COUNT(r.id) as review_count
+              FROM users u
+              LEFT JOIN reviews r ON r.architect_id = u.id
+              WHERE u.id = :architect_id AND u.role = 'architect'
+              GROUP BY u.id";
 
-  echo json_encode([
-    'success' => true,
-    'profile' => [
-      'id' => (int)$user['id'],
-      'first_name' => $user['first_name'],
-      'last_name' => $user['last_name'],
-      'email' => $user['email'],
-      'phone' => $user['phone'],
-      'city' => $user['city'],
-      'specialization' => $user['specialization'],
-      'experience_years' => is_null($user['experience_years']) ? null : (int)$user['experience_years'],
-      'avg_rating' => is_null($rev['avg_rating']) ? null : (float)$rev['avg_rating'],
-      'review_count' => (int)$rev['review_count'],
-    ]
-  ]);
+    $stmt = $db->prepare($query);
+    $stmt->bindParam(':architect_id', $architect_id);
+    $stmt->execute();
+
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user) {
+        echo json_encode(['success' => false, 'message' => 'Architect profile not found']);
+        exit;
+    }
+
+    // Format the profile data
+    $profile = [
+        'id' => (int)$user['id'],
+        'first_name' => $user['first_name'],
+        'last_name' => $user['last_name'],
+        'full_name' => trim($user['first_name'] . ' ' . $user['last_name']),
+        'email' => $user['email'],
+        'phone' => $user['phone'] ?? '',
+        'city' => $user['city'] ?? '',
+        'specialization' => $user['specialization'] ?? '',
+        'experience_years' => $user['experience_years'] ? (int)$user['experience_years'] : 0,
+        'status' => $user['status'] ?? 'pending',
+        'avg_rating' => $user['avg_rating'] ? round((float)$user['avg_rating'], 1) : 0,
+        'review_count' => (int)$user['review_count'],
+        'created_at' => $user['created_at']
+    ];
+
+    echo json_encode([
+        'success' => true,
+        'profile' => $profile
+    ]);
+
 } catch (Exception $e) {
-  echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error fetching profile: ' . $e->getMessage()
+    ]);
 }
+?>
+

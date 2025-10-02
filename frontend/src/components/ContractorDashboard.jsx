@@ -110,14 +110,51 @@ const ContractorDashboard = () => {
     if (!forwarded) return null;
     const files = Array.isArray(forwarded.files) ? forwarded.files : [];
     const td = forwarded.technical_details || {};
+    
+    const formatValue = (value) => {
+      if (!value) return '-';
+      
+      // Handle string values that might contain JSON
+      if (typeof value === 'string') {
+        // Try to parse as JSON first
+        try {
+          const parsed = JSON.parse(value);
+          if (typeof parsed === 'object' && parsed !== null) {
+            return Object.entries(parsed)
+              .map(([k, v]) => `• ${k.replace(/_/g, ' ')}: ${String(v)}`)
+              .join('\n');
+          }
+        } catch {}
+        
+        // Handle newline characters and clean up formatting
+        return value
+          .replace(/\\n/g, '\n')
+          .replace(/\n\s*\n/g, '\n') // Remove extra newlines
+          .trim();
+      }
+      
+      // Handle object values directly
+      if (typeof value === 'object' && value !== null) {
+        return Object.entries(value)
+          .map(([k, v]) => `• ${k.replace(/_/g, ' ')}: ${String(v)}`)
+          .join('\n');
+      }
+      
+      return String(value);
+    };
+    
     const renderKV = (obj) => {
       if (!obj || typeof obj !== 'object') return null;
       return (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:8 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:12 }}>
           {Object.entries(obj).map(([k, v]) => (
-            <div key={k} style={{ padding:'8px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6 }}>
-              <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>{k.replaceAll('_',' ')}:</div>
-              <div style={{ whiteSpace:'pre-wrap' }}>{String(v || '-')}</div>
+            <div key={k} style={{ padding:'12px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'#374151', marginBottom:8, textTransform:'capitalize' }}>
+                {k.replaceAll('_',' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </div>
+              <div style={{ fontSize:14, lineHeight:1.5, color:'#6b7280', whiteSpace:'pre-wrap' }}>
+                {formatValue(v)}
+              </div>
             </div>
           ))}
         </div>
@@ -141,26 +178,80 @@ const ContractorDashboard = () => {
             <div className="description-content">{reqObj.contractor_message}</div>
           </div>
         )}
-        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:'10px'}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'12px'}}>
           {files.map((f, idx) => {
             const href = f.path || `/buildhub/backend/uploads/designs/${f.stored || f.original}`;
             const ext = (f.ext || '').toLowerCase();
             const isImage = ['jpg','jpeg','png','gif','webp','svg','heic'].includes(ext);
             return (
-              <div key={idx} className="file-card" style={{cursor:'default'}}>
+              <div key={idx} className="file-card-interactive" style={{
+                position:'relative', 
+                cursor:'pointer',
+                borderRadius:8,
+                overflow:'hidden',
+                boxShadow:'0 2px 8px rgba(0,0,0,0.1)',
+                transition:'transform 0.2s ease',
+                ':hover': { transform:'scale(1.02)' }
+              }}>
                 {isImage ? (
-                  <img src={href} alt={f.original} style={{width:'100%', height:120, objectFit:'cover', borderRadius:6}} />
+                  <div style={{position:'relative', width:'100%', height:140}}>
+                    <img 
+                      src={href} 
+                      alt={f.original} 
+                      style={{width:'100%', height:'100%', objectFit:'cover'}}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const overlay = e.currentTarget.nextSibling;
+                        overlay.style.display = overlay.style.display === 'flex' ? 'none' : 'flex';
+                      }}
+                    />
+                    <div className="image-overlay" style={{
+                      position:'absolute',
+                      top:0, left:0, right:0, bottom:0,
+                      background:'rgba(0,0,0,0.7)',
+                      display:'none',
+                      alignItems:'center',
+                      justifyContent:'center',
+                      gap:10,
+                      zIndex:10
+                    }}>
+                      <a 
+                        href={href} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="btn btn-light" 
+                        style={{padding:'8px 16px', fontSize:'14px'}}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        👁️ View
+                      </a>
+                      <a 
+                        href={href} 
+                        download 
+                        className="btn btn-light" 
+                        style={{padding:'8px 16px', fontSize:'14px'}}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        💾 Download
+                      </a>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="file-thumb" style={{height:120, display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f7', borderRadius:6}}>
-                    <span style={{fontSize:'2rem'}}>📄</span>
+                  <div style={{height:140, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'#f8fafc', border:'2px dashed #cbd5e1'}}>
+                    <span style={{fontSize:'2.5rem', marginBottom:8}}>📄</span>
+                    <div style={{display:'flex', gap:8}}>
+                      <a href={href} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">View</a>
+                      <a href={href} download className="btn btn-primary btn-sm">Download</a>
+                    </div>
                   </div>
                 )}
-                <div className="file-name" style={{fontSize:'0.85rem', marginTop:6, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={f.original || f.stored}>
-                  {f.original || f.stored}
-                </div>
-                <div style={{display:'flex', gap:8, marginTop:6}}>
-                  <a href={href} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{padding:'6px 10px'}}>Open</a>
-                  <a href={href} download className="btn" style={{padding:'6px 10px'}}>Download</a>
+                <div style={{padding:'8px', background:'#fff', borderTop:'1px solid #e5e7eb'}}>
+                  <div style={{fontSize:'13px', fontWeight:500, color:'#374151', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}} title={f.original || f.stored}>
+                    {f.original || f.stored}
+                  </div>
+                  <div style={{fontSize:'11px', color:'#9ca3af', marginTop:2}}>
+                    {ext.toUpperCase()} • Click to {isImage ? 'view' : 'download'}
+                  </div>
                 </div>
               </div>
             );

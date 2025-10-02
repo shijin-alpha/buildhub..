@@ -14,43 +14,75 @@ require_once '../../config/database.php';
 try {
     $database = new Database();
     $db = $database->getConnection();
-
+    
+    // Get homeowner ID from session
     session_start();
-    $user_id = $_SESSION['user_id'] ?? null; // homeowner id
-    if (!$user_id) {
-        echo json_encode(['success' => false, 'message' => 'User not authenticated']);
+    $homeowner_id = $_SESSION['user_id'] ?? null;
+    
+    if (!$homeowner_id) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'User not authenticated'
+        ]);
         exit;
     }
-
-    // Accept JSON or form-encoded
+    
+    // Get request data from POST body
     $input = json_decode(file_get_contents('php://input'), true);
-    if (!is_array($input)) { $input = $_POST ?? []; }
-
-    $request_id = isset($input['layout_request_id']) ? (int)$input['layout_request_id'] : 0;
-    if ($request_id <= 0) {
-        echo json_encode(['success' => false, 'message' => 'layout_request_id is required']);
+    $layout_request_id = $input['layout_request_id'] ?? null;
+    
+    if (!$layout_request_id) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Layout request ID is required'
+        ]);
         exit;
     }
-
-    // Verify ownership (use distinct placeholders to avoid HY093 with repeated named params)
-    $own = $db->prepare('SELECT id FROM layout_requests WHERE id = :id AND (user_id = :uid1 OR homeowner_id = :uid2)');
-    $own->bindValue(':id', $request_id, PDO::PARAM_INT);
-    $own->bindValue(':uid1', $user_id, PDO::PARAM_INT);
-    $own->bindValue(':uid2', $user_id, PDO::PARAM_INT);
-    $own->execute();
-    if (!$own->fetchColumn()) {
-        echo json_encode(['success' => false, 'message' => 'Request not found for this user']);
+    
+    // Verify that the request belongs to this homeowner
+    $checkQuery = "SELECT id FROM layout_requests WHERE id = :request_id AND user_id = :homeowner_id";
+    $checkStmt = $db->prepare($checkQuery);
+    $checkStmt->bindParam(':request_id', $layout_request_id);
+    $checkStmt->bindParam(':homeowner_id', $homeowner_id);
+    $checkStmt->execute();
+    
+    if ($checkStmt->rowCount() === 0) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Request not found or access denied'
+        ]);
         exit;
     }
-
-    // Soft delete: mark request status as 'deleted'
-    try { $db->exec("ALTER TABLE layout_requests MODIFY COLUMN status ENUM('pending','approved','rejected','active','accepted','declined','deleted') DEFAULT 'pending'"); } catch (Exception $__) {}
-
-    $upd = $db->prepare("UPDATE layout_requests SET status = 'deleted' WHERE id = :id LIMIT 1");
-    $upd->bindValue(':id', $request_id, PDO::PARAM_INT);
-    $upd->execute();
-
-    echo json_encode(['success' => true, 'message' => 'Request marked as deleted']);
+    
+    // Soft delete the request by setting status to 'deleted'
+    $deleteQuery = "UPDATE layout_requests SET status = 'deleted', updated_at = CURRENT_TIMESTAMP WHERE id = :request_id AND user_id = :homeowner_id";
+    $deleteStmt = $db->prepare($deleteQuery);
+    $deleteStmt->bindParam(':request_id', $layout_request_id);
+    $deleteStmt->bindParam(':homeowner_id', $homeowner_id);
+    
+    if ($deleteStmt->execute()) {
+        // Also delete any related assignments
+        $deleteAssignmentsQuery = "DELETE FROM layout_request_assignments WHERE layout_request_id = :request_id";
+        $deleteAssignmentsStmt = $db->prepare($deleteAssignmentsQuery);
+        $deleteAssignmentsStmt->bindParam(':request_id', $layout_request_id);
+        $deleteAssignmentsStmt->execute();
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Request deleted successfully'
+        ]);
+    } else {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Failed to delete request'
+        ]);
+    }
+    
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Error deleting request: ' . $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error deleting request: ' . $e->getMessage()
+    ]);
 }
+?>
+

@@ -40,10 +40,14 @@ try {
                 a.created_at as assigned_at,
                 a.message,
                 lr.id as layout_request_id,
+                lr.user_id as homeowner_id,
                 lr.plot_size, lr.budget_range, lr.requirements, lr.location, lr.timeline,
                 lr.preferred_style, lr.layout_type, lr.selected_layout_id, lr.layout_file,
-                lr.status as request_status, lr.created_at as request_created_at,
-                u.id as homeowner_id, CONCAT(u.first_name, ' ', u.last_name) as homeowner_name, u.email as homeowner_email,
+                lr.site_images, lr.reference_images, lr.room_images,
+                lr.orientation, lr.site_considerations, lr.material_preferences,
+                lr.budget_allocation, lr.floor_rooms, lr.num_floors,
+                lr.status as request_status, lr.created_at as request_created_at, lr.updated_at as request_updated_at,
+                u.id as user_id, CONCAT(u.first_name, ' ', u.last_name) as homeowner_name, u.email as homeowner_email,
                 ll.title as library_title, ll.image_url as library_image, ll.layout_type as library_layout_type, ll.design_file_url as library_file
               FROM layout_request_assignments a
               JOIN layout_requests lr ON lr.id = a.layout_request_id
@@ -74,8 +78,19 @@ try {
                 'layout_type' => $row['layout_type'] ?? 'custom',
                 'selected_layout_id' => $row['selected_layout_id'] ?? null,
                 'layout_file' => $row['layout_file'] ?? null,
+                // New comprehensive fields
+                'site_images' => $row['site_images'] ? json_decode($row['site_images'], true) : [],
+                'reference_images' => $row['reference_images'] ? json_decode($row['reference_images'], true) : [],
+                'room_images' => $row['room_images'] ? json_decode($row['room_images'], true) : [],
+                'orientation' => $row['orientation'] ?? null,
+                'site_considerations' => $row['site_considerations'] ?? null,
+                'material_preferences' => $row['material_preferences'] ? json_decode($row['material_preferences'], true) : [],
+                'budget_allocation' => $row['budget_allocation'] ?? null,
+                'floor_rooms' => $row['floor_rooms'] ? json_decode($row['floor_rooms'], true) : [],
+                'num_floors' => $row['num_floors'] ? (int)$row['num_floors'] : null,
                 'status' => $row['request_status'],
                 'created_at' => $row['request_created_at'],
+                'updated_at' => $row['request_updated_at'],
                 'library' => [
                     'title' => $row['library_title'] ?? null,
                     'image_url' => $row['library_image'] ?? null,
@@ -84,7 +99,7 @@ try {
                 ]
             ],
             'homeowner' => [
-                'id' => (int)$row['homeowner_id'],
+                'id' => (int)$row['user_id'],
                 'name' => $row['homeowner_name'],
                 'email' => $row['homeowner_email']
             ]

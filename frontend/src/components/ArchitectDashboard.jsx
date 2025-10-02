@@ -22,7 +22,7 @@ const ArchitectDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState(null);
-  const [layoutRequests, setLayoutRequests] = useState([]);
+  const [layoutRequests, setLayoutRequests] = useState([]); // Assigned requests
   const [myDesigns, setMyDesigns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -49,6 +49,8 @@ const ArchitectDashboard = () => {
   const [showLibraryForm, setShowLibraryForm] = useState(false);
   const [libraryFormStep, setLibraryFormStep] = useState(0);
   const [expandedAssignments, setExpandedAssignments] = useState({});
+  const [imageModal, setImageModal] = useState({ open: false, image: null, title: '' });
+  const [expandedImages, setExpandedImages] = useState({});
   const [libraryForm, setLibraryForm] = useState({
     title: '', layout_type: '', bedrooms: '', bathrooms: '', area: '', price_range: '', description: '', image: null, design_file: null, technical_details: {}
   });
@@ -91,10 +93,26 @@ const ArchitectDashboard = () => {
   const fetchLayoutRequests = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/buildhub/backend/api/architect/get_layout_requests.php');
+      const response = await fetch('/buildhub/backend/api/architect/get_assigned_requests.php');
       const result = await response.json();
       if (result.success) {
-        setLayoutRequests(result.requests || []);
+        // Convert assignments to requests format for compatibility
+        const assignments = result.assignments || [];
+        // Only show ACCEPTED assignments in "Your Assigned Projects" section
+        const acceptedAssignments = assignments.filter(assignment => 
+          assignment.assignment_status === 'accepted'
+        );
+        const requests = acceptedAssignments.map(assignment => ({
+          ...assignment.layout_request,
+          assignment_id: assignment.assignment_id,
+          assignment_status: assignment.assignment_status,
+          assigned_at: assignment.assigned_at,
+          assignment_message: assignment.message,
+          homeowner_name: assignment.homeowner.name,
+          homeowner_email: assignment.homeowner.email,
+          homeowner_id: assignment.homeowner.id
+        }));
+        setLayoutRequests(requests);
       }
     } catch (error) {
       console.error('Error fetching requests:', error);
@@ -102,6 +120,7 @@ const ArchitectDashboard = () => {
       setLoading(false);
     }
   };
+
 
   // Comprehensive refresh function for all dashboard data
   const refreshDashboard = async () => {
@@ -162,19 +181,37 @@ const ArchitectDashboard = () => {
     let mounted = true;
     const refreshCounts = async () => {
       try {
-        const r1 = await fetch('/buildhub/backend/api/architect/get_layout_requests.php');
+        const r1 = await fetch('/buildhub/backend/api/architect/get_assigned_requests.php');
         const j1 = await r1.json().catch(() => ({}));
-        if (mounted && j1?.success) setLayoutRequests(Array.isArray(j1.requests) ? j1.requests : []);
+        if (mounted && j1?.success) {
+          const assignments = j1.assignments || [];
+          const requests = assignments.map(assignment => ({
+            ...assignment.layout_request,
+            assignment_id: assignment.assignment_id,
+            assignment_status: assignment.assignment_status,
+            assigned_at: assignment.assigned_at,
+            assignment_message: assignment.message,
+            homeowner_name: assignment.homeowner.name,
+            homeowner_email: assignment.homeowner.email,
+            homeowner_id: assignment.homeowner.id
+          }));
+          setLayoutRequests(requests);
+        }
       } catch {}
       try {
-        const r2 = await fetch('/buildhub/backend/api/architect/get_my_designs.php');
+        const r2 = await fetch('/buildhub/backend/api/architect/get_layout_requests.php');
         const j2 = await r2.json().catch(() => ({}));
-        if (mounted && j2?.success) setMyDesigns(Array.isArray(j2.designs) ? j2.designs : []);
+        if (mounted && j2?.success) setAvailableRequests(Array.isArray(j2.requests) ? j2.requests : []);
       } catch {}
       try {
-        const r3 = await fetch('/buildhub/backend/api/architect/get_my_layouts.php');
+        const r3 = await fetch('/buildhub/backend/api/architect/get_my_designs.php');
         const j3 = await r3.json().catch(() => ({}));
-        if (mounted && j3?.success) setLibraryLayouts(Array.isArray(j3.layouts) ? j3.layouts : []);
+        if (mounted && j3?.success) setMyDesigns(Array.isArray(j3.designs) ? j3.designs : []);
+      } catch {}
+      try {
+        const r4 = await fetch('/buildhub/backend/api/architect/get_my_layouts.php');
+        const j4 = await r4.json().catch(() => ({}));
+        if (mounted && j4?.success) setLibraryLayouts(Array.isArray(j4.layouts) ? j4.layouts : []);
       } catch {}
     };
     refreshCounts();
@@ -371,6 +408,37 @@ const ArchitectDashboard = () => {
       }
     } catch (e) {
       setError('Error changing status');
+    }
+  };
+
+  // Handle assignment response (accept/decline)
+  const handleAssignmentResponse = async (assignmentId, action) => {
+    try {
+      setLoading(true);
+      const response = await fetch('/buildhub/backend/api/architect/respond_assignment.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          assignment_id: assignmentId,
+          action: action
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        toast.success(`Assignment ${action}ed successfully`);
+        // Refresh the requests to show updated status
+        fetchLayoutRequests();
+      } else {
+        toast.error(result.message || `Failed to ${action} assignment`);
+      }
+    } catch (error) {
+      console.error('Error responding to assignment:', error);
+      toast.error('Network error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -680,8 +748,8 @@ const ArchitectDashboard = () => {
       <div className="main-header">
         <div className="header-content">
           <div>
-            <h1>Layout Requests</h1>
-            <p>Client requests sent to you and open requests</p>
+            <h1>Project Assignments</h1>
+            <p>Homeowner requests assigned specifically to you</p>
           </div>
           <button 
             className="btn btn-primary"
@@ -696,32 +764,9 @@ const ArchitectDashboard = () => {
       <div className="section-card">
       <div className="section-header">
           <div>
-        <h2>Requests Assigned To Me</h2>
-        <p>Homeowners selected you for these requests</p>
+        <h2>Your Assigned Projects</h2>
+        <p>Accept or decline project assignments from homeowners</p>
       </div>
-          <button 
-            className="btn btn-secondary" 
-            onClick={refreshDashboard}
-            disabled={loading}
-            style={{ marginLeft: 'auto' }}
-          >
-            {loading ? 'Refreshing...' : '🔄 Refresh'}
-          </button>
-        </div>
-        <AssignedRequests 
-          onCreateFromAssigned={(requestId) => { setUploadData({ ...uploadData, request_id: requestId }); setShowUploadForm(true); }}
-          expandedAssignments={expandedAssignments}
-          setExpandedAssignments={setExpandedAssignments}
-        />
-      </div>
-
-      {/* Open/available requests */}
-      <div className="section-card">
-        <div className="section-header">
-          <div>
-          <h2>Available Requests</h2>
-          <p>Create architectural designs for these client requests</p>
-          </div>
           <button 
             className="btn btn-secondary" 
             onClick={refreshDashboard}
@@ -733,29 +778,884 @@ const ArchitectDashboard = () => {
         </div>
         <div className="section-content">
           {loading ? (
-            <div className="loading">Loading requests...</div>
+            <div className="loading">Loading assignments...</div>
           ) : layoutRequests.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">📭</div>
-              <h3>No Requests Available</h3>
-              <p>Check back later for new client requests!</p>
+              <h3>No Accepted Projects</h3>
+              <p>You haven't accepted any project assignments yet. Check available requests to accept new projects.</p>
             </div>
           ) : (
             <div className="item-list">
               {layoutRequests.map(request => (
-                <RequestItem 
-                  key={request.id} 
-                  request={request} 
-                  onCreateDesign={() => {
-                    setUploadData({...uploadData, request_id: request.id});
-                    setShowUploadForm(true);
-                  }}
-                />
+                <div key={request.id} className="list-item">
+                  <div className="item-image">
+                    {request.site_images && Array.isArray(request.site_images) && request.site_images.length > 0 ? (
+                      <img 
+                        src={typeof request.site_images[0] === 'string' ? request.site_images[0] : request.site_images[0]?.url} 
+                        alt="Site" 
+                        style={{width:48, height:48, objectFit:'cover', borderRadius:6}} 
+                      />
+                    ) : request.reference_images && Array.isArray(request.reference_images) && request.reference_images.length > 0 ? (
+                      <img 
+                        src={typeof request.reference_images[0] === 'string' ? request.reference_images[0] : request.reference_images[0]?.url} 
+                        alt="Reference" 
+                        style={{width:48, height:48, objectFit:'cover', borderRadius:6}} 
+                      />
+                    ) : (
+                      '🏠'
+                    )}
+                  </div>
+                  <div className="item-content">
+                    <h4 className="item-title">{request.homeowner_name}'s Project</h4>
+                    <p className="item-subtitle">{request.plot_size} • Budget: {request.budget_range}</p>
+                    <div className="item-details">
+                      <p><strong>Location:</strong> {request.location || 'Not specified'}</p>
+                      <p><strong>Timeline:</strong> {request.timeline || 'Not specified'}</p>
+                      <p><strong>Floors:</strong> {request.num_floors || 'Not specified'}</p>
+                      <p><strong>Style:</strong> {request.preferred_style || 'Not specified'}</p>
+                      {request.assignment_message && (
+                        <p><strong>Message:</strong> {request.assignment_message}</p>
+                      )}
+                      {request.requirements_parsed && (
+                        <div className="requirements-summary">
+                          <p><strong>Requirements:</strong></p>
+                          <div style={{fontSize:'0.9rem', color:'#666', marginLeft:'10px'}}>
+                            {request.requirements_parsed.family_needs && (
+                              <p>• Family Needs: {Array.isArray(request.requirements_parsed.family_needs) 
+                                ? request.requirements_parsed.family_needs.join(', ') 
+                                : request.requirements_parsed.family_needs}</p>
+                            )}
+                            {request.requirements_parsed.rooms && (
+                              <p>• Rooms: {Array.isArray(request.requirements_parsed.rooms) 
+                                ? request.requirements_parsed.rooms.join(', ') 
+                                : request.requirements_parsed.rooms}</p>
+                            )}
+                            {request.requirements_parsed.plot_shape && (
+                              <p>• Plot Shape: {request.requirements_parsed.plot_shape}</p>
+                            )}
+                            {request.requirements_parsed.topography && (
+                              <p>• Topography: {request.requirements_parsed.topography}</p>
+                            )}
+                            {request.requirements_parsed.notes && (
+                              <p>• Notes: {request.requirements_parsed.notes}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <p className="item-meta">
+                      Assigned: {new Date(request.assigned_at).toLocaleDateString()} • 
+                      Contact: {request.homeowner_email}
+                    </p>
+                  </div>
+                  <div className="item-actions">
+                    <span className={`status-badge accepted`}>
+                      Accepted Project
+                    </span>
+                      <div className="action-buttons">
+                      <button 
+                        className="btn btn-primary"
+                        onClick={() => {
+                          setUploadData({...uploadData, request_id: request.id});
+                          setShowUploadForm(true);
+                        }}
+                      >
+                        Upload Design
+                      </button>
+                      <button 
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleAssignmentResponse(request.assignment_id, 'reject')}
+                        disabled={loading}
+                        title="Cancel this assignment"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setExpandedAssignments(prev => ({
+                        ...prev, 
+                        [request.id]: !prev[request.id]
+                      }))}
+                    >
+                      {expandedAssignments[request.id] ? 'Hide Details' : 'View Images & Details'}
+                    </button>
+                  </div>
+                  {expandedAssignments[request.id] && (
+                    <div className="expanded-details" style={{
+                      marginTop: '24px', 
+                      padding: '32px', 
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)', 
+                      borderRadius: '16px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                    }}>
+                      
+                      {/* Project Overview Section */}
+                      <div className="project-overview" style={{marginBottom: '40px'}}>
+                        <div style={{
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          marginBottom: '24px',
+                          padding: '0 0 16px 0',
+                          borderBottom: '2px solid #e2e8f0'
+                        }}>
+                          <span style={{fontSize: '24px', marginRight: '12px'}}>📋</span>
+                          <h4 style={{margin: 0, color: '#1f2937', fontSize: '22px', fontWeight: '700'}}>Project Overview</h4>
+                        </div>
+                        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px'}}>
+                          <div style={{
+                            background: 'white', 
+                            padding: '24px', 
+                            borderRadius: '12px', 
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+                            transition: 'all 0.2s ease-in-out'
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              marginBottom: '16px'
+                            }}>
+                              <span style={{fontSize: '18px', marginRight: '8px'}}>🏠</span>
+                              <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Basic Details</h5>
+                            </div>
+                            <div style={{fontSize: '14px', lineHeight: '1.8', color: '#4b5563'}}>
+                              <div style={{display: 'grid', gap: '12px'}}>
+                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
+                                  <span style={{fontWeight: '500', color: '#374151'}}>Plot Size:</span>
+                                  <span style={{color: '#6b7280'}}>{request.plot_size || 'Not specified'}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
+                                  <span style={{fontWeight: '500', color: '#374151'}}>Budget Range:</span>
+                                  <span style={{color: '#6b7280'}}>{request.budget_range || 'Not specified'}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
+                                  <span style={{fontWeight: '500', color: '#374151'}}>Number of Floors:</span>
+                                  <span style={{color: '#6b7280'}}>{request.num_floors || 'Not specified'}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
+                                  <span style={{fontWeight: '500', color: '#374151'}}>Preferred Style:</span>
+                                  <span style={{color: '#6b7280'}}>{request.preferred_style || 'Not specified'}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
+                                  <span style={{fontWeight: '500', color: '#374151'}}>Timeline:</span>
+                                  <span style={{color: '#6b7280'}}>{request.timeline || 'Not specified'}</span>
+                                </div>
+                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0'}}>
+                                  <span style={{fontWeight: '500', color: '#374151'}}>Location:</span>
+                                  <span style={{color: '#6b7280'}}>{request.location || 'Not specified'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {request.orientation && (
+                            <div style={{
+                              background: 'white', 
+                              padding: '24px', 
+                              borderRadius: '12px', 
+                              border: '1px solid #e5e7eb',
+                              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+                              transition: 'all 0.2s ease-in-out'
+                            }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                marginBottom: '16px'
+                              }}>
+                                <span style={{fontSize: '18px', marginRight: '8px'}}>🧭</span>
+                                <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Site Orientation</h5>
+                              </div>
+                              <p style={{fontSize: '14px', margin: 0, color: '#6b7280', lineHeight: '1.6'}}>{request.orientation}</p>
+                            </div>
+                          )}
+                          
+                          {request.budget_allocation && (
+                            <div style={{
+                              background: 'white', 
+                              padding: '24px', 
+                              borderRadius: '12px', 
+                              border: '1px solid #e5e7eb',
+                              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+                              transition: 'all 0.2s ease-in-out'
+                            }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                marginBottom: '16px'
+                              }}>
+                                <span style={{fontSize: '18px', marginRight: '8px'}}>💰</span>
+                                <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Budget Allocation</h5>
+                              </div>
+                              <p style={{fontSize: '14px', margin: 0, color: '#6b7280', lineHeight: '1.6'}}>{request.budget_allocation}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Material Preferences */}
+                      {request.material_preferences && request.material_preferences.length > 0 && (
+                        <div className="material-preferences" style={{marginBottom: '40px'}}>
+                          <div style={{
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            marginBottom: '24px',
+                            padding: '0 0 16px 0',
+                            borderBottom: '2px solid #e2e8f0'
+                          }}>
+                            <span style={{fontSize: '24px', marginRight: '12px'}}>🏗️</span>
+                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '22px', fontWeight: '700'}}>Material Preferences</h4>
+                          </div>
+                          <div style={{
+                            background: 'white', 
+                            padding: '24px', 
+                            borderRadius: '12px', 
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'
+                          }}>
+                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px'}}>
+                              {request.material_preferences.map((material, idx) => (
+                                <span key={idx} style={{
+                                  background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', 
+                                  color: 'white', 
+                                  padding: '8px 16px', 
+                                  borderRadius: '20px', 
+                                  fontSize: '14px',
+                                  fontWeight: '500',
+                                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
+                                  transition: 'all 0.2s ease-in-out',
+                                  cursor: 'default'
+                                }}>
+                                  {material}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Floor Plans & Room Details */}
+                      {request.floor_rooms && request.floor_rooms.length > 0 && (
+                        <div className="floor-plans" style={{marginBottom: '24px'}}>
+                          <h4 style={{margin: '0 0 12px 0', color: '#374151', fontSize: '18px', fontWeight: '600'}}>🏠 Floor Plans & Room Details</h4>
+                          {request.floor_rooms.map((floor, floorIdx) => (
+                            <div key={floorIdx} style={{background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '12px'}}>
+                              <h5 style={{margin: '0 0 12px 0', color: '#374151', fontWeight: '600'}}>Floor {floor.floor}</h5>
+                              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px'}}>
+                                {Object.entries(floor.rooms || {}).map(([roomType, rooms]) => (
+                                  <div key={roomType}>
+                                    <strong style={{textTransform: 'capitalize', color: '#374151'}}>{roomType.replace('_', ' ')}:</strong>
+                                    <ul style={{margin: '4px 0', paddingLeft: '16px', fontSize: '14px'}}>
+                                      {rooms.map((room, roomIdx) => (
+                                        <li key={roomIdx}>{room.name} {room.size && `(${room.size})`}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Site Considerations */}
+                      {request.site_considerations && (
+                        <div className="site-considerations" style={{marginBottom: '24px'}}>
+                          <h4 style={{margin: '0 0 12px 0', color: '#374151', fontSize: '18px', fontWeight: '600'}}>🌍 Site Considerations</h4>
+                          <div style={{background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb'}}>
+                            <p style={{fontSize: '14px', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap'}}>{request.site_considerations}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Images Gallery */}
+                      <div className="images-section" style={{marginBottom: '40px'}}>
+                        <div style={{
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          marginBottom: '24px',
+                          padding: '0 0 16px 0',
+                          borderBottom: '2px solid #e2e8f0'
+                        }}>
+                          <span style={{fontSize: '24px', marginRight: '12px'}}>📸</span>
+                          <h4 style={{margin: 0, color: '#1f2937', fontSize: '22px', fontWeight: '700'}}>Project Images</h4>
+                        </div>
+                        
+                          {/* Site Images */}
+                        {request.site_images && request.site_images.length > 0 && (
+                          <div style={{marginBottom: '32px'}}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              marginBottom: '16px'
+                            }}>
+                              <span style={{fontSize: '18px', marginRight: '8px'}}>🏞️</span>
+                              <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '18px'}}>Site Images</h5>
+                              <span style={{
+                                marginLeft: '12px',
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '12px',
+                                fontWeight: '500'
+                              }}>
+                                {request.site_images.length} image{request.site_images.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px'}}>
+                              {request.site_images.map((img, idx) => (
+                                <div key={`site-${idx}`} 
+                                     className="image-card" 
+                                     style={{
+                                       position: 'relative', 
+                                       borderRadius: '12px', 
+                                       overflow: 'hidden',
+                                       boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                                       transition: 'all 0.3s ease',
+                                       cursor: 'pointer',
+                                       border: '2px solid transparent'
+                                     }}
+                                     onMouseEnter={(e) => {
+                                       const card = e.currentTarget;
+                                       card.style.transform = 'scale(1.02)';
+                                       card.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.15)';
+                                       card.style.borderColor = '#3b82f6';
+                                       const overlay = card.querySelector('.hover-overlay');
+                                       if (overlay) overlay.style.display = 'flex';
+                                     }}
+                                     onMouseLeave={(e) => {
+                                       const card = e.currentTarget;
+                                       card.style.transform = 'scale(1)';
+                                       card.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                                       card.style.borderColor = 'transparent';
+                                       const overlay = card.querySelector('.hover-overlay');
+                                       if (overlay) overlay.style.display = 'none';
+                                     }}
+                                >
+                                  <img 
+                                    src={typeof img === 'string' ? img : img.url} 
+                                alt={`Site ${idx + 1}`} 
+                                    style={{width: '100%', height: '180px', objectFit: 'cover'}}
+                                onError={(e) => {e.target.style.display = 'none'}}
+                              />
+                                  <div style={{
+                                    position: 'absolute', 
+                                    top: '12px', 
+                                    left: '12px', 
+                                    background: 'linear-gradient(135deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 100%)', 
+                                    color: 'white', 
+                                    padding: '6px 12px', 
+                                    borderRadius: '8px', 
+                                    fontSize: '12px', 
+                                    fontWeight: '600',
+                                    backdropFilter: 'blur(4px)'
+                                  }}>
+                                    🏞️ Site {idx + 1}
+                                  </div>
+                                  {/* Action buttons overlay - shown on hover */}
+                                  <div className="hover-overlay" style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    background: 'rgba(0,0,0,0.5)',
+                                    display: 'none',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '12px',
+                                    transition: 'opacity 0.3s ease'
+                                  }}>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.open(typeof img === 'string' ? img : img.url, '_blank');
+                                      }}
+                                      style={{
+                                        padding: '8px 16px',
+                                        background: 'rgba(255,255,255,0.9)',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '13px',
+                                        fontWeight: '600',
+                                        color: '#374151',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        backdropFilter: 'blur(4px)',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                                      }}
+                                    >
+                                      👁️ View
+                                    </button>
+                                    <a
+                                      href={typeof img === 'string' ? img : img.url}
+                                      download={`site-image-${idx + 1}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{
+                                        padding: '8px 16px',
+                                        background: 'rgba(59, 130, 246, 0.9)',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '13px',
+                                        fontWeight: '600',
+                                        color: 'white',
+                                        textDecoration: 'none',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        backdropFilter: 'blur(4px)',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                                      }}
+                                    >
+                                      💾 Download
+                                    </a>
+                                  </div>
+                            </div>
+                          ))}
+                            </div>
+                          </div>
+                        )}
+
+                          {/* Reference Images */}
+                        {request.reference_images && request.reference_images.length > 0 && (
+                          <div style={{marginBottom: '20px'}}>
+                            <h5 style={{margin: '0 0 12px 0', color: '#374151', fontWeight: '600'}}>Reference Images</h5>
+                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px'}}>
+                              {request.reference_images.map((img, idx) => (
+                                <div key={`ref-${idx}`} className="image-card" style={{position: 'relative', borderRadius: '8px', overflow: 'hidden'}}>
+                                  <img 
+                                    src={typeof img === 'string' ? img : img.url} 
+                                alt={`Reference ${idx + 1}`} 
+                                    style={{width: '100%', height: '150px', objectFit: 'cover'}}
+                                onError={(e) => {e.target.style.display = 'none'}}
+                              />
+                                  <div style={{position: 'absolute', top: '8px', left: '8px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '500'}}>
+                                    Reference {idx + 1}
+                              </div>
+                            </div>
+                          ))}
+                            </div>
+                          </div>
+                        )}
+
+                          {/* Room Images */}
+                        {request.room_images && Object.keys(request.room_images).length > 0 && (
+                          <div>
+                            <h5 style={{margin: '0 0 12px 0', color: '#374151', fontWeight: '600'}}>Room-Specific Images</h5>
+                            {Object.entries(request.room_images).map(([floorKey, floorRooms]) => (
+                              <div key={floorKey} style={{marginBottom: '16px'}}>
+                                <h6 style={{margin: '0 0 8px 0', color: '#6b7280', fontWeight: '500', textTransform: 'capitalize'}}>
+                                  {floorKey.replace('floor', 'Floor ')}
+                                </h6>
+                                {Object.entries(floorRooms || {}).map(([roomType, images]) => (
+                                  images && images.length > 0 && (
+                                    <div key={roomType} style={{marginBottom: '12px'}}>
+                                      <div style={{fontSize: '13px', fontWeight: '500', color: '#6b7280', marginBottom: '6px', textTransform: 'capitalize'}}>
+                                        {roomType.replace('_', ' ')}
+                                      </div>
+                                      <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '8px'}}>
+                                        {images.map((img, idx) => (
+                                          <div key={`${roomType}-${idx}`} 
+                                               className="image-card" 
+                                               style={{
+                                                 position: 'relative', 
+                                                 borderRadius: '6px', 
+                                                 overflow: 'hidden',
+                                                 cursor: 'pointer',
+                                                 transition: 'transform 0.2s ease'
+                                               }}
+                                               onMouseEnter={(e) => {
+                                                 const card = e.currentTarget;
+                                                 card.style.transform = 'scale(1.05)';
+                                                 const overlay = card.querySelector('.room-hover-overlay');
+                                                 if (overlay) overlay.style.display = 'flex';
+                                               }}
+                                               onMouseLeave={(e) => {
+                                                 const card = e.currentTarget;
+                                                 card.style.transform = 'scale(1)';
+                                                 const overlay = card.querySelector('.room-hover-overlay');
+                                                 if (overlay) overlay.style.display = 'none';
+                                               }}
+                                          >
+                                            <img 
+                                              src={typeof img === 'string' ? img : img.url} 
+                                              alt={`${roomType} ${idx + 1}`} 
+                                              style={{width: '100%', height: '100px', objectFit: 'cover'}}
+                                              onError={(e) => {e.target.style.display = 'none'}}
+                                            />
+                                            <div style={{position: 'absolute', top: '4px', left: '4px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '2px 6px', borderRadius: '3px', fontSize: '10px'}}>
+                                              {roomType}
+                                            </div>
+                                            
+                                            {/* Room image action buttons overlay */}
+                                            <div className="room-hover-overlay" style={{
+                                              position: 'absolute',
+                                              top: 0,
+                                              left: 0,
+                                              right: 0,
+                                              bottom: 0,
+                                              background: 'rgba(0,0,0,0.5)',
+                                              display: 'none',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              gap: '8px',
+                                              transition: 'opacity 0.3s ease'
+                                            }}>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  window.open(typeof img === 'string' ? img : img.url, '_blank');
+                                                }}
+                                                style={{
+                                                  padding: '6px 12px',
+                                                  background: 'rgba(255,255,255,0.9)',
+                                                  border: 'none',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '600',
+                                                  color: '#374151',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px',
+                                                  backdropFilter: 'blur(4px)'
+                                                }}
+                                              >
+                                                👁️ View
+                                              </button>
+                                              <a
+                                                href={typeof img === 'string' ? img : img.url}
+                                                download={`${roomType}-image-${idx + 1}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{
+                                                  padding: '6px 12px',
+                                                  background: 'rgba(59, 130, 246, 0.9)',
+                                                  border: 'none',
+                                                  borderRadius: '4px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '600',
+                                                  color: 'white',
+                                                  textDecoration: 'none',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '4px',
+                                                  backdropFilter: 'blur(4px)'
+                                                }}
+                                              >
+                                                💾 Download
+                                              </a>
+                                            </div>
+                                          </div>
+                                        ))}
+                        </div>
+                                    </div>
+                                  )
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Detailed Requirements */}
+                      {request.requirements_parsed && (
+                        <div className="detailed-requirements">
+                          <h4 style={{margin: '0 0 12px 0', color: '#374151', fontSize: '18px', fontWeight: '600'}}>📝 Detailed Requirements</h4>
+                          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px'}}>
+                            {Object.entries(request.requirements_parsed).map(([key, value]) => {
+                              if (!value || key === 'notes') return null;
+                              
+                              // Format complex values
+                              const formatValue = (val) => {
+                                if (!val) return '-';
+                                
+                                // Try to parse string values that might be JSON
+                                let parsedVal = val;
+                                if (typeof val === 'string') {
+                                  try {
+                                    parsedVal = JSON.parse(val);
+                                  } catch (e) {
+                                    // If not JSON, keep as string
+                                    parsedVal = val;
+                                  }
+                                }
+                                
+                                // Handle arrays
+                                if (Array.isArray(parsedVal)) {
+                                  return parsedVal.join(', ');
+                                }
+                                
+                                // Handle objects (like floor_rooms, site_images, etc.)
+                                if (typeof parsedVal === 'object' && parsedVal !== null) {
+                                  // Special handling for floor_rooms - return structured JSX
+                                  if (key === 'floor_rooms') {
+                                    return (
+                                      <div style={{ marginTop: '4px' }}>
+                                        {Object.entries(parsedVal).map(([floor, rooms]) => (
+                                          <div key={floor} style={{ 
+                                            marginBottom: '4px', 
+                                            padding: '6px', 
+                                            background: '#f8fafc', 
+                                            borderRadius: '4px',
+                                            border: '1px solid #e5e7eb'
+                                          }}>
+                                            <div style={{ 
+                                              fontSize: '11px', 
+                                              fontWeight: '600', 
+                                              color: '#374151', 
+                                              marginBottom: '3px',
+                                              textTransform: 'capitalize'
+                                            }}>
+                                              {floor.replace(/_/g, ' ')}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.2' }}>
+                                              {Object.entries(rooms).map(([room, count]) => (
+                                                <span key={room} style={{ 
+                                                  display: 'inline-block',
+                                                  margin: '1px 3px 1px 0',
+                                                  padding: '1px 4px',
+                                                  background: '#dbeafe',
+                                                  color: '#1e40af',
+                                                  borderRadius: '8px',
+                                                  fontSize: '10px',
+                                                  fontWeight: '500'
+                                                }}>
+                                                  {room.replace(/_/g, ' ')}: {count}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  // Special handling for site_images, room_images - return JSX with buttons
+                                  if (key.includes('images')) {
+                                    const getImageList = () => {
+                                      if (Array.isArray(parsedVal)) return parsedVal;
+                                      
+                                      // For room_images object structure
+                                      const allImages = [];
+                                      Object.entries(parsedVal).forEach(([floor, floorData]) => {
+                                        if (Array.isArray(floorData)) {
+                                          allImages.push(...floorData);
+                                        } else if (typeof floorData === 'object') {
+                                          Object.entries(floorData).forEach(([room, roomImages]) => {
+                                            if (Array.isArray(roomImages)) {
+                                              allImages.push(...roomImages.map(img => ({ ...img, floor, room })));
+                                            }
+                                          });
+                                        }
+                                      });
+                                      return allImages;
+                                    };
+                                    
+                                    const imageList = getImageList();
+                                    const totalImages = imageList.length;
+                                    
+                                    if (totalImages === 0) return 'No images';
+                                    
+                                    return (
+                                      <div style={{ marginTop: '4px' }}>
+                                        <div style={{ 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          justifyContent: 'space-between',
+                                          marginBottom: '4px'
+                                        }}>
+                                          <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                                            {totalImages} image{totalImages !== 1 ? 's' : ''}
+                                          </span>
+                                          <button
+                                            onClick={() => {
+                                              // Open image gallery modal
+                                              const gallery = imageList.map((img, idx) => ({
+                                                id: idx,
+                                                url: img.path || `/buildhub/backend/uploads/${key.includes('site') ? 'site_images' : 'room_images'}/${img.filename || img}`,
+                                                title: img.floor && img.room ? `${img.floor} - ${img.room}` : `Image ${idx + 1}`,
+                                                type: key.replace('_', ' ')
+                                              }));
+                                              // You can implement a modal here or use existing image viewer
+                                              console.log('Open gallery:', gallery);
+                                            }}
+                                            style={{
+                                              padding: '2px 6px',
+                                              fontSize: '10px',
+                                              background: '#3b82f6',
+                                              color: 'white',
+                                              border: 'none',
+                                              borderRadius: '3px',
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            📁 View All
+                                          </button>
+                                        </div>
+                                        <div style={{ 
+                                          display: 'grid', 
+                                          gridTemplateColumns: 'repeat(auto-fill, minmax(40px, 1fr))', 
+                                          gap: '2px',
+                                          maxHeight: '80px',
+                                          overflowY: 'auto'
+                                        }}>
+                                          {imageList.slice(0, 6).map((img, idx) => {
+                                            const imgUrl = img.path || `/buildhub/backend/uploads/${key.includes('site') ? 'site_images' : 'room_images'}/${img.filename || img}`;
+                                            return (
+                                              <div key={idx} style={{ 
+                                                position: 'relative',
+                                                cursor: 'pointer',
+                                                borderRadius: '3px',
+                                                overflow: 'hidden',
+                                                aspectRatio: '1',
+                                                height: '35px'
+                                              }}>
+                                                <img 
+                                                  src={imgUrl}
+                                                  alt={`${key} ${idx + 1}`}
+                                                  style={{ 
+                                                    width: '100%', 
+                                                    height: '100%', 
+                                                    objectFit: 'cover',
+                                                    transition: 'transform 0.2s'
+                                                  }}
+                                                  onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
+                                                  onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+                                                  onClick={() => window.open(imgUrl, '_blank')}
+                                                />
+                                                <div style={{
+                                                  position: 'absolute',
+                                                  bottom: '1px',
+                                                  right: '1px',
+                                                  background: 'rgba(0,0,0,0.7)',
+                                                  color: 'white',
+                                                  borderRadius: '2px',
+                                                  padding: '0px 2px',
+                                                  fontSize: '7px',
+                                                  lineHeight: '1.2'
+                                                }}>
+                                                  {idx + 1}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                          {totalImages > 6 && (
+                                            <div style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              background: '#f3f4f6',
+                                              color: '#6b7280',
+                                              fontSize: '8px',
+                                              fontWeight: '600',
+                                              borderRadius: '3px',
+                                              height: '35px'
+                                            }}>
+                                              +{totalImages - 6}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  // Generic object handling - show key-value pairs
+                                  return Object.entries(parsedVal)
+                                    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                                    .join(', ');
+                                }
+                                
+                                return String(parsedVal);
+                              };
+                              
+                              const formattedValue = formatValue(value);
+                              
+                              return (
+                                <div key={key} style={{
+                                  background: 'white', 
+                                  padding: '10px', 
+                                  borderRadius: '6px', 
+                                  border: '1px solid #e5e7eb',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                  transition: 'box-shadow 0.2s ease'
+                                }}>
+                                  <div style={{
+                                    fontWeight: '600', 
+                                    marginBottom: '4px', 
+                                    textTransform: 'capitalize', 
+                                    color: '#374151',
+                                    fontSize: '13px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    {key.includes('image') && '📷'}
+                                    {key === 'floor_rooms' && '🏠'}
+                                    {key.includes('material') && '🧱'}
+                                    {key.includes('budget') && '💰'}
+                                    {key.replace(/_/g, ' ')}
+                                  </div>
+                                  <div style={{fontSize: '0.85rem', color: '#6b7280', lineHeight: '1.3'}}>
+                                    {typeof formattedValue === 'string' ? formattedValue : formattedValue}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {request.requirements_parsed.notes && (
+                            <div style={{marginTop: '12px', background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb'}}>
+                              <div style={{fontWeight: '600', marginBottom: '4px', color: '#374151'}}>Additional Notes</div>
+                              <div style={{fontSize: '0.9rem', color: '#6b7280', whiteSpace: 'pre-wrap'}}>
+                                {request.requirements_parsed.notes}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Pending Assignments */}
+      <div className="section-card">
+        <div className="section-header">
+          <div>
+          <h2>Pending Assignments</h2>
+          <p>Homeowner requests waiting for your response</p>
+          </div>
+          <button 
+            className="btn btn-secondary" 
+            onClick={refreshDashboard}
+            disabled={loading}
+            style={{ marginLeft: 'auto' }}
+          >
+            {loading ? 'Refreshing...' : '🔄 Refresh'}
+          </button>
+        </div>
+        <div className="section-content">
+          <AssignedRequests 
+            onCreateFromAssigned={(requestId) => {
+              setUploadData({...uploadData, request_id: requestId});
+                    setShowUploadForm(true);
+                  }}
+            expandedAssignments={expandedAssignments}
+            setExpandedAssignments={setExpandedAssignments}
+                />
+            </div>
+        </div>
+
     </div>
   );
 
@@ -1360,6 +2260,9 @@ const ArchitectDashboard = () => {
     </div>
   );
 
+  // Render functions for different tabs
+
+
   return (
     <div className="dashboard-container">
       <style>{`
@@ -1394,6 +2297,30 @@ const ArchitectDashboard = () => {
         }
         .form-content::-webkit-scrollbar-thumb:hover {
           background: #475569;
+        }
+
+        /* Image Modal Animations */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        
+        @keyframes slideIn {
+          from { 
+            opacity: 0; 
+            transform: translateY(-20px) scale(0.95); 
+          }
+          to { 
+            opacity: 1; 
+            transform: translateY(0) scale(1); 
+          }
+        }
+
+        /* Enhanced hover effects */
+        .image-card:hover {
+          transform: scale(1.02) !important;
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+          border-color: #3b82f6 !important;
         }
         
         /* Force scrollbar to always show */
@@ -1952,19 +2879,102 @@ const AssignedRequests = ({ onCreateFromAssigned, expandedAssignments, setExpand
 // Request Item Component
 const RequestItem = ({ request, onCreateDesign }) => {
   const [showDetails, setShowDetails] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imageGallery, setImageGallery] = useState([]);
   
   // Parse requirements if it's a JSON string
   const requirements = typeof request.requirements === 'string' 
     ? JSON.parse(request.requirements || '{}') 
     : request.requirements || {};
   
-  // Parse other JSON fields
-  const siteImages = request.site_images ? JSON.parse(request.site_images) : [];
-  const referenceImages = request.reference_images ? JSON.parse(request.reference_images) : [];
-  const roomImages = request.room_images ? JSON.parse(request.room_images) : {};
-  const floorRooms = request.floor_rooms ? JSON.parse(request.floor_rooms) : {};
+  // Handle both JSON strings and arrays (for backward compatibility)
+  const siteImages = request.site_images ? (
+    Array.isArray(request.site_images) 
+      ? request.site_images 
+      : (() => {
+    try { return JSON.parse(request.site_images); } 
+    catch (e) { return []; }
+        })()
+  ) : [];
+  
+  const referenceImages = request.reference_images ? (
+    Array.isArray(request.reference_images) 
+      ? request.reference_images 
+      : (() => {
+    try { return JSON.parse(request.reference_images); } 
+    catch (e) { return []; }
+        })()
+  ) : [];
+  
+  const roomImages = request.room_images ? (
+    typeof request.room_images === 'object' && !Array.isArray(request.room_images)
+      ? request.room_images 
+      : (() => {
+    try { return JSON.parse(request.room_images); } 
+    catch (e) { return {}; }
+        })()
+  ) : {};
+  
+  const floorRooms = request.floor_rooms ? (
+    Array.isArray(request.floor_rooms)
+      ? request.floor_rooms 
+      : (() => {
+    try { return JSON.parse(request.floor_rooms); } 
+          catch (e) { return []; }
+        })()
+  ) : [];
+  
+  // Count total images
+  const totalRoomImages = Object.values(roomImages || {}).reduce((acc, floorData) => {
+    return acc + Object.values(floorData || {}).reduce((floorAcc, roomTypeImages) => {
+      return floorAcc + (Array.isArray(roomTypeImages) ? roomTypeImages.length : 0);
+    }, 0);
+  }, 0);
+  
+  const totalImages = (siteImages?.length || 0) + (referenceImages?.length || 0) + totalRoomImages;
+  
+
+  // Function to open image gallery
+  const openImageGallery = () => {
+    const allImages = [];
+    
+    // Add site images
+    if (siteImages && siteImages.length > 0) {
+      siteImages.forEach(img => {
+        allImages.push({...img, category: 'Site Images'});
+      });
+    }
+    
+    // Add reference images
+    if (referenceImages && referenceImages.length > 0) {
+      referenceImages.forEach(img => {
+        allImages.push({...img, category: 'Reference Images'});
+      });
+    }
+    
+    // Add room images (nested structure: floor -> room_type -> images)
+    if (roomImages && Object.keys(roomImages).length > 0) {
+      Object.entries(roomImages).forEach(([floorKey, floorData]) => {
+        Object.entries(floorData || {}).forEach(([roomType, images]) => {
+          if (Array.isArray(images)) {
+            images.forEach(img => {
+              allImages.push({...img, category: `${roomType.replace('_', ' ').toUpperCase()} Room (${floorKey.replace('floor', 'Floor ')})`});
+            });
+          }
+        });
+      });
+    }
+    
+    setImageGallery(allImages);
+    if (allImages.length > 0) {
+      setSelectedImage(allImages[0]);
+      setShowImageModal(true);
+    }
+  };
   
   return (
+    <>
     <div className="list-item" style={{ marginBottom: '20px' }}>
     <div className="item-icon">📋</div>
       <div className="item-content" style={{ flex: 1 }}>
@@ -1973,6 +2983,11 @@ const RequestItem = ({ request, onCreateDesign }) => {
       <p className="item-meta">
         Location: {request.location || 'Not specified'} • 
         Submitted: {new Date(request.created_at).toLocaleString()}
+        {totalImages > 0 && (
+          <span style={{ marginLeft: '10px', color: '#3b82f6', fontWeight: '600' }}>
+            📷 {totalImages} image{totalImages !== 1 ? 's' : ''}
+          </span>
+        )}
       </p>
         {showDetails && (
           <>
@@ -2068,13 +3083,47 @@ const RequestItem = ({ request, onCreateDesign }) => {
             {/* Site Images */}
             {siteImages.length > 0 && (
               <div style={{ marginTop: '12px' }}>
-                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Site Images:</h5>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>
+                  Site Images: 
+                  <button 
+                    onClick={openImageGallery}
+                    style={{ 
+                      marginLeft: '10px', 
+                      padding: '4px 8px', 
+                      fontSize: '12px', 
+                      backgroundColor: '#3b82f6', 
+                      color: 'white', 
+                      border: 'none', 
+                      borderRadius: '4px', 
+                      cursor: 'pointer' 
+                    }}
+                  >
+                    View All
+                  </button>
+                </h5>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
-                  {siteImages.map((image, index) => (
-                    <div key={index} style={{ textAlign: 'center' }}>
+                  {siteImages.slice(0, 3).map((image, index) => (
+                    <div 
+                      key={index} 
+                      style={{ textAlign: 'center', cursor: 'pointer' }}
+                      onClick={() => {
+                        setSelectedImage({...image, category: 'Site Images'});
+                        setImageGallery([{...image, category: 'Site Images'}]);
+                        setShowImageModal(true);
+                      }}
+                    >
                       <img 
                         src={image.url} 
                         alt={image.name}
+                        onError={(e) => {
+                          e.target.style.backgroundColor = '#f3f4f6';
+                          e.target.style.display = 'flex';
+                          e.target.style.alignItems = 'center';
+                          e.target.style.justifyContent = 'center';
+                          e.target.innerHTML = '❌';
+                          e.target.title = 'Failed to load image';
+                        }}
+                        onLoad={() => {/* Image loaded successfully */}}
                         style={{ 
                           width: '100%', 
                           height: '80px', 
@@ -2088,6 +3137,26 @@ const RequestItem = ({ request, onCreateDesign }) => {
                       </div>
                     </div>
                   ))}
+                  {siteImages.length > 3 && (
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        height: '80px', 
+                        backgroundColor: '#f3f4f6', 
+                        borderRadius: '6px', 
+                        cursor: 'pointer',
+                        border: '1px solid #e5e7eb'
+                      }}
+                      onClick={openImageGallery}
+                    >
+                      <div style={{ textAlign: 'center', color: '#666' }}>
+                        <div style={{ fontSize: '24px' }}>+</div>
+                        <div style={{ fontSize: '12px' }}>{siteImages.length - 3} more</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2102,6 +3171,15 @@ const RequestItem = ({ request, onCreateDesign }) => {
                       <img 
                         src={image.url} 
                         alt={image.name}
+                        onError={(e) => {
+                          e.target.style.backgroundColor = '#f3f4f6';
+                          e.target.style.display = 'flex';
+                          e.target.style.alignItems = 'center';
+                          e.target.style.justifyContent = 'center';
+                          e.target.innerHTML = '❌';
+                          e.target.title = 'Failed to load image';
+                        }}
+                        onLoad={() => {/* Image loaded successfully */}}
                         style={{ 
                           width: '100%', 
                           height: '80px', 
@@ -2138,19 +3216,69 @@ const RequestItem = ({ request, onCreateDesign }) => {
               </div>
             )}
 
+
             {/* Room-specific Images */}
             {Object.keys(roomImages).length > 0 && (
               <div style={{ marginTop: '12px' }}>
-                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>Room-specific Images:</h5>
-                {Object.entries(roomImages).map(([roomType, images]) => (
-                  <div key={roomType} style={{ marginBottom: '12px' }}>
-                    <strong style={{ fontSize: '13px' }}>{roomType.replace('_', ' ').toUpperCase()}:</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '6px', marginTop: '4px' }}>
-                      {images.map((image, index) => (
-                        <div key={index} style={{ textAlign: 'center' }}>
+                <h5 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>
+                  Room-specific Images:
+                  <button 
+                    onClick={openImageGallery}
+                    style={{ 
+                      marginLeft: '10px', 
+                      padding: '4px 8px', 
+                      fontSize: '12px', 
+                      backgroundColor: '#3b82f6', 
+                      color: 'white', 
+                      border: 'none', 
+                      borderRadius: '4px', 
+                      cursor: 'pointer' 
+                    }}
+                  >
+                    View All
+                  </button>
+                </h5>
+                {Object.entries(roomImages).map(([floorKey, floorData]) => (
+                  <div key={floorKey} style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
+                      🏢 {floorKey.replace('floor', 'Floor ')}
+                    </div>
+                    {Object.entries(floorData || {}).map(([roomType, images]) => (
+                      <div key={`${floorKey}-${roomType}`} style={{ marginBottom: '12px', marginLeft: '16px' }}>
+                        <strong style={{ fontSize: '13px' }}>{roomType.replace('_', ' ').toUpperCase()}:</strong>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '6px', marginTop: '4px' }}>
+                          {Array.isArray(images) && images.slice(0, 3).map((image, index) => (
+                        <div 
+                          key={index} 
+                          style={{ textAlign: 'center', cursor: 'pointer' }}
+                          onClick={() => {
+                            setSelectedImage({...image, category: `${roomType.replace('_', ' ').toUpperCase()} Room (${floorKey.replace('floor', 'Floor ')})`});
+                            const roomImagesList = [];
+                            Object.entries(roomImages).forEach(([fk, fd]) => {
+                              Object.entries(fd || {}).forEach(([rt, imgs]) => {
+                                if (Array.isArray(imgs)) {
+                                  imgs.forEach(img => {
+                                    roomImagesList.push({...img, category: `${rt.replace('_', ' ').toUpperCase()} Room (${fk.replace('floor', 'Floor ')})`});
+                                  });
+                                }
+                              });
+                            });
+                            setImageGallery(roomImagesList);
+                            setShowImageModal(true);
+                          }}
+                        >
                           <img 
                             src={image.url} 
                             alt={image.name}
+                            onError={(e) => {
+                              e.target.style.backgroundColor = '#f3f4f6';
+                              e.target.style.display = 'flex';
+                              e.target.style.alignItems = 'center';
+                              e.target.style.justifyContent = 'center';
+                              e.target.innerHTML = '❌';
+                              e.target.title = 'Failed to load image';
+                            }}
+                            onLoad={() => {/* Image loaded successfully */}}
                             style={{ 
                               width: '100%', 
                               height: '60px', 
@@ -2159,9 +3287,34 @@ const RequestItem = ({ request, onCreateDesign }) => {
                               border: '1px solid #e5e7eb'
                             }}
                           />
+                          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                            {image.name.length > 12 ? image.name.substring(0, 12) + '...' : image.name}
+                          </div>
                         </div>
                       ))}
-                    </div>
+                      {Array.isArray(images) && images.length > 3 && (
+                        <div 
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            height: '60px', 
+                            backgroundColor: '#f3f4f6', 
+                            borderRadius: '4px', 
+                            cursor: 'pointer',
+                            border: '1px solid #e5e7eb'
+                          }}
+                          onClick={openImageGallery}
+                        >
+                          <div style={{ textAlign: 'center', color: '#666' }}>
+                            <div style={{ fontSize: '20px' }}>+</div>
+                            <div style={{ fontSize: '10px' }}>{images.length - 3} more</div>
+                          </div>
+                        </div>
+                      )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -2192,11 +3345,336 @@ const RequestItem = ({ request, onCreateDesign }) => {
         <button className="btn" onClick={() => setShowDetails(s => !s)}>
           {showDetails ? 'Hide Details' : 'Details'}
         </button>
+        {totalImages > 0 && (
+          <button className="btn btn-secondary" onClick={openImageGallery} style={{ marginRight: '8px' }}>
+            📷 View Images ({totalImages})
+          </button>
+        )}
       <button className="btn btn-primary" onClick={onCreateDesign}>
         Create Design
       </button>
     </div>
   </div>
+
+  {/* Image Modal */}
+  {showImageModal && (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      zIndex: 1000,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '20px',
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        position: 'relative'
+      }}>
+        {/* Close button */}
+        <button
+          onClick={() => setShowImageModal(false)}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '15px',
+            background: 'none',
+            border: 'none',
+            fontSize: '24px',
+            cursor: 'pointer',
+            color: '#666',
+            zIndex: 1001
+          }}
+        >
+          ×
+        </button>
+
+        {/* Modal header */}
+        <div style={{ marginBottom: '20px', paddingRight: '30px' }}>
+          <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', fontWeight: '600' }}>
+            Project Images - {request.client_name}
+          </h3>
+          <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>
+            {imageGallery.length} image{imageGallery.length !== 1 ? 's' : ''} available
+          </p>
+        </div>
+
+        {/* Image gallery */}
+        <div style={{ display: 'flex', gap: '20px' }}>
+          {/* Thumbnail sidebar */}
+          <div style={{
+            width: '200px',
+            maxHeight: '500px',
+            overflowY: 'auto',
+            borderRight: '1px solid #e5e7eb',
+            paddingRight: '15px'
+          }}>
+            <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>All Images</h4>
+            {imageGallery.map((image, index) => (
+              <div
+                key={index}
+                onClick={() => setSelectedImage(image)}
+                style={{
+                  cursor: 'pointer',
+                  marginBottom: '10px',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: selectedImage === image ? '2px solid #3b82f6' : '1px solid #e5e7eb',
+                  backgroundColor: selectedImage === image ? '#eff6ff' : 'white'
+                }}
+              >
+                <img
+                  src={image.url}
+                  alt={image.name}
+                  style={{
+                    width: '100%',
+                    height: '80px',
+                    objectFit: 'cover',
+                    borderRadius: '4px',
+                    marginBottom: '4px'
+                  }}
+                  onError={(e) => {
+                    e.target.style.backgroundColor = '#f3f4f6';
+                    e.target.style.display = 'flex';
+                    e.target.style.alignItems = 'center';
+                    e.target.style.justifyContent = 'center';
+                    e.target.innerHTML = '❌';
+                  }}
+                />
+                <div style={{ fontSize: '11px', fontWeight: '600', color: '#3b82f6' }}>
+                  {image.category}
+                </div>
+                <div style={{ fontSize: '10px', color: '#666' }}>
+                  {image.name.length > 20 ? image.name.substring(0, 20) + '...' : image.name}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Main image display */}
+          <div style={{ flex: 1, minWidth: '400px' }}>
+            {selectedImage && (
+              <>
+                <div style={{ marginBottom: '15px' }}>
+                  <h4 style={{ margin: '0 0 5px 0', fontSize: '16px', fontWeight: '600' }}>
+                    {selectedImage.category}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '14px', color: '#666' }}>
+                    {selectedImage.name}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <img
+                    src={selectedImage.url}
+                    alt={selectedImage.name}
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '400px',
+                      objectFit: 'contain',
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb'
+                    }}
+                    onError={(e) => {
+                      e.target.style.backgroundColor = '#f3f4f6';
+                      e.target.style.height = '200px';
+                      e.target.style.display = 'flex';
+                      e.target.style.alignItems = 'center';
+                      e.target.style.justifyContent = 'center';
+                      e.target.innerHTML = '<div style="text-align: center; color: #666;"><div style="font-size: 48px;">❌</div><div>Image failed to load</div><div style="font-size: 12px; margin-top: 5px;">URL: ' + selectedImage.url + '</div></div>';
+                    }}
+                  />
+                </div>
+                <div style={{ marginTop: '15px', textAlign: 'center' }}>
+                  <a
+                    href={selectedImage.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block',
+                      padding: '8px 16px',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      textDecoration: 'none',
+                      borderRadius: '6px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Open in New Tab
+                  </a>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* Image Modal */}
+  {imageModal.open && (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+      animation: 'fadeIn 0.3s ease-out'
+    }}
+    onClick={() => setImageModal({ open: false, image: null, title: '' })}
+    >
+      <div style={{
+        position: 'relative',
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        animation: 'slideIn 0.3s ease-out'
+      }}
+      onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div style={{
+          padding: '20px',
+          backgroundColor: '#f8fafc',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <h3 style={{
+            margin: 0,
+            color: '#1f2937',
+            fontSize: '18px',
+            fontWeight: '600'
+          }}>
+            {imageModal.title}
+          </h3>
+          <button
+            onClick={() => setImageModal({ open: false, image: null, title: '' })}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '24px',
+              cursor: 'pointer',
+              color: '#6b7280',
+              padding: '4px',
+              borderRadius: '6px',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#e5e7eb';
+              e.target.style.color = '#374151';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent';
+              e.target.style.color = '#6b7280';
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Modal Body with Image */}
+        <div style={{
+          padding: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#f9fafb'
+        }}>
+          <img
+            src={imageModal.image}
+            alt={imageModal.title}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '70vh',
+              objectFit: 'contain',
+              borderRadius: '8px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              cursor: 'zoom-in'
+            }}
+            onClick={(e) => {
+              if (e.target.style.transform === 'scale(2)') {
+                e.target.style.transform = 'scale(1)';
+                e.target.style.cursor = 'zoom-in';
+              } else {
+                e.target.style.transform = 'scale(2)';
+                e.target.style.cursor = 'zoom-out';
+              }
+            }}
+            onError={(e) => {
+              e.target.style.display = 'none';
+              // Add error message
+              const errorDiv = document.createElement('div');
+              errorDiv.style.cssText = 'text-align: center; color: #ef4444; padding: 40px; font-size: 16px;';
+              errorDiv.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+                <div>Failed to load image</div>
+                <div style="font-size: 12px; margin-top: 8px; color: #6b7280;">${imageModal.image}</div>
+              `;
+              e.target.parentNode.appendChild(errorDiv);
+            }}
+          />
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{
+          padding: '16px 20px',
+          backgroundColor: '#f8fafc',
+          borderTop: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{
+            fontSize: '14px',
+            color: '#6b7280'
+          }}>
+            Click image to zoom • Press ESC or click outside to close
+          </div>
+          <a
+            href={imageModal.image}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#2563eb';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = '#3b82f6';
+            }}
+          >
+            Open in New Tab
+          </a>
+        </div>
+      </div>
+    </div>
+  )}
+  </>
 );
 };
 
