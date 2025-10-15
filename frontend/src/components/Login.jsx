@@ -42,35 +42,59 @@ const Login = () => {
   useEffect(() => {
     let canceled = false;
     let attempts = 0;
-    const maxAttempts = 60; // ~9s at 150ms interval
+    const maxAttempts = 30;
 
     const tryInit = () => {
-      if (canceled) return;
-      if (window.google?.accounts?.id && googleBtn.current) {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
-          auto_select: false,
-          cancel_on_tap_outside: true,
-          use_fedcm_for_prompt: false,
-        });
-        window.google.accounts.id.renderButton(googleBtn.current, {
-          theme: "filled_blue",
-          size: "large",
-          text: "signin_with",
-          shape: "pill",
-          logo_alignment: "left",
-          width: 350,
-        });
-        return true;
+      if (window.google && googleBtn.current && !canceled) {
+        try {
+          // Remove fallback message
+          const fallback = document.getElementById('google-btn-fallback');
+          if (fallback) {
+            fallback.style.display = 'none';
+          }
+          
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+            use_fedcm_for_prompt: false,
+          });
+          window.google.accounts.id.renderButton(googleBtn.current, {
+            theme: "filled_blue",
+            size: "large",
+            text: "signin_with",
+            shape: "rectangular", // Changed from pill to rectangular for better visibility
+            logo_alignment: "left",
+            width: 350,
+          });
+          console.log("Google button rendered successfully in Login");
+          return true;
+        } catch (error) {
+          console.error("Error rendering Google button in Login:", error);
+          return false;
+        }
+      } else if (!window.google) {
+        console.log("Google API not loaded yet in Login, attempt:", attempts);
+      } else if (!googleBtn.current) {
+        console.log("Google button container not found in Login");
       }
       return false;
     };
 
+    // Try immediately
     if (!tryInit()) {
       const intervalId = setInterval(() => {
         attempts += 1;
         if (tryInit() || attempts >= maxAttempts) {
+          if (attempts >= maxAttempts) {
+            console.log("Max attempts reached, Google button not rendered in Login");
+            // Update fallback message
+            const fallback = document.getElementById('google-btn-fallback');
+            if (fallback) {
+              fallback.textContent = "Unable to load Google Sign-In. Please refresh the page.";
+            }
+          }
           clearInterval(intervalId);
         }
       }, 150);
@@ -315,7 +339,12 @@ const Login = () => {
 
           {/* Google Sign-In button bottom */}
           <div className="google-signin-block" style={{ marginTop: 12 }}>
-            <div className="google-btn-container" ref={googleBtn} />
+            <div className="google-btn-container" ref={googleBtn}>
+              {/* Fallback message if Google button doesn't load */}
+              <div id="google-btn-fallback" style={{ textAlign: 'center', padding: '10px', color: '#6c757d', fontSize: '14px' }}>
+                Google Sign-In button loading...
+              </div>
+            </div>
           </div>
 
           {googleError && (

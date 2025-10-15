@@ -57,16 +57,68 @@ const Register = () => {
 
   // Initialize Google Sign-In button
   useEffect(() => {
-    if (window.google && googleBtn.current) {
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID, // <-- Use your provided client ID here
-        callback: handleGoogleResponse,
-      });
-      window.google.accounts.id.renderButton(googleBtn.current, {
-        theme: "outline",
-        size: "large",
-      });
+    let canceled = false;
+    let attempts = 0;
+    const maxAttempts = 30; // 30 * 150ms = 4.5s
+
+    const tryInit = () => {
+      if (window.google && googleBtn.current && !canceled) {
+        try {
+          // Remove fallback message
+          const fallback = document.getElementById('google-btn-fallback');
+          if (fallback) {
+            fallback.style.display = 'none';
+          }
+          
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID, // <-- Use your provided client ID here
+            callback: handleGoogleResponse,
+          });
+          window.google.accounts.id.renderButton(googleBtn.current, {
+            theme: "outline",
+            size: "large",
+            text: "signup_with", // Add explicit text
+            shape: "rectangular", // Try rectangular shape
+            logo_alignment: "left"
+          });
+          console.log("Google button rendered successfully in Register");
+          return true;
+        } catch (error) {
+          console.error("Error rendering Google button in Register:", error);
+          return false;
+        }
+      } else if (!window.google) {
+        console.log("Google API not loaded yet in Register, attempt:", attempts);
+      } else if (!googleBtn.current) {
+        console.log("Google button container not found in Register");
+      }
+      return false;
+    };
+
+    // Try immediately
+    if (!tryInit()) {
+      const intervalId = setInterval(() => {
+        attempts += 1;
+        if (tryInit() || attempts >= maxAttempts) {
+          if (attempts >= maxAttempts) {
+            console.log("Max attempts reached, Google button not rendered in Register");
+            // Update fallback message
+            const fallback = document.getElementById('google-btn-fallback');
+            if (fallback) {
+              fallback.textContent = "Unable to load Google Sign-Up. Please refresh the page.";
+            }
+          }
+          clearInterval(intervalId);
+        }
+      }, 150);
     }
+
+    return () => {
+      canceled = true;
+      if (window.google?.accounts?.id) {
+        try { window.google.accounts.id.cancel(); } catch {}
+      }
+    };
   }, []);
 
   // Google Sign-In callback
@@ -673,7 +725,12 @@ const Register = () => {
 
           {/* Google Sign Up button at the bottom */}
           <div className="google-signin-block" style={{ marginTop: 12 }}>
-            <div className="google-btn-container" ref={googleBtn} />
+            <div className="google-btn-container" ref={googleBtn}>
+              {/* Fallback message if Google button doesn't load */}
+              <div id="google-btn-fallback" style={{ textAlign: 'center', padding: '10px', color: '#6c757d', fontSize: '14px' }}>
+                Google Sign-Up button loading...
+              </div>
+            </div>
           </div>
         </form>
 

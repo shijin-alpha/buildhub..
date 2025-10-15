@@ -1,8 +1,12 @@
 <?php
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET');
-header('Access-Control-Allow-Headers: Content-Type');
+// CORS reflect for dev with credentials
+$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
+if ($origin) { header('Access-Control-Allow-Origin: ' . $origin); header('Vary: Origin'); } else { header('Access-Control-Allow-Origin: http://localhost'); }
+header('Access-Control-Allow-Credentials: true');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); header('Access-Control-Max-Age: 86400'); exit; }
 
 require_once '../../config/database.php';
 
@@ -22,7 +26,7 @@ try {
         exit;
     }
     
-    // Get all contractor requests by this homeowner (requests sent directly to contractors)
+    // Get all contractor requests by this homeowner and join contractor sends for acknowledgment/due date
     $query = "SELECT lr.*, 
                      ll.title as selected_layout_title,
                      ll.layout_type as selected_layout_type,
@@ -31,12 +35,15 @@ try {
                      COUNT(DISTINCT cp.id) as proposal_count,
                      SUM(CASE WHEN a.status = 'accepted' THEN 1 ELSE 0 END) as accepted_count,
                      SUM(CASE WHEN a.status = 'declined' THEN 1 ELSE 0 END) as rejected_count,
-                     SUM(CASE WHEN a.status = 'sent' THEN 1 ELSE 0 END) as sent_count
+                     SUM(CASE WHEN a.status = 'sent' THEN 1 ELSE 0 END) as sent_count,
+                     MAX(cls.acknowledged_at) as last_acknowledged_at,
+                     MAX(cls.due_date) as last_due_date
               FROM layout_requests lr 
               LEFT JOIN layout_library ll ON lr.selected_layout_id = ll.id
               LEFT JOIN designs d ON lr.id = d.layout_request_id
               LEFT JOIN contractor_proposals cp ON lr.id = cp.layout_request_id
               LEFT JOIN layout_request_assignments a ON a.layout_request_id = lr.id
+              LEFT JOIN contractor_layout_sends cls ON cls.homeowner_id = lr.user_id AND (cls.layout_id = lr.selected_layout_id OR cls.design_id IS NOT NULL)
               WHERE lr.user_id = :homeowner_id 
                 AND (lr.status IS NULL OR lr.status <> 'deleted')
                 AND lr.timeline = 'contractor-direct'
@@ -75,6 +82,8 @@ try {
             'sent_count' => isset($row['sent_count']) ? (int)$row['sent_count'] : 0,
             'accepted_count' => isset($row['accepted_count']) ? (int)$row['accepted_count'] : 0,
             'rejected_count' => isset($row['rejected_count']) ? (int)$row['rejected_count'] : 0,
+            'last_acknowledged_at' => $row['last_acknowledged_at'] ?? null,
+            'last_due_date' => $row['last_due_date'] ?? null,
             'created_at' => $row['created_at'],
             'updated_at' => $row['updated_at']
         ];
@@ -92,4 +101,11 @@ try {
     ]);
 }
 ?>
+
+
+
+
+
+
+
 

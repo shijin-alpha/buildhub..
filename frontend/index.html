@@ -23,11 +23,604 @@
       background: #111;
       border-color: #111;
     }
+    /* --- Wizard minimal styles (self-contained) --- */
+    .wizard-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    .wizard {
+      width: 96%;
+      max-width: 920px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+    .wizard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #eee;
+    }
+    .wizard-title {
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .wizard-close {
+      background: transparent;
+      color: #111;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .wizard-body { padding: 16px 20px; }
+    .wizard-steps {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .wizard-step {
+      text-align: center;
+      padding: 8px;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #555;
+      background: #fafafa;
+    }
+    .wizard-step.active { border-color: #000; color: #000; background: #f0f0f0; }
+    .field { display: grid; gap: 6px; margin: 10px 0 14px; }
+    .field label { font-size: 13px; color: #333; }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+    .actions-right { display: flex; gap: 8px; }
+    .btn { background: #000; color: #fff; border: 1px solid #000; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+    .btn.secondary { background: #fff; color: #000; border-color: #000; }
+    .hint { font-size: 12px; color: #666; }
+    .summary {
+      background: #fafafa;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 260px;
+      overflow: auto;
+    }
+    .inline { display: inline-flex; align-items: center; gap: 6px; }
+    .badge { display: inline-block; background: #111; color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+    .ghost { background: transparent; border-color: #ddd; color: #333; }
+    .template-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .template-card { border: 1px solid #eee; border-radius: 8px; padding: 10px; cursor: pointer; }
+    .template-card.active { border-color: #000; background: #f7f7f7; }
+    @media (max-width: 720px) {
+      .row { grid-template-columns: 1fr; }
+      .wizard-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .template-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
+  <!-- Quick-launch for the wizard (appears if no data yet) -->
+  <div id="wizardOverlay" class="wizard-overlay" aria-hidden="true">
+    <div class="wizard" role="dialog" aria-modal="true" aria-labelledby="wizardTitle">
+      <div class="wizard-header">
+        <div class="wizard-title" id="wizardTitle">Technical Details Wizard</div>
+        <div class="inline">
+          <button id="exportBtn" class="btn ghost" title="Export JSON">Export</button>
+          <button id="closeWizard" class="wizard-close" title="Close">Close</button>
+        </div>
+      </div>
+      <div class="wizard-body">
+        <div class="wizard-steps">
+          <div class="wizard-step" data-step="0">Project</div>
+          <div class="wizard-step" data-step="1">Template</div>
+          <div class="wizard-step" data-step="2">Systems</div>
+          <div class="wizard-step" data-step="3">Details</div>
+          <div class="wizard-step" data-step="4">Attachments</div>
+          <div class="wizard-step" data-step="5">Review</div>
+        </div>
+
+        <form id="wizardForm">
+          <!-- Step 0: Project basics -->
+          <section data-step-panel="0">
+            <div class="row">
+              <div class="field">
+                <label for="projectType">Project type</label>
+                <select id="projectType" required>
+                  <option value="">Select...</option>
+                  <option>Residential high-rise</option>
+                  <option>Hospital</option>
+                  <option>School</option>
+                  <option>Warehouse</option>
+                  <option>Office</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="region">Region</label>
+                <select id="region" required>
+                  <option value="">Select...</option>
+                  <option>US</option>
+                  <option>EU</option>
+                  <option>UK</option>
+                  <option>IN</option>
+                  <option>ME</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="codeset">Applicable code set</label>
+                <select id="codeset">
+                  <option value="auto">Auto (based on region)</option>
+                  <option>IBC 2021</option>
+                  <option>EN Eurocodes</option>
+                  <option>IS Codes</option>
+                </select>
+                <div class="hint">Defaults and calculators will follow selected codes.</div>
+              </div>
+              <div class="field">
+                <label for="units">Units</label>
+                <select id="units">
+                  <option>SI (metric)</option>
+                  <option>US (imperial)</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 1: Template selection -->
+          <section data-step-panel="1" hidden>
+            <div class="field">
+              <label>Templates</label>
+              <div class="template-grid" id="templateGrid"></div>
+              <div class="hint">Pick one to pre-fill. You can edit later.</div>
+            </div>
+          </section>
+
+          <!-- Step 2: High-level systems -->
+          <section data-step-panel="2" hidden>
+            <div class="row">
+              <div class="field">
+                <label for="structure">Primary structure</label>
+                <select id="structure">
+                  <option value="">Select...</option>
+                  <option>Concrete</option>
+                  <option>Steel</option>
+                  <option>Timber</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="facade">Facade system</label>
+                <select id="facade">
+                  <option value="">Select...</option>
+                  <option>Unitized curtain wall</option>
+                  <option>Stick curtain wall</option>
+                  <option>Cavity brick</option>
+                  <option>ACP on steel studs</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="roof">Roof type</label>
+                <select id="roof">
+                  <option value="">Select...</option>
+                  <option>Flat inverted</option>
+                  <option>Pitched metal</option>
+                  <option>Green roof</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="fireRating">Target fire rating (hr)</label>
+                <input id="fireRating" type="number" min="0" step="0.5" placeholder="e.g., 2" />
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 3: Conditional details -->
+          <section data-step-panel="3" hidden>
+            <div id="conditionalFields"></div>
+          </section>
+
+          <!-- Step 4: Attachments (metadata only) -->
+          <section data-step-panel="4" hidden>
+            <div class="field">
+              <label for="attachments">Attachment notes</label>
+              <textarea id="attachments" rows="4" placeholder="List drawing refs, links, or filenames..."></textarea>
+            </div>
+          </section>
+
+          <!-- Step 5: Review -->
+          <section data-step-panel="5" hidden>
+            <div class="field">
+              <label>Summary JSON</label>
+              <pre class="summary" id="summary"></pre>
+            </div>
+          </section>
+        </form>
+
+        <div class="actions">
+          <div>
+            <button id="resetBtn" class="btn secondary" type="button">Reset</button>
+          </div>
+          <div class="actions-right">
+            <button id="prevBtn" class="btn secondary" type="button">Back</button>
+            <button id="nextBtn" class="btn" type="button">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   <script type="module" src="/src/main.jsx"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    (function() {
+      const overlay = document.getElementById('wizardOverlay');
+      const closeBtn = document.getElementById('closeWizard');
+      const nextBtn = document.getElementById('nextBtn');
+      const prevBtn = document.getElementById('prevBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const exportBtn = document.getElementById('exportBtn');
+      const steps = Array.from(document.querySelectorAll('.wizard-step'));
+      const panels = Array.from(document.querySelectorAll('[data-step-panel]'));
+      const summaryEl = document.getElementById('summary');
+      const conditionalFields = document.getElementById('conditionalFields');
+      const templateGrid = document.getElementById('templateGrid');
+
+      const LS_KEY = 'buildhub_wizard_data_v1';
+      const LS_STEP = 'buildhub_wizard_step_v1';
+      let state = {
+        project: { type: '', region: '', codeset: 'auto', units: 'SI (metric)' },
+        selections: { template: '', structure: '', facade: '', roof: '', fireRating: '' },
+        details: {},
+        attachmentsNote: ''
+      };
+      let currentStep = 0;
+
+      const templates = [
+        {
+          id: 'concrete_baseline', name: 'Concrete frame baseline',
+          prefill: {
+            project: {},
+            selections: { structure: 'Concrete', facade: 'Cavity brick', roof: 'Flat inverted', fireRating: 2 },
+            details: { concreteStrengthMPa: 30, slabThicknessMm: 200, rebarGrade: 'Fe500' }
+          }
+        },
+        {
+          id: 'steel_core', name: 'Steel frame + unitized CW',
+          prefill: {
+            selections: { structure: 'Steel', facade: 'Unitized curtain wall', roof: 'Pitched metal', fireRating: 2 },
+            details: { steelGrade: 'S355', beamDepthMm: 450, columnSize: 'HSS 200x200' }
+          }
+        },
+        {
+          id: 'timber_school', name: 'Timber school',
+          prefill: {
+            selections: { structure: 'Timber', facade: 'ACP on steel studs', roof: 'Green roof', fireRating: 1 },
+            details: { timberClass: 'C24', panelType: 'CLT', panelThicknessMm: 140 }
+          }
+        }
+      ];
+
+      function $(id) { return document.getElementById(id); }
+      function getForm() {
+        return {
+          project: {
+            type: $('projectType').value,
+            region: $('region').value,
+            codeset: $('codeset').value,
+            units: $('units').value
+          },
+          selections: {
+            template: state.selections.template,
+            structure: $('structure').value,
+            facade: $('facade').value,
+            roof: $('roof').value,
+            fireRating: $('fireRating').value
+          },
+          details: state.details,
+          attachmentsNote: $('attachments').value
+        };
+      }
+
+      function setForm(data) {
+        $('projectType').value = data.project.type || '';
+        $('region').value = data.project.region || '';
+        $('codeset').value = data.project.codeset || 'auto';
+        $('units').value = data.project.units || 'SI (metric)';
+        $('structure').value = data.selections.structure || '';
+        $('facade').value = data.selections.facade || '';
+        $('roof').value = data.selections.roof || '';
+        $('fireRating').value = data.selections.fireRating || '';
+        $('attachments').value = data.attachmentsNote || '';
+        state = data;
+        renderConditionalFields();
+        renderSummary();
+      }
+
+      function save() {
+        const data = getForm();
+        state = data;
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+        localStorage.setItem(LS_STEP, String(currentStep));
+        renderSummary();
+      }
+
+      function load() {
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          const stepRaw = localStorage.getItem(LS_STEP);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            currentStep = stepRaw ? Math.min(5, Math.max(0, parseInt(stepRaw, 10))) : 0;
+            setForm(parsed);
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+
+      function renderSteps() {
+        steps.forEach((el, idx) => {
+          if (idx === currentStep) el.classList.add('active'); else el.classList.remove('active');
+        });
+        panels.forEach((p) => {
+          const idx = parseInt(p.getAttribute('data-step-panel'), 10);
+          p.hidden = idx !== currentStep;
+        });
+        prevBtn.disabled = currentStep === 0;
+        nextBtn.textContent = currentStep === panels.length - 1 ? 'Finish' : 'Next';
+      }
+
+      function renderSummary() {
+        const data = getForm();
+        const recommendedCodes = (function() {
+          if (data.project.codeset !== 'auto') return data.project.codeset;
+          switch (data.project.region) {
+            case 'EU': return 'EN Eurocodes';
+            case 'US': return 'IBC 2021';
+            case 'UK': return 'EN Eurocodes';
+            case 'IN': return 'IS Codes';
+            case 'ME': return 'IBC 2021';
+            default: return 'IBC 2021';
+          }
+        })();
+        const enriched = {
+          project: {
+            type: data.project.type,
+            region: data.project.region,
+            codeset: data.project.codeset === 'auto' ? recommendedCodes : data.project.codeset,
+            units: data.project.units
+          },
+          templatesUsed: data.selections.template ? [data.selections.template] : [],
+          modules: [
+            {
+              id: 'primary_structure',
+              type: 'Structure.' + (data.selections.structure || 'Unknown'),
+              properties: Object.assign({}, data.details, { fireRating_hr: Number(data.selections.fireRating || 0) || undefined })
+            },
+            {
+              id: 'facade_system',
+              type: 'Facade.' + (data.selections.facade || 'Unknown'),
+              properties: {}
+            },
+            {
+              id: 'roof_system',
+              type: 'Roof.' + (data.selections.roof || 'Unknown'),
+              properties: {}
+            }
+          ],
+          validation: []
+        };
+        summaryEl.textContent = JSON.stringify(enriched, null, 2);
+      }
+
+      function renderConditionalFields() {
+        const structure = $('structure').value;
+        const container = conditionalFields;
+        container.innerHTML = '';
+        if (!structure) return;
+
+        if (structure === 'Concrete') {
+          container.innerHTML = `
+            <div class="row">
+              <div class="field">
+                <label for="concreteStrengthMPa">Concrete strength (MPa)</label>
+                <input id="concreteStrengthMPa" type="number" min="10" step="5" placeholder="30" />
+              </div>
+              <div class="field">
+                <label for="slabThicknessMm">Slab thickness (mm)</label>
+                <input id="slabThicknessMm" type="number" min="100" step="10" placeholder="200" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="rebarGrade">Rebar grade</label>
+                <input id="rebarGrade" placeholder="Fe500" />
+              </div>
+              <div class="field">
+                <label for="exposureClass">Exposure class</label>
+                <select id="exposureClass">
+                  <option value="">Select...</option>
+                  <option>XC1</option><option>XC2</option><option>XS1</option><option>XF2</option>
+                </select>
+              </div>
+            </div>`;
+        } else if (structure === 'Steel') {
+          container.innerHTML = `
+            <div class="row">
+              <div class="field">
+                <label for="steelGrade">Steel grade</label>
+                <input id="steelGrade" placeholder="S355" />
+              </div>
+              <div class="field">
+                <label for="beamDepthMm">Beam depth (mm)</label>
+                <input id="beamDepthMm" type="number" min="200" step="10" placeholder="450" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="columnSize">Column size</label>
+                <input id="columnSize" placeholder="HSS 200x200" />
+              </div>
+              <div class="field">
+                <label for="fireProtection">Fire protection</label>
+                <select id="fireProtection"><option value="">Select...</option><option>Intumescent paint</option><option>Board encasement</option></select>
+              </div>
+            </div>`;
+        } else if (structure === 'Timber') {
+          container.innerHTML = `
+            <div class="row">
+              <div class="field">
+                <label for="timberClass">Timber class</label>
+                <input id="timberClass" placeholder="C24" />
+              </div>
+              <div class="field">
+                <label for="panelType">Panel type</label>
+                <select id="panelType"><option>CLT</option><option>GLT</option><option>LVL</option></select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="panelThicknessMm">Panel thickness (mm)</label>
+                <input id="panelThicknessMm" type="number" min="60" step="10" placeholder="140" />
+              </div>
+              <div class="field">
+                <label for="connectorType">Connector type</label>
+                <input id="connectorType" placeholder="Self-tapping screws" />
+              </div>
+            </div>`;
+        }
+
+        // Rehydrate conditional inputs from state if available
+        Object.entries(state.details || {}).forEach(([key, value]) => {
+          const el = document.getElementById(key);
+          if (el) el.value = value;
+        });
+      }
+
+      function collectConditionalFields() {
+        const inputs = conditionalFields.querySelectorAll('input, select');
+        const details = {};
+        inputs.forEach(el => { if (el.id) details[el.id] = el.value; });
+        state.details = details;
+      }
+
+      function validateStep() {
+        if (currentStep === 0) {
+          if (!$('projectType').value || !$('region').value) return false;
+        }
+        if (currentStep === 2) {
+          if (!$('structure').value) return false;
+        }
+        return true;
+      }
+
+      function go(step) {
+        currentStep = Math.max(0, Math.min(panels.length - 1, step));
+        renderSteps();
+        save();
+      }
+
+      function buildTemplates() {
+        templateGrid.innerHTML = '';
+        templates.forEach(t => {
+          const card = document.createElement('div');
+          card.className = 'template-card';
+          card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div>
+              <div style="font-weight:600;">${t.name}</div>
+              <div class="hint">ID: ${t.id}</div>
+            </div>
+            <span class="badge">Prefill</span>
+          </div>`;
+          card.addEventListener('click', () => {
+            state.selections.template = t.name;
+            const merged = JSON.parse(JSON.stringify(state));
+            merged.selections = Object.assign({}, merged.selections, t.prefill.selections || {});
+            merged.details = Object.assign({}, merged.details, t.prefill.details || {});
+            setForm(merged);
+            renderConditionalFields();
+            save();
+          });
+          templateGrid.appendChild(card);
+        });
+      }
+
+      // Events
+      closeBtn.addEventListener('click', () => { overlay.style.display = 'none'; });
+      nextBtn.addEventListener('click', () => {
+        collectConditionalFields();
+        if (!validateStep()) return;
+        if (currentStep < panels.length - 1) go(currentStep + 1); else { renderSummary(); save(); overlay.style.display = 'none'; }
+      });
+      prevBtn.addEventListener('click', () => { if (currentStep > 0) go(currentStep - 1); });
+      resetBtn.addEventListener('click', () => {
+        localStorage.removeItem(LS_KEY);
+        localStorage.removeItem(LS_STEP);
+        state = { project: { type: '', region: '', codeset: 'auto', units: 'SI (metric)' }, selections: { template: '', structure: '', facade: '', roof: '', fireRating: '' }, details: {}, attachmentsNote: '' };
+        currentStep = 0;
+        setForm(state);
+        go(0);
+      });
+      exportBtn.addEventListener('click', () => {
+        renderSummary();
+        const blob = new Blob([summaryEl.textContent], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'technical_details.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      // Autosave bindings
+      ['projectType','region','codeset','units','structure','facade','roof','fireRating','attachments'].forEach(id => {
+        const el = $(id);
+        el.addEventListener('change', () => { collectConditionalFields(); save(); });
+        el.addEventListener('input', () => { collectConditionalFields(); save(); });
+      });
+      // Re-render conditional fields when structure changes
+      $('structure').addEventListener('change', () => { collectConditionalFields(); renderConditionalFields(); save(); });
+
+      // Initialize
+      buildTemplates();
+      const hasData = load();
+      renderSteps();
+      if (!hasData) {
+        // show on first-time only
+        overlay.style.display = 'flex';
+        go(0);
+      } else {
+        // keep hidden unless user wants to reopen. Provide keyboard shortcut.
+        overlay.style.display = 'none';
+      }
+
+      // Keyboard shortcut: Alt+W to toggle wizard
+      window.addEventListener('keydown', (e) => {
+        if (e.altKey && (e.key === 'w' || e.key === 'W')) {
+          overlay.style.display = overlay.style.display === 'none' ? 'flex' : 'none';
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

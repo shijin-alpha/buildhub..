@@ -76,6 +76,28 @@ input[type='password']:focus {
   outline: none;
 }
 
+/* Google Sign-in block inside card */
+.google-signin-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.82));
+  border: 1px solid rgba(205, 220, 255, 0.8);
+  margin-top: 12px;
+}
+
+.google-btn-container {
+  display: grid;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f9fa;
+  border: 1px dashed #dee2e6;
+  border-radius: 8px;
+}
+
 /* Align Google custom button style with Register "Create account" button */
 .register-form-section .google-custom {
   width: 100%;

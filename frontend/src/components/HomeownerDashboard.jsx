@@ -62,6 +62,12 @@ const HomeownerDashboard = () => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [showArchitectModal, setShowArchitectModal] = useState(false);
   const [sidebarProfileOpen, setSidebarProfileOpen] = useState(false);
+  
+  // Payment state (gates layout files until paid)
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [payingDesignId, setPayingDesignId] = useState(null);
+  const [unlockedDesignIds, setUnlockedDesignIds] = useState({});
 
   // Sidebar badge counts
   const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
@@ -124,6 +130,116 @@ const HomeownerDashboard = () => {
     const id = setInterval(refreshCounts, 60000);
     return () => { mounted = false; clearInterval(id); };
   }, []);
+
+  // Extract sqft from various possible fields provided by architect
+  const getDesignSqft = (design) => {
+    const direct = Number(design?.sqft || design?.area || 0);
+    if (direct > 0) return direct;
+    // Try nested technical details structures
+    const td = design?.technical_details || design?.technicalDetails || {};
+    const tdSqft = Number(td?.sqft || td?.area_sqft || td?.total_sqft || td?.totalSqft || 0);
+    if (tdSqft > 0) return tdSqft;
+    // Try metadata-like fields
+    const meta = design?.meta || {};
+    const metaSqft = Number(meta?.sqft || meta?.area_sqft || 0);
+    if (metaSqft > 0) return metaSqft;
+    return 0;
+  };
+
+  // Pricing: base 8000 + 10 per sqft
+  const calculateDesignPrice = (design) => {
+    const sqft = getDesignSqft(design);
+    const base = 8000;
+    const variable = sqft > 0 ? sqft * 10 : 0;
+    return base + variable;
+  };
+
+  // Initiate payment with Razorpay
+  const handlePayToView = async (design) => {
+    setPaymentError('');
+    setPaymentLoading(true);
+    setPayingDesignId(design.id);
+    try {
+      // Request order from backend
+      const response = await fetch('/buildhub/backend/api/homeowner/initiate_layout_payment.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          design_id: design.id,
+          amount_override: calculateDesignPrice(design) // in rupees; backend can convert to paise
+        })
+      });
+      const result = await response.json();
+      if (!result?.success) {
+        setPaymentError(result?.message || 'Failed to initiate payment');
+        return;
+      }
+
+      const options = {
+        key: result.razorpay_key_id,
+        amount: result.amount, // in paise
+        currency: result.currency || 'INR',
+        name: 'BuildHub',
+        description: `View layout: ${result.design_title || design.title || design.design_title || 'Layout'}`,
+        order_id: result.razorpay_order_id,
+        handler: async function (rzpRes) {
+          try {
+            const verifyRes = await fetch('/buildhub/backend/api/homeowner/verify_layout_payment.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                razorpay_payment_id: rzpRes.razorpay_payment_id,
+                razorpay_order_id: rzpRes.razorpay_order_id,
+                razorpay_signature: rzpRes.razorpay_signature,
+                payment_id: result.payment_id,
+                design_id: design.id
+              })
+            });
+            const verifyJson = await verifyRes.json();
+            if (verifyJson?.success) {
+              // Refresh designs so payment_status is updated
+              const r3 = await fetch('/buildhub/backend/api/homeowner/get_received_designs.php', { credentials: 'include' });
+              const j3 = await r3.json().catch(() => ({}));
+              if (j3?.success) setReceivedDesigns(Array.isArray(j3.designs) ? j3.designs : []);
+              // Optimistically unlock this design locally in case backend doesn't persist immediately
+              setUnlockedDesignIds(prev => ({ ...prev, [design.id]: true }));
+              setPaymentError('');
+            } else {
+              setPaymentError(verifyJson?.message || 'Payment verification failed');
+            }
+          } catch {
+            setPaymentError('Payment verification failed');
+          }
+        },
+        prefill: {
+          name: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || undefined,
+          email: user?.email
+        },
+        theme: { color: '#2563eb' }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch {
+      setPaymentError('Network error during payment');
+    } finally {
+      setPaymentLoading(false);
+      setPayingDesignId(null);
+    }
+  };
+
+  // Helper: has paid access
+  const hasPaidAccess = (design) => {
+    // Treat any explicit completed status as paid
+    if (design?.payment_status === 'completed') return true;
+    // If backend marks unlocked flag
+    if (design?.unlocked === true) return true;
+    // If we unlocked locally after a successful verification
+    if (unlockedDesignIds?.[design?.id]) return true;
+    return false;
+  };
 
   // Architect assignment state
   const [architects, setArchitects] = useState([]);
@@ -1322,7 +1438,30 @@ const HomeownerDashboard = () => {
                       Status: <span className={`status-badge ${d.status}`}>{d.status}</span>
                     </p>
 
-                    {/* Files grid */}
+                    {/* Payment gate */}
+                    {!hasPaidAccess(d) ? (
+                      <div style={{margin:'12px 0', padding:'12px', border:'1px solid #f59e0b', background:'#fffbeb', borderRadius:8}}>
+                        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
+                          <div>
+                            <div style={{fontWeight:600, color:'#92400e'}}>Payment required to view files</div>
+                            <div style={{color:'#92400e', fontSize:14}}>Price based on sqft: ₹{calculateDesignPrice(d).toLocaleString('en-IN')}</div>
+                          </div>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => handlePayToView(d)}
+                            disabled={paymentLoading && payingDesignId === d.id}
+                          >
+                            {paymentLoading && payingDesignId === d.id ? 'Processing…' : 'Pay to View'}
+                          </button>
+                        </div>
+                        {paymentError && (
+                          <div style={{marginTop:8, color:'#991b1b', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:6, padding:'8px 10px'}}>{paymentError}</div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {/* Files grid - visible only if paid or unlocked */}
+                    {hasPaidAccess(d) && (
                     <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:'10px', marginTop:'10px'}}>
                       {/* Prefer special tags if present */}
                       {(() => {
@@ -1361,6 +1500,7 @@ const HomeownerDashboard = () => {
                         });
                       })()}
                     </div>
+                    )}
 
                     {/* Comments */}
                     <div className="comment-section">

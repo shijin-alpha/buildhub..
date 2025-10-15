@@ -12,6 +12,9 @@ const ContractorDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [user, setUser] = useState(null);
   const [layoutRequests, setLayoutRequests] = useState([]);
+  const [inbox, setInbox] = useState([]);
+  const [ackDateById, setAckDateById] = useState({});
+  const [ackOpenById, setAckOpenById] = useState({});
   const [myProposals, setMyProposals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,6 +27,7 @@ const ContractorDashboard = () => {
   // Sidebar counts
   const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
   const proposalsCount = Array.isArray(myProposals) ? myProposals.length : 0;
+  const inboxCount = Array.isArray(inbox) ? inbox.length : 0;
 
   // Periodic refresh for sidebar counts
   useEffect(() => {
@@ -39,11 +43,37 @@ const ContractorDashboard = () => {
         const j2 = await r2.json().catch(() => ({}));
         if (mounted && j2?.success) setMyProposals(Array.isArray(j2.proposals) ? j2.proposals : []);
       } catch {}
+      try {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (me?.id) {
+          const r3 = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+          const j3 = await r3.json().catch(() => ({}));
+          if (mounted && j3?.success) setInbox(Array.isArray(j3.items) ? j3.items : []);
+        }
+      } catch {}
+      try {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (me?.id) {
+          const r3 = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+          const j3 = await r3.json().catch(() => ({}));
+          if (mounted && j3?.success) setInbox(Array.isArray(j3.items) ? j3.items : []);
+        }
+      } catch {}
+      try {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (me?.id) {
+          const r3 = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+          const j3 = await r3.json().catch(() => ({}));
+          if (mounted && j3?.success) setInbox(Array.isArray(j3.items) ? j3.items : []);
+        }
+      } catch {}
     };
     refreshCounts();
     const id = setInterval(refreshCounts, 60000);
     return () => { mounted = false; clearInterval(id); };
   }, []);
+  
+
 
   useEffect(() => {
     // Get user data from session
@@ -438,8 +468,367 @@ const ContractorDashboard = () => {
           )}
         </div>
       </div>
+
+      {/* Inbox */}
+      <div className="section-card">
+        <div className="section-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <h2>Inbox</h2>
+            <p>Layouts and designs sent directly to you</p>
+          </div>
+          <button className="btn btn-secondary" onClick={async ()=>{
+            try {
+              const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+              const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+              const j = await r.json().catch(() => ({}));
+              if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+            } catch {}
+          }}>Refresh</button>
+        </div>
+        <div className="section-content">
+          {Array.isArray(inbox) && inbox.length ? inbox.map(renderInboxItem) : (
+            <div className="empty-state">
+              <div className="empty-icon">📥</div>
+              <h3>No items yet</h3>
+              <p>When a homeowner sends you a layout, it appears here</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
+
+  const renderInbox = () => (
+    <div>
+      <div className="main-header">
+        <h1>Inbox</h1>
+        <p>Layouts and designs sent directly by homeowners</p>
+      </div>
+
+      <div className="section-card">
+        <div className="section-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <h2>Received Items</h2>
+            <p>All layouts and forwarded designs sent to you</p>
+          </div>
+          <button className="btn btn-secondary" onClick={async ()=>{
+            try {
+              const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+              const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+              const j = await r.json().catch(() => ({}));
+              if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+            } catch {}
+          }}>Refresh</button>
+        </div>
+        <div className="section-content">
+          {Array.isArray(inbox) && inbox.length ? inbox.map(renderInboxItem) : (
+            <div className="empty-state">
+              <div className="empty-icon">📥</div>
+              <h3>No items yet</h3>
+              <p>When a homeowner sends you a layout, it appears here</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const phpOrigin = (typeof window !== 'undefined' && window.location && window.location.port === '3000') ? 'http://localhost' : '';
+  const assetUrl = (path) => {
+    if (!path) return path;
+    if (/^https?:\/\//i.test(path)) return path;
+    return `${phpOrigin}/${String(path).replace(/^\/?/, '')}`;
+  };
+
+  const renderTechnicalNeat = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    const sections = Object.keys(obj);
+    if (!sections.length) return null;
+    return (
+      <div style={{border:'1px solid #eee', borderRadius:8, padding:10, background:'#fafafa', display:'grid', gap:10}}>
+        {sections.map((sectionKey) => {
+          const section = obj[sectionKey];
+          if (!section || typeof section !== 'object') return null;
+          const entries = Object.entries(section);
+          if (!entries.length) return null;
+          return (
+            <div key={sectionKey}>
+              <div style={{fontWeight:600, marginBottom:6, textTransform:'capitalize'}}>{sectionKey.replace(/[_-]/g,' ')}</div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 2fr', gap:'6px 12px'}}>
+                {entries.map(([k, v]) => (
+                  <React.Fragment key={k}>
+                    <div style={{color:'#555'}}>{String(k).replace(/[_-]/g,' ')}</div>
+                    <div style={{color:'#111'}}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderInboxItem = (item) => {
+    const payload = item.payload || {};
+    const fd = payload.forwarded_design || null;
+    const firstFile = fd && Array.isArray(fd.files) && fd.files[0] ? fd.files[0] : null;
+    const rawImg = payload.layout_image_url || (firstFile && (firstFile.url || firstFile.path || (typeof firstFile === 'string' ? firstFile : null)));
+    const img = assetUrl(rawImg);
+    const technical = fd?.technical_details || payload.technical_details || null;
+    const floor = payload.floor_details || null;
+    return (
+      <div className="card" key={item.id} style={{marginBottom: 12}}>
+        <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div className="card-title">New layout sent</div>
+            <div className="muted" style={{fontSize:'0.85rem'}}>From: {item.homeowner_name || 'Homeowner'}{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}</div>
+          </div>
+          <div style={{display:'flex', alignItems:'center', gap:8}}>
+            <div className="muted" style={{fontSize:'0.85rem'}}>{new Date(item.created_at).toLocaleString()}</div>
+            {item.acknowledged_at ? (
+              <span className="status-badge accepted" title={`Due: ${item.due_date || '—'}`}>Acknowledged</span>
+            ) : (
+              <div style={{display:'flex', alignItems:'center', gap:6}}>
+                {!ackOpenById[item.id] && (
+                  <button className="btn btn-primary" onClick={()=> setAckOpenById(prev=>({...prev, [item.id]: true}))}>Acknowledge</button>
+                )}
+                {ackOpenById[item.id] && (
+                  <>
+                    <input 
+                      type="date" 
+                      value={ackDateById[item.id] || ''}
+                      onChange={(e)=> setAckDateById(prev=>({...prev, [item.id]: e.target.value}))}
+                      style={{padding:'6px 8px', border:'1px solid #e5e7eb', borderRadius:6}}
+                    />
+                    <button className="btn btn-primary" onClick={async ()=>{
+                      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+                      try {
+                        await fetch('/buildhub/backend/api/contractor/acknowledge_inbox_item.php', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ id: item.id, contractor_id: me.id, due_date: ackDateById[item.id] || null })
+                        });
+                      } catch {}
+                      try {
+                        const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+                        const j = await r.json().catch(() => ({}));
+                        if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+                      } catch {}
+                      setAckOpenById(prev=>({...prev, [item.id]: false}));
+                    }}>Confirm</button>
+                    <button className="btn btn-secondary" onClick={()=> setAckOpenById(prev=>({...prev, [item.id]: false}))}>Cancel</button>
+                  </>
+                )}
+              </div>
+            )}
+            <button className="btn btn-secondary" onClick={async ()=>{
+              try {
+                const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+                await fetch('/buildhub/backend/api/contractor/delete_inbox_item.php', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ id: item.id, contractor_id: me.id })
+                });
+                // Refresh inbox
+                const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+                const j = await r.json().catch(() => ({}));
+                if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+              } catch {}
+            }}>Remove</button>
+          </div>
+        </div>
+        <div className="card-body" style={{display:'grid',gridTemplateColumns:'160px 1fr',gap:12}}>
+          <div>
+            {img ? (
+              <img src={img} alt="Layout preview" style={{width:'160px',height:'120px',objectFit:'cover',borderRadius:8,border:'1px solid #eee'}} onError={(e)=>{ e.currentTarget.style.display='none'; }} />
+            ) : (
+              <div style={{width:'160px',height:'120px',display:'grid',placeItems:'center',border:'1px dashed #ddd',borderRadius:8}}>No image</div>
+            )}
+          </div>
+          <div style={{display:'grid',gap:6}}>
+            {fd?.title && <div><strong>Design:</strong> {fd.title}</div>}
+            {fd?.description && <div><strong>Description:</strong> {fd.description}</div>}
+            {item.message && <div><strong>Message:</strong> {item.message}</div>}
+            {floor && (
+              <details>
+                <summary style={{cursor:'pointer'}}>Floor details</summary>
+                <div style={{marginTop:8}}>
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    {floor.floors_count !== undefined && <div><strong>Floors:</strong> {String(floor.floors_count)}</div>}
+                    {floor.floor_height && <div><strong>Floor height:</strong> {String(floor.floor_height)}</div>}
+                    {floor.ground_floor_area && <div><strong>Ground floor area:</strong> {String(floor.ground_floor_area)}</div>}
+                    {floor.first_floor_area && <div><strong>First floor area:</strong> {String(floor.first_floor_area)}</div>}
+                    {floor.second_floor_area && <div><strong>Second floor area:</strong> {String(floor.second_floor_area)}</div>}
+                    {floor.flooring_materials && <div style={{gridColumn:'1 / -1'}}><strong>Flooring materials:</strong> {String(floor.flooring_materials)}</div>}
+                  </div>
+                </div>
+              </details>
+            )}
+            {technical && (
+              <details>
+                <summary style={{cursor:'pointer'}}>Technical details</summary>
+                <div style={{marginTop:8}}>{renderTechnicalNeat(technical)}</div>
+              </details>
+            )}
+            {fd?.files && Array.isArray(fd.files) && fd.files.length > 0 && (
+              <details>
+                <summary style={{cursor:'pointer'}}>Files ({fd.files.length})</summary>
+                <ul style={{margin:'8px 0 0 16px'}}>
+                  {fd.files.map((f, idx) => {
+                    const url = assetUrl(f.url || f.path || (typeof f === 'string' ? f : ''));
+                    const name = f.name || (typeof f === 'string' ? f : `File ${idx+1}`);
+                    return <li key={idx}><a href={url} target="_blank" rel="noreferrer">{name}</a></li>;
+                  })}
+                </ul>
+              </details>
+            )}
+
+            {/* Submit Estimate for this send */}
+            <details>
+              <summary style={{cursor:'pointer'}}>Submit Estimate</summary>
+              <form className="estimate-form" onSubmit={async (e)=>{
+                e.preventDefault();
+                const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+                const form = e.currentTarget;
+                const fd = new FormData(form);
+                fd.append('send_id', String(item.id));
+                fd.append('contractor_id', String(me.id));
+                try {
+                  const res = await fetch('/buildhub/backend/api/contractor/submit_estimate_for_send.php', {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: fd
+                  });
+                  const json = await res.json();
+                  if (json?.success) {
+                    alert('Estimate submitted');
+                    form.reset();
+                  } else {
+                    alert(json?.message || 'Failed to submit');
+                  }
+                } catch {
+                  alert('Network error');
+                }
+              }}>
+                {/* helper: auto-calc grand total from section totals */}
+                <script dangerouslySetInnerHTML={{__html:`window.__bhCalcGrandTotal = window.__bhCalcGrandTotal || function(form){try{var m=form.querySelector('[name="structured[totals][materials]"]');var l=form.querySelector('[name="structured[totals][labor]"]');var u=form.querySelector('[name="structured[totals][utilities]"]');var s=form.querySelector('[name="structured[totals][misc]"]');var g=form.querySelector('[name="structured[totals][grand]"]');var tc=form.querySelector('[name="total_cost"]');function num(v){if(!v) return 0;return parseFloat(String(v).replace(/[,\s]/g,''))||0;}var sum=num(m&&m.value)+num(l&&l.value)+num(u&&u.value)+num(s&&s.value);if(g){g.value=sum?String(sum):'';}if(tc){tc.value=sum?String(sum):tc.value;}}catch(e){}};`}} />
+                {/* 1. Basic Project Information */}
+                <div className="section-title">1. Basic Project Information</div>
+                <div className="grid-2">
+                  <input name="structured[project_name]" placeholder="Project Name" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[project_address]" placeholder="Project Address / Location" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[plot_size]" placeholder="Plot Size (sq.ft / sq.m)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[built_up_area]" placeholder="Built-up Area (sq.ft / sq.m)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[floors]" placeholder="Number of Floors" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[estimation_date]" type="date" placeholder="Estimation Date" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[client_name]" placeholder="Client / Homeowner Name" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[client_contact]" placeholder="Contact Info" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                </div>
+
+                {/* 2. Material Costs */}
+                <div className="section-title" style={{marginTop:8}}>2. Material Costs</div>
+                <div className="grid-3">
+                  <input name="structured[materials][cement]" placeholder="Cement (type, qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][sand]" placeholder="Sand (type, qty m³, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][bricks]" placeholder="Bricks (qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][steel]" placeholder="Steel/TMT (kg, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][aggregate]" placeholder="Aggregate (m³, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][tiles]" placeholder="Tiles/Flooring (m², unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][paint]" placeholder="Paint (type, liters, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][doors]" placeholder="Doors (type, qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][windows]" placeholder="Windows (type, qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[materials][others]" placeholder="Other materials (roofing, glass, etc.)" style={{gridColumn:'1 / -1'}} />
+                </div>
+
+                {/* 3. Labor Charges */}
+                <div className="section-title" style={{marginTop:8}}>3. Labor Charges</div>
+                <div className="grid-3">
+                  <input name="structured[labor][mason]" placeholder="Mason Work (rate, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][plaster]" placeholder="Plaster Work (rate, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][painting]" placeholder="Painting (rate, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][electrical]" placeholder="Electrical (per point/room, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][plumbing]" placeholder="Plumbing (per fitting/system, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][flooring]" placeholder="Flooring Installation (per area, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][roofing]" placeholder="Roofing/Ceiling Work" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[labor][others]" placeholder="Additional labor tasks" style={{gridColumn:'1 / -1'}} />
+                </div>
+
+                {/* 4. Utilities & Fixtures */}
+                <div className="section-title" style={{marginTop:8}}>4. Utilities & Fixtures</div>
+                <div className="grid-3">
+                  <input name="structured[utilities][sanitary]" placeholder="Sanitary fittings" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[utilities][kitchen]" placeholder="Kitchen cabinets / modular kitchen" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[utilities][electrical_fixtures]" placeholder="Electrical fixtures" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[utilities][water_tank]" placeholder="Water tank & pumps" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[utilities][hvac]" placeholder="AC / Heating (if applicable)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[utilities][gas_water]" placeholder="Gas / Water lines" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                </div>
+
+                {/* 5. Miscellaneous Costs */}
+                <div className="section-title" style={{marginTop:8}}>5. Miscellaneous Costs</div>
+                <div className="grid-3">
+                  <input name="structured[misc][transport]" placeholder="Transportation of materials" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[misc][contingency]" placeholder="Labor contingency / buffer" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[misc][fees]" placeholder="Permit / municipal / registration fees" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[misc][cleaning]" placeholder="Cleaning / waste removal" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[misc][safety]" placeholder="Safety equipment / scaffolding" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                </div>
+
+                {/* 6. Totals */}
+                <div className="section-title" style={{marginTop:8}}>6. Total Estimation</div>
+                <div className="totals">
+                  <input name="structured[totals][materials]" placeholder="Material Costs Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[totals][labor]" placeholder="Labor Charges Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[totals][utilities]" placeholder="Utilities & Fixtures Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[totals][misc]" placeholder="Miscellaneous Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input className="grand-total" name="structured[totals][grand]" placeholder="Grand Total (auto)" readOnly />
+                </div>
+
+                {/* 7. Notes for Homeowner */}
+                <div className="section-title" style={{marginTop:8}}>7. Notes for Homeowner</div>
+                <textarea name="notes" placeholder="Prices approximate; quantities based on layout; payment schedule; taxes; warranties" rows={3} />
+
+                {/* 8. Optional Details for Transparency */}
+                <div style={{fontWeight:700, marginTop:8}}>8. Optional Details</div>
+                <textarea name="structured[brands]" placeholder="Brands (cement, steel, tiles) / Grades / Units / Photos links" rows={2} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                <label style={{fontWeight:600}}>Materials</label>
+                <textarea name="materials" placeholder="List key materials, grades, brands if any" rows={2} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                <label style={{fontWeight:600}}>Cost breakdown</label>
+                <textarea name="cost_breakdown" placeholder="Itemized costs (e.g., excavation, RCC, masonry, finishes, labor)" rows={3} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                  <div>
+                    <label style={{fontWeight:600}}>Total cost (₹)</label>
+                    <input name="total_cost" type="number" step="0.01" placeholder="Auto-calculated" required readOnly style={{width:'100%', border:'1px solid #e5e7eb', borderRadius:6, padding:8, background:'#f9fafb'}} />
+                  </div>
+                  <div>
+                    <label style={{fontWeight:600}}>Timeline</label>
+                    <input name="timeline" placeholder="e.g., 8–10 weeks" required style={{width:'100%', border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  </div>
+                </div>
+                <label style={{fontWeight:600}}>Notes</label>
+                <textarea name="notes" placeholder="Assumptions, exclusions, payment terms, validity" rows={2} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                <div style={{padding:10, background:'#f8fafc', border:'1px dashed #cbd5e1', borderRadius:8}}>
+                  <div style={{fontWeight:600, marginBottom:6}}>Preview</div>
+                  <div style={{fontSize:14, color:'#374151'}}>Fill the fields and your estimate will be visible to the homeowner under "Sent to Contractors".</div>
+                </div>
+                <div>
+                  <label style={{fontWeight:600}}>Attachments (optional)</label>
+                  <input name="attachments" type="file" multiple />
+                </div>
+                <div className="actions">
+                  <button className="btn btn-secondary" type="button" onClick={(e)=>{ const form = e.currentTarget.closest('form'); if (form) form.reset(); }}>Reset</button>
+                  <button className="btn btn-primary" type="submit">Submit Estimate</button>
+                </div>
+              </form>
+            </details>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderAvailableProjects = () => (
     <div>
@@ -629,6 +1018,15 @@ const ContractorDashboard = () => {
             <span className="nav-label sb-label">My Estimates</span>
             {proposalsCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{proposalsCount}</span>)}
           </a>
+          <a 
+            href="#" 
+            className={`nav-item sb-item ${activeTab === 'inbox' ? 'active' : ''}`}
+            onClick={(e) => { e.preventDefault(); setActiveTab('inbox'); }}
+            title="Inbox"
+          >
+            <span className="nav-label sb-label">Inbox</span>
+            {inboxCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{inboxCount}</span>)}
+          </a>
         
         </nav>
 
@@ -708,6 +1106,7 @@ const ContractorDashboard = () => {
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'projects' && renderAvailableProjects()}
         {activeTab === 'proposals' && renderMyProposals()}
+        {activeTab === 'inbox' && renderInbox()}
         {activeTab === 'profile' && renderProfile()}
       </div>
     </div>
