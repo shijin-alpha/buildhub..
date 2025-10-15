@@ -16,6 +16,7 @@ const ContractorDashboard = () => {
   const [ackDateById, setAckDateById] = useState({});
   const [ackOpenById, setAckOpenById] = useState({});
   const [myProposals, setMyProposals] = useState([]);
+  const [myEstimates, setMyEstimates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -23,6 +24,187 @@ const ContractorDashboard = () => {
   const [sidebarProfileOpen, setSidebarProfileOpen] = useState(false);
   const sidebarProfileRef = useRef(null);
   const [showRequestDetails, setShowRequestDetails] = useState({});
+  // Live totals for inbox estimate form
+  const estimateFormRef = useRef(null);
+  const [materialsTotal, setMaterialsTotal] = useState(0);
+  const [laborTotal, setLaborTotal] = useState(0);
+  const [utilitiesTotal, setUtilitiesTotal] = useState(0);
+  const [miscTotal, setMiscTotal] = useState(0);
+  const [grandTotal, setGrandTotal] = useState(0);
+  const [recentReportUrl, setRecentReportUrl] = useState('');
+
+  const autoGrow = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  const buildEstimateReport = (formEl) => {
+    try {
+      const data = new FormData(formEl);
+      const get = (k) => data.get(k) || '';
+      const html = `<!doctype html><html><head><meta charset="utf-8"/>
+      <title>Cost Estimate Report</title>
+      <style>
+        body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;margin:24px}
+        h1{margin:0 0 8px 0;font-size:20px}
+        h2{margin:18px 0 8px 0;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+        .row{display:flex;justify-content:space-between;gap:12px}
+        .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:12px 0}
+        .muted{color:#64748b}
+        .total{font-weight:700}
+        table{width:100%;border-collapse:collapse;margin-top:8px}
+        th,td{border-bottom:1px solid #eef2f7;padding:8px;text-align:left}
+      </style>
+      </head><body>
+        <h1>Cost Estimate</h1>
+        <div class="muted">Generated on ${new Date().toLocaleString()}</div>
+        <div class="card">
+          <h2>Project</h2>
+          <div class="grid">
+            <div><strong>Name:</strong> ${get('structured[project_name]')}</div>
+            <div><strong>Address:</strong> ${get('structured[project_address]')}</div>
+            <div><strong>Plot Size:</strong> ${get('structured[plot_size]')}</div>
+            <div><strong>Built-up Area:</strong> ${get('structured[built_up_area]')}</div>
+            <div><strong>Floors:</strong> ${get('structured[floors]')}</div>
+            <div><strong>Date:</strong> ${get('structured[estimation_date]')}</div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Materials</h2>
+          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
+            ${['cement','sand','bricks','steel','aggregate','tiles','paint','doors','windows','others'].map(k=>{
+              const name=get(`structured[materials][${k}][name]`);
+              const qty=get(`structured[materials][${k}][qty]`);
+              const rate=get(`structured[materials][${k}][rate]`);
+              const amt=get(`structured[materials][${k}][amount]`);
+              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
+            }).join('')}
+          </tbody></table>
+          <div class="row"><div class="muted">Materials Total</div><div class="total">₹${get('structured[totals][materials]')}</div></div>
+        </div>
+        <div class="card">
+          <h2>Labor</h2>
+          <table><thead><tr><th>Task</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
+            ${['mason','plaster','painting','electrical','plumbing','flooring','roofing','others'].map(k=>{
+              const name=get(`structured[labor][${k}][name]`);
+              const qty=get(`structured[labor][${k}][qty]`);
+              const rate=get(`structured[labor][${k}][rate]`);
+              const amt=get(`structured[labor][${k}][amount]`);
+              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
+            }).join('')}
+          </tbody></table>
+          <div class="row"><div class="muted">Labor Total</div><div class="total">₹${get('structured[totals][labor]')}</div></div>
+        </div>
+        <div class="card">
+          <h2>Utilities & Fixtures</h2>
+          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
+            ${['sanitary','kitchen','electrical_fixtures','water_tank','hvac','gas_water'].map(k=>{
+              const name=get(`structured[utilities][${k}][name]`);
+              const qty=get(`structured[utilities][${k}][qty]`);
+              const rate=get(`structured[utilities][${k}][rate]`);
+              const amt=get(`structured[utilities][${k}][amount]`);
+              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
+            }).join('')}
+            ${['others1','others2','others3'].map(k=>{
+              const name=get(`structured[utilities][${k}][name]`);
+              const amt=get(`structured[utilities][${k}][amount]`);
+              return (name||amt)?`<tr><td>${name}</td><td class="muted"></td><td class="muted"></td><td>${amt}</td></tr>`:'';
+            }).join('')}
+          </tbody></table>
+          <div class="row"><div class="muted">Utilities Total</div><div class="total">₹${get('structured[totals][utilities]')}</div></div>
+        </div>
+        <div class="card">
+          <h2>Miscellaneous</h2>
+          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
+            ${['transport','contingency','fees','cleaning','safety'].map(k=>{
+              const name=get(`structured[misc][${k}][name]`);
+              const qty=get(`structured[misc][${k}][qty]`);
+              const rate=get(`structured[misc][${k}][rate]`);
+              const amt=get(`structured[misc][${k}][amount]`);
+              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
+            }).join('')}
+            ${['others1','others2','others3'].map(k=>{
+              const name=get(`structured[misc][${k}][name]`);
+              const amt=get(`structured[misc][${k}][amount]`);
+              return (name||amt)?`<tr><td>${name}</td><td class="muted"></td><td class="muted"></td><td>${amt}</td></tr>`:'';
+            }).join('')}
+          </tbody></table>
+          <div class="row"><div class="muted">Misc Total</div><div class="total">₹${get('structured[totals][misc]')}</div></div>
+        </div>
+        <div class="card">
+          <h2>Grand Total</h2>
+          <div class="row"><div class="muted">Grand Total (All)</div><div class="total">₹${get('structured[totals][grand]')}</div></div>
+        </div>
+        <script>window.onload=function(){window.print&&window.print();}</script>
+      </body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setRecentReportUrl(url);
+      window.open(url, '_blank');
+    } catch {}
+  };
+
+  // Ensure legacy calls to window.__bhCalcSectionTotals work
+  useEffect(() => {
+    window.__bhCalcSectionTotals = (form) => {
+      try { recalcTotalsFromForm(form); } catch {}
+    };
+    return () => {
+      try { if (window.__bhCalcSectionTotals) delete window.__bhCalcSectionTotals; } catch {}
+    };
+  }, []);
+
+  const recalcTotalsFromForm = (formEl) => {
+    if (!formEl) return;
+    // Compute per-line amounts for each section (qty * rate)
+    try {
+      ['materials','labor','utilities','misc'].forEach((section) => {
+        const qtyInputs = formEl.querySelectorAll(`input[name^="structured[${section}]"][name$="[qty]"]`);
+        qtyInputs.forEach((qtyEl) => {
+          const base = qtyEl.name.replace(/\[qty\]$/, '');
+          const rateEl = formEl.querySelector(`input[name="${base}[rate]"]`);
+          const amountEl = formEl.querySelector(`input[name="${base}[amount]"]`);
+          const qty = parseFloat((qtyEl.value || '').toString().replace(/[,\s]/g, '')) || 0;
+          const rate = parseFloat(((rateEl && rateEl.value) || '').toString().replace(/[,\s]/g, '')) || 0;
+          const amount = qty * rate;
+          if (amountEl) amountEl.value = amount ? String(amount) : '';
+        });
+      });
+    } catch {}
+    const sumSection = (prefix) => {
+      const amountInputs = formEl.querySelectorAll(`input[name^="${prefix}"][name$="[amount]"]`);
+      let inputs;
+      if (amountInputs && amountInputs.length > 0) {
+        inputs = amountInputs;
+      } else {
+        inputs = formEl.querySelectorAll(`input[name^="${prefix}"]`);
+      }
+      let total = 0;
+      inputs.forEach((inp) => {
+        const v = (inp && inp.value) || '';
+        // Extract any numbers present (supports "123", "123.45", embedded in text)
+        const matches = v.match(/[-+]?(?:\d+\.?\d*|\d*\.?\d+)/g);
+        if (matches) {
+          matches.forEach((tok) => {
+            const n = parseFloat(tok);
+            if (!Number.isNaN(n)) total += n;
+          });
+        }
+      });
+      return total;
+    };
+    const m = sumSection('structured[materials]');
+    const l = sumSection('structured[labor]');
+    const u = sumSection('structured[utilities]');
+    const s = sumSection('structured[misc]');
+    setMaterialsTotal(m);
+    setLaborTotal(l);
+    setUtilitiesTotal(u);
+    setMiscTotal(s);
+    setGrandTotal(m + l + u + s);
+  };
 
   // Sidebar counts
   const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
@@ -65,6 +247,14 @@ const ContractorDashboard = () => {
           const r3 = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
           const j3 = await r3.json().catch(() => ({}));
           if (mounted && j3?.success) setInbox(Array.isArray(j3.items) ? j3.items : []);
+        }
+      } catch {}
+      try {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (mounted && me?.id) {
+          const r4 = await fetch(`/buildhub/backend/api/contractor/get_my_estimates.php?contractor_id=${me.id}`, { credentials: 'include' });
+          const j4 = await r4.json().catch(() => ({}));
+          if (j4?.success) setMyEstimates(Array.isArray(j4.estimates) ? j4.estimates : []);
         }
       } catch {}
     };
@@ -389,7 +579,7 @@ const ContractorDashboard = () => {
           <div className="stat-content">
             <div className="stat-icon estimates">📋</div>
             <div className="stat-info">
-              <h3>{myProposals.length}</h3>
+              <h3>{myEstimates.length}</h3>
               <p>Estimates Sent</p>
             </div>
           </div>
@@ -689,18 +879,53 @@ const ContractorDashboard = () => {
             {/* Submit Estimate for this send */}
             <details>
               <summary style={{cursor:'pointer'}}>Submit Estimate</summary>
-              <form className="estimate-form" onSubmit={async (e)=>{
+              <form ref={estimateFormRef} className="estimate-form" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget); } catch(_) {} }} onSubmit={async (e)=>{
                 e.preventDefault();
                 const me = JSON.parse(sessionStorage.getItem('user') || '{}');
                 const form = e.currentTarget;
-                const fd = new FormData(form);
-                fd.append('send_id', String(item.id));
-                fd.append('contractor_id', String(me.id));
+                const sid = String(item?.id || form.querySelector('input[name="send_id"]')?.value || '');
+                const cid = String(user?.id || me?.id || form.querySelector('input[name="contractor_id"]')?.value || '');
+                if (!sid || !cid) {
+                  alert('Missing identifiers. Please refresh and try again.');
+                  return;
+                }
+                // Build structured object from inputs named like structured[...]
+                const structured = {};
+                const setNested = (obj, pathArr, value) => {
+                  let ref = obj;
+                  for (let i = 0; i < pathArr.length - 1; i++) {
+                    const key = pathArr[i];
+                    if (!(key in ref) || typeof ref[key] !== 'object') ref[key] = {};
+                    ref = ref[key];
+                  }
+                  ref[pathArr[pathArr.length - 1]] = value;
+                };
+                const els = form.querySelectorAll('[name^="structured[" ]');
+                els.forEach((el) => {
+                  const name = el.getAttribute('name');
+                  const m = name.match(/^structured\[(.+)\]$/);
+                  if (!m) return;
+                  const raw = m[1];
+                  const parts = raw.split('][').map(s => s.replace(/\]$/,'').replace(/^\[/,''));
+                  const val = el.value;
+                  setNested(structured, parts, val);
+                });
+                const payload = {
+                  send_id: Number(sid),
+                  contractor_id: Number(cid),
+                  materials: form.querySelector('textarea[name="materials"]')?.value || '',
+                  cost_breakdown: form.querySelector('textarea[name="cost_breakdown"]')?.value || '',
+                  total_cost: form.querySelector('input[name="total_cost"]')?.value || '',
+                  timeline: form.querySelector('input[name="timeline"]')?.value || '',
+                  notes: form.querySelector('textarea[name="notes"]')?.value || '',
+                  structured
+                };
                 try {
                   const res = await fetch('/buildhub/backend/api/contractor/submit_estimate_for_send.php', {
                     method: 'POST',
                     credentials: 'include',
-                    body: fd
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                   });
                   const json = await res.json();
                   if (json?.success) {
@@ -713,78 +938,273 @@ const ContractorDashboard = () => {
                   alert('Network error');
                 }
               }}>
+                {/* Hidden identifiers for backend (use defaultValue to avoid React controlled issues) */}
+                <input type="hidden" name="send_id" defaultValue={String(item?.id || '')} />
+                <input type="hidden" name="contractor_id" defaultValue={String(user?.id || (JSON.parse(sessionStorage.getItem('user')||'{}').id || ''))} />
                 {/* helper: auto-calc grand total from section totals */}
                 <script dangerouslySetInnerHTML={{__html:`window.__bhCalcGrandTotal = window.__bhCalcGrandTotal || function(form){try{var m=form.querySelector('[name="structured[totals][materials]"]');var l=form.querySelector('[name="structured[totals][labor]"]');var u=form.querySelector('[name="structured[totals][utilities]"]');var s=form.querySelector('[name="structured[totals][misc]"]');var g=form.querySelector('[name="structured[totals][grand]"]');var tc=form.querySelector('[name="total_cost"]');function num(v){if(!v) return 0;return parseFloat(String(v).replace(/[,\s]/g,''))||0;}var sum=num(m&&m.value)+num(l&&l.value)+num(u&&u.value)+num(s&&s.value);if(g){g.value=sum?String(sum):'';}if(tc){tc.value=sum?String(sum):tc.value;}}catch(e){}};`}} />
+                {/* section calculators */}
+                <script dangerouslySetInnerHTML={{__html:`window.__bhCalcSectionTotals = window.__bhCalcSectionTotals || function(form){try{function sumSection(prefix){var inputs=form.querySelectorAll('[name^="'+prefix+'"]');var total=0;inputs.forEach(function(inp){var v=(inp && inp.value)||'';var match=v.match(/[-+]?(?:\\d+\\.?\\d*|\\d*\\.?\\d+)/g);if(match){match.forEach(function(tok){var n=parseFloat(tok);if(!isNaN(n)) total+=n;});}});return total;}var m=sumSection('structured[materials]');var l=sumSection('structured[labor]');var u=sumSection('structured[utilities]');var s=sumSection('structured[misc]');var fm=form.querySelector('[name="structured[totals][materials]"]'); if(fm) fm.value = m?String(m):'';var fl=form.querySelector('[name="structured[totals][labor]"]'); if(fl) fl.value = l?String(l):'';var fu=form.querySelector('[name="structured[totals][utilities]"]'); if(fu) fu.value = u?String(u):'';var fs=form.querySelector('[name="structured[totals][misc]"]'); if(fs) fs.value = s?String(s):''; if(typeof window.__bhCalcGrandTotal==='function'){ window.__bhCalcGrandTotal(form); } }catch(e){}};`}} />
                 {/* 1. Basic Project Information */}
                 <div className="section-title">1. Basic Project Information</div>
                 <div className="grid-2">
-                  <input name="structured[project_name]" placeholder="Project Name" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[project_address]" placeholder="Project Address / Location" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[plot_size]" placeholder="Plot Size (sq.ft / sq.m)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[built_up_area]" placeholder="Built-up Area (sq.ft / sq.m)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[floors]" placeholder="Number of Floors" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[estimation_date]" type="date" placeholder="Estimation Date" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[client_name]" placeholder="Client / Homeowner Name" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[client_contact]" placeholder="Contact Info" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[project_name]" placeholder="Project Name" list="bh_project_names" />
+                  <input name="structured[project_address]" placeholder="Project Address / Location" />
+                  <input name="structured[plot_size]" placeholder="Plot Size (sq.ft / sq.m)" />
+                  <input name="structured[built_up_area]" placeholder="Built-up Area (sq.ft / sq.m)" />
+                  <select name="structured[floors]" defaultValue="">
+                    <option value="" disabled>Number of Floors</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                  <input name="structured[estimation_date]" type="date" placeholder="Estimation Date" />
+                  <input name="structured[client_name]" placeholder="Client / Homeowner Name" />
+                  <input name="structured[client_contact]" placeholder="Contact Info" />
                 </div>
 
                 {/* 2. Material Costs */}
                 <div className="section-title" style={{marginTop:8}}>2. Material Costs</div>
-                <div className="grid-3">
-                  <input name="structured[materials][cement]" placeholder="Cement (type, qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][sand]" placeholder="Sand (type, qty m³, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][bricks]" placeholder="Bricks (qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][steel]" placeholder="Steel/TMT (kg, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][aggregate]" placeholder="Aggregate (m³, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][tiles]" placeholder="Tiles/Flooring (m², unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][paint]" placeholder="Paint (type, liters, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][doors]" placeholder="Doors (type, qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][windows]" placeholder="Windows (type, qty, unit, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[materials][others]" placeholder="Other materials (roofing, glass, etc.)" style={{gridColumn:'1 / -1'}} />
+                <div className="muted" style={{marginTop:4}}>Tip: enter numeric amounts anywhere in the field (e.g., "OPC 53 - 60000"). The calculator sums the numbers it finds.</div>
+                <div className="grid-3" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget.closest('form')); } catch(_) {} }}>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][cement][name]" placeholder="Cement grade (OPC 43/53, PPC)" list="bh_cement" />
+                    <input name="structured[materials][cement][qty]" placeholder="Qty (bags) e.g., 50" />
+                    <input name="structured[materials][cement][rate]" placeholder="Rate (₹ per bag) e.g., 380" />
+                    <input name="structured[materials][cement][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][sand][name]" placeholder="Sand type (River/M-sand)" list="bh_sand" />
+                    <input name="structured[materials][sand][qty]" placeholder="Qty (m³) e.g., 6" />
+                    <input name="structured[materials][sand][rate]" placeholder="Rate (₹ per m³) e.g., 2500" />
+                    <input name="structured[materials][sand][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][bricks][name]" placeholder="Bricks/Blocks (Clay/AAC)" list="bh_bricks" />
+                    <input name="structured[materials][bricks][qty]" placeholder="Qty (nos) e.g., 5000" />
+                    <input name="structured[materials][bricks][rate]" placeholder="Rate (₹ per 1000) e.g., 8500" />
+                    <input name="structured[materials][bricks][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][steel][name]" placeholder="Steel/TMT (8/10/12mm)" list="bh_steel" />
+                    <input name="structured[materials][steel][qty]" placeholder="Qty (kg) e.g., 1200" />
+                    <input name="structured[materials][steel][rate]" placeholder="Rate (₹ per kg) e.g., 68" />
+                    <input name="structured[materials][steel][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][aggregate][name]" placeholder="Aggregate (10/20mm)" list="bh_aggregate" />
+                    <input name="structured[materials][aggregate][qty]" placeholder="Qty (m³) e.g., 8" />
+                    <input name="structured[materials][aggregate][rate]" placeholder="Rate (₹ per m³) e.g., 1800" />
+                    <input name="structured[materials][aggregate][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][tiles][name]" placeholder="Tiles/Flooring (Vitrified/Ceramic)" list="bh_tiles" />
+                    <input name="structured[materials][tiles][qty]" placeholder="Qty (m²) e.g., 120" />
+                    <input name="structured[materials][tiles][rate]" placeholder="Rate (₹ per m²) e.g., 600" />
+                    <input name="structured[materials][tiles][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][paint][name]" placeholder="Paint (Interior/Exterior)" list="bh_paint" />
+                    <input name="structured[materials][paint][qty]" placeholder="Qty (L) e.g., 80" />
+                    <input name="structured[materials][paint][rate]" placeholder="Rate (₹ per L) e.g., 250" />
+                    <input name="structured[materials][paint][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][doors][name]" placeholder="Doors (Teak/Flush)" list="bh_doors" />
+                    <input name="structured[materials][doors][qty]" placeholder="Qty (nos) e.g., 10" />
+                    <input name="structured[materials][doors][rate]" placeholder="Rate (₹ per door) e.g., 7000" />
+                    <input name="structured[materials][doors][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[materials][windows][name]" placeholder="Windows (uPVC/Aluminium)" list="bh_windows" />
+                    <input name="structured[materials][windows][qty]" placeholder="Qty (nos) e.g., 12" />
+                    <input name="structured[materials][windows][rate]" placeholder="Rate (₹ per window) e.g., 6000" />
+                    <input name="structured[materials][windows][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[materials][others][name]" placeholder="Other material (e.g., Glass/Hardware)" />
+                    <input name="structured[materials][others][qty]" placeholder="Qty (units)" />
+                    <input name="structured[materials][others][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[materials][others][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
                 </div>
 
                 {/* 3. Labor Charges */}
                 <div className="section-title" style={{marginTop:8}}>3. Labor Charges</div>
-                <div className="grid-3">
-                  <input name="structured[labor][mason]" placeholder="Mason Work (rate, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][plaster]" placeholder="Plaster Work (rate, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][painting]" placeholder="Painting (rate, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][electrical]" placeholder="Electrical (per point/room, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][plumbing]" placeholder="Plumbing (per fitting/system, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][flooring]" placeholder="Flooring Installation (per area, total)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][roofing]" placeholder="Roofing/Ceiling Work" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[labor][others]" placeholder="Additional labor tasks" style={{gridColumn:'1 / -1'}} />
+                <div className="grid-3" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget.closest('form')); } catch(_) {} }}>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][mason][name]" placeholder="Masonry work" list="bh_labor_mason" />
+                    <input name="structured[labor][mason][qty]" placeholder="Qty (m³ / days)" />
+                    <input name="structured[labor][mason][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[labor][mason][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][plaster][name]" placeholder="Plaster work" list="bh_labor_plaster" />
+                    <input name="structured[labor][plaster][qty]" placeholder="Qty (m²)" />
+                    <input name="structured[labor][plaster][rate]" placeholder="Rate (₹ per m²)" />
+                    <input name="structured[labor][plaster][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][painting][name]" placeholder="Painting" list="bh_labor_painting" />
+                    <input name="structured[labor][painting][qty]" placeholder="Qty (m² / rooms)" />
+                    <input name="structured[labor][painting][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[labor][painting][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][electrical][name]" placeholder="Electrical" list="bh_labor_electrical" />
+                    <input name="structured[labor][electrical][qty]" placeholder="Qty (points / rooms)" />
+                    <input name="structured[labor][electrical][rate]" placeholder="Rate (₹ per point/room)" />
+                    <input name="structured[labor][electrical][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][plumbing][name]" placeholder="Plumbing" list="bh_labor_plumbing" />
+                    <input name="structured[labor][plumbing][qty]" placeholder="Qty (fittings / rooms)" />
+                    <input name="structured[labor][plumbing][rate]" placeholder="Rate (₹ per fitting)" />
+                    <input name="structured[labor][plumbing][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][flooring][name]" placeholder="Flooring installation" list="bh_labor_flooring" />
+                    <input name="structured[labor][flooring][qty]" placeholder="Qty (m²)" />
+                    <input name="structured[labor][flooring][rate]" placeholder="Rate (₹ per m²)" />
+                    <input name="structured[labor][flooring][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[labor][roofing][name]" placeholder="Roofing/Ceiling work" list="bh_labor_roofing" />
+                    <input name="structured[labor][roofing][qty]" placeholder="Qty (m²)" />
+                    <input name="structured[labor][roofing][rate]" placeholder="Rate (₹ per m²)" />
+                    <input name="structured[labor][roofing][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[labor][others][name]" placeholder="Other labor" />
+                    <input name="structured[labor][others][qty]" placeholder="Qty (units)" />
+                    <input name="structured[labor][others][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[labor][others][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
                 </div>
 
                 {/* 4. Utilities & Fixtures */}
                 <div className="section-title" style={{marginTop:8}}>4. Utilities & Fixtures</div>
-                <div className="grid-3">
-                  <input name="structured[utilities][sanitary]" placeholder="Sanitary fittings" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[utilities][kitchen]" placeholder="Kitchen cabinets / modular kitchen" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[utilities][electrical_fixtures]" placeholder="Electrical fixtures" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[utilities][water_tank]" placeholder="Water tank & pumps" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[utilities][hvac]" placeholder="AC / Heating (if applicable)" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[utilities][gas_water]" placeholder="Gas / Water lines" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                <div className="grid-3" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget.closest('form')); } catch(_) {} }}>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[utilities][sanitary][name]" placeholder="Sanitary fittings" list="bh_util_sanitary" />
+                    <input name="structured[utilities][sanitary][qty]" placeholder="Qty (sets)" />
+                    <input name="structured[utilities][sanitary][rate]" placeholder="Rate (₹ per set)" />
+                    <input name="structured[utilities][sanitary][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[utilities][kitchen][name]" placeholder="Kitchen cabinets / modular" list="bh_util_kitchen" />
+                    <input name="structured[utilities][kitchen][qty]" placeholder="Qty (ft / set)" />
+                    <input name="structured[utilities][kitchen][rate]" placeholder="Rate (₹ per ft/set)" />
+                    <input name="structured[utilities][kitchen][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[utilities][electrical_fixtures][name]" placeholder="Electrical fixtures" list="bh_util_electrical_fixtures" />
+                    <input name="structured[utilities][electrical_fixtures][qty]" placeholder="Qty (points)" />
+                    <input name="structured[utilities][electrical_fixtures][rate]" placeholder="Rate (₹ per point)" />
+                    <input name="structured[utilities][electrical_fixtures][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[utilities][water_tank][name]" placeholder="Water tank & pumps" list="bh_util_watertank" />
+                    <input name="structured[utilities][water_tank][qty]" placeholder="Qty (units)" />
+                    <input name="structured[utilities][water_tank][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[utilities][water_tank][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[utilities][hvac][name]" placeholder="AC / Heating" list="bh_util_hvac" />
+                    <input name="structured[utilities][hvac][qty]" placeholder="Qty (tons / units)" />
+                    <input name="structured[utilities][hvac][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[utilities][hvac][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[utilities][gas_water][name]" placeholder="Gas / Water lines" list="bh_util_gaswater" />
+                    <input name="structured[utilities][gas_water][qty]" placeholder="Qty (m / points)" />
+                    <input name="structured[utilities][gas_water][rate]" placeholder="Rate (₹ per m/point)" />
+                    <input name="structured[utilities][gas_water][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  {/* Other utilities: simple Item + Price rows */}
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[utilities][others1][name]" placeholder="Other utility item (e.g., Geyser install)" />
+                    <div />
+                    <div />
+                    <input name="structured[utilities][others1][amount]" placeholder="Price (₹)" />
+                  </div>
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[utilities][others2][name]" placeholder="Other utility item" />
+                    <div />
+                    <div />
+                    <input name="structured[utilities][others2][amount]" placeholder="Price (₹)" />
+                  </div>
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[utilities][others3][name]" placeholder="Other utility item" />
+                    <div />
+                    <div />
+                    <input name="structured[utilities][others3][amount]" placeholder="Price (₹)" />
+                  </div>
                 </div>
 
                 {/* 5. Miscellaneous Costs */}
                 <div className="section-title" style={{marginTop:8}}>5. Miscellaneous Costs</div>
-                <div className="grid-3">
-                  <input name="structured[misc][transport]" placeholder="Transportation of materials" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[misc][contingency]" placeholder="Labor contingency / buffer" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[misc][fees]" placeholder="Permit / municipal / registration fees" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[misc][cleaning]" placeholder="Cleaning / waste removal" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[misc][safety]" placeholder="Safety equipment / scaffolding" style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                <div className="grid-3" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget.closest('form')); } catch(_) {} }}>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[misc][transport][name]" placeholder="Transport (local/long-haul)" list="bh_misc_transport" />
+                    <input name="structured[misc][transport][qty]" placeholder="Qty (trips)" />
+                    <input name="structured[misc][transport][rate]" placeholder="Rate (₹ per trip)" />
+                    <input name="structured[misc][transport][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[misc][contingency][name]" placeholder="Contingency buffer" list="bh_misc_contingency" />
+                    <input name="structured[misc][contingency][qty]" placeholder="Qty (%) e.g., 5" />
+                    <input name="structured[misc][contingency][rate]" placeholder="Base amount (₹)" />
+                    <input name="structured[misc][contingency][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                <div className="estimate-line grid-4">
+                  <input name="structured[misc][fees][name]" placeholder="Permit/Municipal/Registration fees" list="bh_misc_fees" />
+                  <div />
+                  <div />
+                  <input name="structured[misc][fees][amount]" placeholder="Price (₹)" />
+                </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[misc][cleaning][name]" placeholder="Cleaning / Waste removal" list="bh_misc_cleaning" />
+                    <input name="structured[misc][cleaning][qty]" placeholder="Qty (days / loads)" />
+                    <input name="structured[misc][cleaning][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[misc][cleaning][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  <div className="estimate-line grid-4">
+                    <input name="structured[misc][safety][name]" placeholder="Safety equipment / Scaffolding" list="bh_misc_safety" />
+                    <input name="structured[misc][safety][qty]" placeholder="Qty (sets / days)" />
+                    <input name="structured[misc][safety][rate]" placeholder="Rate (₹ per unit)" />
+                    <input name="structured[misc][safety][amount]" placeholder="Amount (auto)" readOnly />
+                  </div>
+                  {/* Other miscellaneous: simple Item + Price rows */}
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[misc][others1][name]" placeholder="Other expense (e.g., Site security)" />
+                    <div />
+                    <div />
+                    <input name="structured[misc][others1][amount]" placeholder="Price (₹)" />
+                  </div>
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[misc][others2][name]" placeholder="Other expense" />
+                    <div />
+                    <div />
+                    <input name="structured[misc][others2][amount]" placeholder="Price (₹)" />
+                  </div>
+                  <div className="estimate-line grid-4" style={{gridColumn:'1 / -1'}}>
+                    <input name="structured[misc][others3][name]" placeholder="Other expense" />
+                    <div />
+                    <div />
+                    <input name="structured[misc][others3][amount]" placeholder="Price (₹)" />
+                  </div>
                 </div>
 
                 {/* 6. Totals */}
                 <div className="section-title" style={{marginTop:8}}>6. Total Estimation</div>
-                <div className="totals">
-                  <input name="structured[totals][materials]" placeholder="Material Costs Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[totals][labor]" placeholder="Labor Charges Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[totals][utilities]" placeholder="Utilities & Fixtures Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input name="structured[totals][misc]" placeholder="Miscellaneous Total" onInput={(e)=>window.__bhCalcGrandTotal(e.currentTarget.form)} style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
-                  <input className="grand-total" name="structured[totals][grand]" placeholder="Grand Total (auto)" readOnly />
+                <div className="totals" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget.closest('form')); } catch(_) {} }}>
+                  <input name="structured[totals][materials]" placeholder="Material Costs Total" value={materialsTotal || ''} readOnly style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[totals][labor]" placeholder="Labor Charges Total" value={laborTotal || ''} readOnly style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[totals][utilities]" placeholder="Utilities & Fixtures Total" value={utilitiesTotal || ''} readOnly style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input name="structured[totals][misc]" placeholder="Miscellaneous Total" value={miscTotal || ''} readOnly style={{border:'1px solid #e5e7eb', borderRadius:6, padding:8}} />
+                  <input className="grand-total" name="structured[totals][grand]" placeholder="Grand Total (auto)" readOnly value={grandTotal || ''} />
                 </div>
 
                 {/* 7. Notes for Homeowner */}
@@ -819,9 +1239,126 @@ const ContractorDashboard = () => {
                   <input name="attachments" type="file" multiple />
                 </div>
                 <div className="actions">
-                  <button className="btn btn-secondary" type="button" onClick={(e)=>{ const form = e.currentTarget.closest('form'); if (form) form.reset(); }}>Reset</button>
+                  <button className="btn btn-secondary" type="button" onClick={(e)=>{ const form = e.currentTarget.closest('form'); if (form) form.reset(); recalcTotalsFromForm(form); }}>Reset</button>
+                  <button className="btn btn-primary" type="button" onClick={(e)=>{ const form = e.currentTarget.closest('form'); buildEstimateReport(form); }}>Download Report</button>
                   <button className="btn btn-primary" type="submit">Submit Estimate</button>
                 </div>
+
+                {/* Predictive option sources (datalists) */}
+                <datalist id="bh_project_names">
+                  <option value="Residential Villa" />
+                  <option value="Commercial Complex" />
+                  <option value="Renovation Project" />
+                </datalist>
+                <datalist id="bh_cement">
+                  <option value="OPC 43 grade - 50 bags" />
+                  <option value="OPC 53 grade - 60 bags" />
+                  <option value="PPC - 55 bags" />
+                </datalist>
+                <datalist id="bh_sand">
+                  <option value="River sand - 5 m³" />
+                  <option value="M-sand - 6 m³" />
+                </datalist>
+                <datalist id="bh_bricks">
+                  <option value="Clay bricks - 5000 nos" />
+                  <option value="AAC blocks - 3000 nos" />
+                </datalist>
+                <datalist id="bh_steel">
+                  <option value="TMT 8/10/12mm - 1500 kg" />
+                  <option value="TMT 16/20mm - 1000 kg" />
+                </datalist>
+                <datalist id="bh_aggregate">
+                  <option value="20mm aggregate - 8 m³" />
+                  <option value="10mm aggregate - 6 m³" />
+                </datalist>
+                <datalist id="bh_tiles">
+                  <option value="Vitrified tiles - 120 m²" />
+                  <option value="Ceramic tiles - 90 m²" />
+                </datalist>
+                <datalist id="bh_paint">
+                  <option value="Interior emulsion - 80 L" />
+                  <option value="Exterior emulsion - 60 L" />
+                </datalist>
+                <datalist id="bh_doors">
+                  <option value="Teakwood doors - 10 nos" />
+                  <option value="Flush doors - 8 nos" />
+                </datalist>
+                <datalist id="bh_windows">
+                  <option value="uPVC windows - 12 nos" />
+                  <option value="Aluminium windows - 10 nos" />
+                </datalist>
+                <datalist id="bh_labor_mason">
+                  <option value="Masonry - ₹/m³" />
+                  <option value="Block work - ₹/m²" />
+                </datalist>
+                <datalist id="bh_labor_plaster">
+                  <option value="Internal plaster - ₹/m²" />
+                  <option value="External plaster - ₹/m²" />
+                </datalist>
+                <datalist id="bh_labor_painting">
+                  <option value="2-coat interior - ₹/m²" />
+                  <option value="3-coat exterior - ₹/m²" />
+                </datalist>
+                <datalist id="bh_labor_electrical">
+                  <option value="Per point - ₹/pt" />
+                  <option value="Per room - ₹/room" />
+                </datalist>
+                <datalist id="bh_labor_plumbing">
+                  <option value="Per fitting - ₹/fit" />
+                  <option value="Per bathroom - ₹/bath" />
+                </datalist>
+                <datalist id="bh_labor_flooring">
+                  <option value="Flooring install - ₹/m²" />
+                  <option value="Skirting - ₹/m" />
+                </datalist>
+                <datalist id="bh_labor_roofing">
+                  <option value="Roof sheet install - ₹/m²" />
+                  <option value="Ceiling grid - ₹/m²" />
+                </datalist>
+                <datalist id="bh_util_sanitary">
+                  <option value="WC, basin, shower set" />
+                  <option value="Premium sanitary set" />
+                </datalist>
+                <datalist id="bh_util_kitchen">
+                  <option value="Modular kitchen - 12ft" />
+                  <option value="Modular kitchen - 15ft" />
+                </datalist>
+                <datalist id="bh_util_electrical_fixtures">
+                  <option value="LED panels, fans, switches" />
+                  <option value="Designer lights set" />
+                </datalist>
+                <datalist id="bh_util_watertank">
+                  <option value="Overhead tank 1000L + pump" />
+                  <option value="Overhead tank 2000L + pump" />
+                </datalist>
+                <datalist id="bh_util_hvac">
+                  <option value="Split AC - 1.5T x 2" />
+                  <option value="Inverter AC - 1T x 3" />
+                </datalist>
+                <datalist id="bh_util_gaswater">
+                  <option value="Gas line + kitchen water line" />
+                  <option value="Full house water lines" />
+                </datalist>
+                <datalist id="bh_misc_transport">
+                  <option value="Material transport local" />
+                  <option value="Material transport long-haul" />
+                </datalist>
+                <datalist id="bh_misc_contingency">
+                  <option value="5% buffer" />
+                  <option value="10% buffer" />
+                </datalist>
+                <datalist id="bh_misc_fees">
+                  <option value="Permit & registration" />
+                  <option value="Municipal fees" />
+                </datalist>
+                <datalist id="bh_misc_cleaning">
+                  <option value="Debris removal" />
+                  <option value="Final cleaning" />
+                </datalist>
+                <datalist id="bh_misc_safety">
+                  <option value="PPE & scaffolding" />
+                  <option value="Safety nets & signage" />
+                </datalist>
               </form>
             </details>
           </div>
@@ -836,6 +1373,48 @@ const ContractorDashboard = () => {
         <h1>Cost Requests</h1>
         <p>Browse layout requests from homeowners and submit your cost estimates</p>
       </div>
+  const renderMyEstimates = () => (
+    <div>
+      <div className="main-header">
+        <h1>My Estimates</h1>
+        <p>Your submitted estimates with totals and timestamps</p>
+      </div>
+      <div className="section-card">
+        <div className="section-header">
+          <h2>Recent Estimates</h2>
+          <p>Download or reference previous submissions</p>
+        </div>
+        <div className="section-content">
+          {myEstimates.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📄</div>
+              <h3>No Estimates Yet</h3>
+              <p>Submit an estimate from your Inbox to see it here.</p>
+            </div>
+          ) : (
+            <div className="item-list">
+              {myEstimates.map(est => (
+                <div key={est.id} className="list-item">
+                  <div className="item-content" style={{flex:1}}>
+                    <h4 className="item-title">Estimate #{est.id}</h4>
+                    <p className="item-subtitle">Send ID: {est.send_id} • Total: ₹{est.total_cost ?? '—'} • {new Date(est.created_at).toLocaleString()}</p>
+                  </div>
+                  <div className="item-actions">
+                    <button className="btn btn-secondary" onClick={()=>{
+                      try {
+                        const win = window.open('', '_blank');
+                        if (win) { win.document.write('<pre>'+ (est.structured || est.materials || '') +'</pre>'); win.document.close(); }
+                      } catch {}
+                    }}>View Raw</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
       <div className="section-card">
         <div className="section-header">

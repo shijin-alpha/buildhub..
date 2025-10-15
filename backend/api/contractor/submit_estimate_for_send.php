@@ -1,7 +1,8 @@
 <?php
 header('Content-Type: application/json');
 $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-if ($origin) { header('Access-Control-Allow-Origin: ' . $origin); header('Vary: Origin'); } else { header('Access-Control-Allow-Origin: http://localhost'); }
+if ($origin) { header('Access-Control-Allow-Origin: ' . $origin); header('Vary: Origin'); }
+else { header('Access-Control-Allow-Origin: http://localhost:3000'); }
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
@@ -16,7 +17,9 @@ try {
     $isMultipart = isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'multipart/form-data') !== false;
     if ($isMultipart) {
         $send_id = isset($_POST['send_id']) ? (int)$_POST['send_id'] : 0;
+        if ($send_id === 0 && isset($_REQUEST['send_id'])) $send_id = (int)$_REQUEST['send_id'];
         $contractor_id = isset($_POST['contractor_id']) ? (int)$_POST['contractor_id'] : 0;
+        if ($contractor_id === 0 && isset($_REQUEST['contractor_id'])) $contractor_id = (int)$_REQUEST['contractor_id'];
         $materials = trim((string)($_POST['materials'] ?? ''));
         $cost_breakdown = trim((string)($_POST['cost_breakdown'] ?? ''));
         $total_cost = isset($_POST['total_cost']) ? (string)$_POST['total_cost'] : '';
@@ -24,8 +27,8 @@ try {
         $notes = trim((string)($_POST['notes'] ?? ''));
     } else {
         $input = json_decode(file_get_contents('php://input'), true) ?: [];
-        $send_id = isset($input['send_id']) ? (int)$input['send_id'] : 0;
-        $contractor_id = isset($input['contractor_id']) ? (int)$input['contractor_id'] : 0;
+        $send_id = isset($input['send_id']) ? (int)$input['send_id'] : (isset($_REQUEST['send_id']) ? (int)$_REQUEST['send_id'] : 0);
+        $contractor_id = isset($input['contractor_id']) ? (int)$input['contractor_id'] : (isset($_REQUEST['contractor_id']) ? (int)$_REQUEST['contractor_id'] : 0);
         $materials = trim((string)($input['materials'] ?? ''));
         $cost_breakdown = trim((string)($input['cost_breakdown'] ?? ''));
         $total_cost = isset($input['total_cost']) ? (string)$input['total_cost'] : '';
@@ -35,7 +38,7 @@ try {
     }
 
     if ($send_id <= 0 || $contractor_id <= 0) {
-        echo json_encode(['success' => false, 'message' => 'Missing send_id or contractor_id']);
+        echo json_encode(['success' => false, 'message' => 'Missing send_id or contractor_id', 'debug' => ['send_id' => $send_id, 'contractor_id' => $contractor_id]]);
         exit;
     }
 
@@ -67,6 +70,17 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX(send_id)
     )");
+
+    // Ensure legacy databases have the 'structured' column
+    try {
+        $colChk = $db->query("SHOW COLUMNS FROM contractor_send_estimates LIKE 'structured'");
+        if ($colChk && $colChk->rowCount() === 0) {
+            $db->exec("ALTER TABLE contractor_send_estimates ADD COLUMN structured LONGTEXT NULL");
+        }
+    } catch (Exception $e) {
+        // Fallback: attempt ALTER without check (ignore if fails)
+        try { $db->exec("ALTER TABLE contractor_send_estimates ADD COLUMN structured LONGTEXT NULL"); } catch (Exception $ignored) {}
+    }
 
     $db->exec("CREATE TABLE IF NOT EXISTS contractor_send_estimate_files (
         id INT AUTO_INCREMENT PRIMARY KEY,

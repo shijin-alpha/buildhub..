@@ -35,6 +35,10 @@ details > div { margin-top:10px; background:#fafafa; border:1px dashed #e5e7eb; 
 .estimate-form input:focus, .estimate-form textarea:focus { outline:none; border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.15); }
 .estimate-form .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .estimate-form .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.estimate-form .grid-4 { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:10px; }
+.estimate-line { background:#fafafa; border:1px solid #eaecef; border-radius:10px; padding:10px; box-shadow:0 2px 6px rgba(15,23,42,0.04); }
+.estimate-line + .estimate-line { margin-top:8px; }
+.estimate-line input { background:#fff; }
 .estimate-form .totals { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .estimate-form .grand-total { grid-column:1 / -1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-weight:700; color:#0f172a; }
 .estimate-form .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:6px; padding-top:8px; border-top:1px solid #eef2f7; }

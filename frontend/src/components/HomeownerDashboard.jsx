@@ -68,6 +68,91 @@ const HomeownerDashboard = () => {
   const [paymentError, setPaymentError] = useState('');
   const [payingDesignId, setPayingDesignId] = useState(null);
   const [unlockedDesignIds, setUnlockedDesignIds] = useState({});
+  const [homeownerEstimates, setHomeownerEstimates] = useState([]);
+
+  // Load locally remembered paid layouts so refresh doesn't re-lock
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('bh_paid_layouts') || '[]');
+      if (Array.isArray(saved) && saved.length) {
+        const map = {};
+        saved.forEach((id) => { map[id] = true; });
+        setUnlockedDesignIds((prev) => ({ ...prev, ...map }));
+      }
+    } catch {}
+  }, []);
+
+  // Fetch contractor estimates submitted for this homeowner
+  useEffect(() => {
+    let mounted = true;
+    const fetchEstimates = async () => {
+      try {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (!me?.id) return;
+        const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
+        const j = await r.json().catch(() => ({}));
+        if (mounted && j?.success) setHomeownerEstimates(Array.isArray(j.estimates) ? j.estimates : []);
+      } catch {}
+    };
+    fetchEstimates();
+    const id = setInterval(fetchEstimates, 60000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
+
+  const downloadEstimateReport = (est) => {
+    try {
+      const structured = (() => { try { return est.structured ? JSON.parse(est.structured) : null; } catch { return null; } })();
+      const fmt = (n) => (n === undefined || n === null || n === '') ? '' : `₹${Number(n).toLocaleString('en-IN')}`;
+      const makeSection = (title, section) => {
+        if (!section || typeof section !== 'object') return '';
+        const rows = [];
+        Object.entries(section).forEach(([key, val]) => {
+          if (!val || typeof val !== 'object') return;
+          const name = val.name || key;
+          const qty = val.qty || '';
+          const rate = val.rate || '';
+          const amount = val.amount || '';
+          if (name || qty || rate || amount) {
+            rows.push(`<tr><td>${name}</td><td>${qty}</td><td>${rate}</td><td>${fmt(amount)}</td></tr>`);
+          }
+        });
+        if (!rows.length) return '';
+        return `<div class="card"><h2>${title}</h2>
+          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead>
+          <tbody>${rows.join('')}</tbody></table></div>`;
+      };
+
+      const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Estimate #${est.id}</title>
+      <style>
+        @media print {@page { margin: 16mm } .card{page-break-inside: avoid}}
+        body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;margin:24px}
+        h1{margin:0 0 8px 0;font-size:22px}
+        h2{margin:16px 0 8px 0;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
+        table{width:100%;border-collapse:collapse;margin-top:8px}
+        th,td{border-bottom:1px solid #eef2f7;padding:8px;text-align:left}
+        .row{display:flex;justify-content:space-between;gap:12px;margin:6px 0}
+        .muted{color:#64748b}
+        .total{font-weight:700}
+        .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:12px 0}
+      </style>
+      </head><body>
+      <h1>Contractor Estimate #${est.id}</h1>
+      <div class="muted">Created: ${new Date(est.created_at).toLocaleString()}</div>
+      <div class="row"><div class="muted">Timeline</div><div>${est.timeline || '—'}</div></div>
+      <div class="row"><div class="muted">Grand Total</div><div class="total">${fmt(est.total_cost)}</div></div>
+      ${structured ? [
+        makeSection('Materials', structured.materials),
+        makeSection('Labor', structured.labor),
+        makeSection('Utilities & Fixtures', structured.utilities),
+        makeSection('Miscellaneous', structured.misc)
+      ].join('') : ''}
+      <script>window.onload=function(){window.print&&window.print();}</script>
+      </body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch {}
+  };
 
   // Sidebar badge counts
   const requestsCount = Array.isArray(layoutRequests) ? layoutRequests.length : 0;
@@ -203,8 +288,17 @@ const HomeownerDashboard = () => {
               const r3 = await fetch('/buildhub/backend/api/homeowner/get_received_designs.php', { credentials: 'include' });
               const j3 = await r3.json().catch(() => ({}));
               if (j3?.success) setReceivedDesigns(Array.isArray(j3.designs) ? j3.designs : []);
-              // Optimistically unlock this design locally in case backend doesn't persist immediately
-              setUnlockedDesignIds(prev => ({ ...prev, [design.id]: true }));
+              // Persist unlock locally so refresh retains access
+              setUnlockedDesignIds(prev => {
+                const next = { ...prev, [design.id]: true };
+                try {
+                  const current = JSON.parse(localStorage.getItem('bh_paid_layouts') || '[]');
+                  const set = new Set(Array.isArray(current) ? current : []);
+                  set.add(design.id);
+                  localStorage.setItem('bh_paid_layouts', JSON.stringify(Array.from(set)));
+                } catch {}
+                return next;
+              });
               setPaymentError('');
             } else {
               setPaymentError(verifyJson?.message || 'Payment verification failed');
@@ -1547,6 +1641,40 @@ const HomeownerDashboard = () => {
                     {d.status !== 'finalized' && (
                       <button className="btn btn-primary" onClick={() => updateSelection(d.id, 'finalize')}>🏁 Finalize</button>
                     )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Estimates from Contractors */}
+      <div className="section-card" style={{marginTop: '1rem'}}>
+        <div className="section-header">
+          <h2>Contractor Estimates</h2>
+          <p>Submitted cost estimates for your layouts/designs</p>
+        </div>
+        <div className="section-content">
+          {homeownerEstimates.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📄</div>
+              <h3>No Estimates Yet</h3>
+              <p>When contractors submit estimates, they will appear here.</p>
+            </div>
+          ) : (
+            <div className="item-list">
+              {homeownerEstimates.map(est => (
+                <div key={est.id} className="list-item">
+                  <div className="item-icon">📋</div>
+                  <div className="item-content" style={{flex:1}}>
+                    <h4 className="item-title" style={{margin:0}}>Estimate #{est.id}</h4>
+                    <p className="item-subtitle" style={{margin:'2px 0 0 0'}}>Total: ₹{est.total_cost ?? '—'} • {new Date(est.created_at).toLocaleString()}</p>
+                    {est.timeline && <p className="item-meta">Timeline: {est.timeline}</p>}
+                    {est.notes && <p className="item-meta">Notes: {est.notes}</p>}
+                  </div>
+                  <div className="item-actions" style={{display:'flex', gap:6}}>
+                    <button className="btn btn-primary" onClick={()=>downloadEstimateReport(est)}>Download</button>
                   </div>
                 </div>
               ))}
