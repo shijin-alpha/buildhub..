@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 02, 2025 at 01:28 PM
+-- Generation Time: Oct 15, 2025 at 07:48 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -185,6 +185,33 @@ INSERT INTO `contractor_assignment_hides` (`id`, `assignment_id`, `contractor_id
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `contractor_layout_sends`
+--
+
+CREATE TABLE `contractor_layout_sends` (
+  `id` int(11) NOT NULL,
+  `contractor_id` int(11) NOT NULL,
+  `homeowner_id` int(11) DEFAULT NULL,
+  `layout_id` int(11) DEFAULT NULL,
+  `design_id` int(11) DEFAULT NULL,
+  `message` text DEFAULT NULL,
+  `payload` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`payload`)),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `acknowledged_at` datetime DEFAULT NULL,
+  `due_date` date DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `contractor_layout_sends`
+--
+
+INSERT INTO `contractor_layout_sends` (`id`, `contractor_id`, `homeowner_id`, `layout_id`, `design_id`, `message`, `payload`, `created_at`, `acknowledged_at`, `due_date`) VALUES
+(2, 29, 28, NULL, NULL, NULL, '{\"layout_id\":null,\"design_id\":null,\"message\":null,\"forwarded_design\":{\"id\":21,\"title\":\"nbn\",\"description\":\"\",\"files\":[{\"original\":\"4.png\",\"stored\":\"68e51548c6d1c5.76863274_1759843656.png\",\"ext\":\"png\",\"path\":\"/buildhub/backend/uploads/designs/68e51548c6d1c5.76863274_1759843656.png\"}],\"technical_details\":{\"floor_plans\":{\"living_room_dimensions\":\"24 × 18 ft\",\"master_bedroom_dimensions\":\"18 × 14 ft\"},\"structural\":{\"foundation_outline\":\"Isolated footings; basement optional\",\"roof_outline\":\"Flat + partial sloped accents; terrace deck\"},\"construction\":{\"wall_thickness\":\"External 250–300 mm with high insulation; internal 115–150 mm\",\"ceiling_heights\":\"Ground 3.4 m; Upper 3.2 m\",\"building_codes\":\"High energy performance; local villa standards\",\"critical_instructions\":\"Provision for home automation and solar PV\"},\"meta\":{\"building_type\":\"residential\"},\"elevations\":{\"front_elevation\":\"Monolithic volumes; concealed gutters; frameless corners\",\"height_details\":\"Clear height 3.0 m; floor-to-floor 3.2 m\"}},\"created_at\":\"2025-10-07 18:57:36\"},\"layout_image_url\":null}', '2025-10-07 15:29:51', '2025-10-07 21:21:31', NULL),
+(3, 37, 28, NULL, NULL, NULL, '{\"layout_id\":null,\"design_id\":null,\"message\":null,\"forwarded_design\":{\"id\":21,\"title\":\"nbn\",\"description\":\"\",\"files\":[{\"original\":\"4.png\",\"stored\":\"68e51548c6d1c5.76863274_1759843656.png\",\"ext\":\"png\",\"path\":\"/buildhub/backend/uploads/designs/68e51548c6d1c5.76863274_1759843656.png\"}],\"technical_details\":{\"floor_plans\":{\"living_room_dimensions\":\"24 × 18 ft\",\"master_bedroom_dimensions\":\"18 × 14 ft\"},\"structural\":{\"foundation_outline\":\"Isolated footings; basement optional\",\"roof_outline\":\"Flat + partial sloped accents; terrace deck\"},\"construction\":{\"wall_thickness\":\"External 250–300 mm with high insulation; internal 115–150 mm\",\"ceiling_heights\":\"Ground 3.4 m; Upper 3.2 m\",\"building_codes\":\"High energy performance; local villa standards\",\"critical_instructions\":\"Provision for home automation and solar PV\"},\"meta\":{\"building_type\":\"residential\"},\"elevations\":{\"front_elevation\":\"Monolithic volumes; concealed gutters; frameless corners\",\"height_details\":\"Clear height 3.0 m; floor-to-floor 3.2 m\"}},\"created_at\":\"2025-10-07 18:57:36\"},\"layout_image_url\":null}', '2025-10-07 16:03:31', '2025-10-07 21:33:55', '2025-10-16');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `contractor_proposals`
 --
 
@@ -241,6 +268,49 @@ CREATE TABLE `contractor_reviews` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `contractor_send_estimates`
+--
+
+CREATE TABLE `contractor_send_estimates` (
+  `id` int(11) NOT NULL,
+  `send_id` int(11) NOT NULL,
+  `contractor_id` int(11) NOT NULL,
+  `materials` text DEFAULT NULL,
+  `cost_breakdown` text DEFAULT NULL,
+  `total_cost` decimal(15,2) DEFAULT NULL,
+  `timeline` varchar(255) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `status` varchar(32) DEFAULT 'submitted',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `structured` longtext DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `contractor_send_estimates`
+--
+
+INSERT INTO `contractor_send_estimates` (`id`, `send_id`, `contractor_id`, `materials`, `cost_breakdown`, `total_cost`, `timeline`, `notes`, `status`, `created_at`, `structured`) VALUES
+(23, 2, 29, NULL, NULL, NULL, '6 months', NULL, 'submitted', '2025-10-15 17:13:53', '{\"project_name\":\"Commercial Complex\",\"project_address\":\"\",\"plot_size\":\"\",\"built_up_area\":\"\",\"floors\":\"\",\"estimation_date\":\"\",\"client_name\":\"\",\"client_contact\":\"\",\"materials\":{\"cement\":{\"name\":\"OPC 43 grade - 50 bags\",\"qty\":\"50\",\"rate\":\"380\",\"amount\":\"19000\"},\"sand\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"bricks\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"steel\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"aggregate\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"tiles\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"paint\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"doors\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"windows\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"}},\"labor\":{\"mason\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"plaster\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"painting\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"electrical\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"plumbing\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"flooring\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"roofing\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"}},\"utilities\":{\"sanitary\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"kitchen\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"electrical_fixtures\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"water_tank\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"hvac\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"gas_water\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others1\":{\"name\":\"\",\"amount\":\"\"},\"others2\":{\"name\":\"\",\"amount\":\"\"},\"others3\":{\"name\":\"\",\"amount\":\"\"}},\"misc\":{\"transport\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"contingency\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"fees\":{\"name\":\"\",\"amount\":\"\"},\"cleaning\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"safety\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others1\":{\"name\":\"\",\"amount\":\"\"},\"others2\":{\"name\":\"\",\"amount\":\"\"},\"others3\":{\"name\":\"\",\"amount\":\"\"}},\"totals\":{\"materials\":\"19000\",\"labor\":\"\",\"utilities\":\"\",\"misc\":\"\",\"grand\":\"19000\"},\"brands\":\"\"}'),
+(24, 2, 29, NULL, NULL, NULL, '6 months', NULL, 'submitted', '2025-10-15 17:23:16', '{\"project_name\":\"Residential Villa\",\"project_address\":\"\",\"plot_size\":\"\",\"built_up_area\":\"\",\"floors\":\"\",\"estimation_date\":\"\",\"client_name\":\"\",\"client_contact\":\"\",\"materials\":{\"cement\":{\"name\":\"OPC 43 grade - 50 bags\",\"qty\":\"50\",\"rate\":\"380\",\"amount\":\"19000\"},\"sand\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"bricks\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"steel\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"aggregate\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"tiles\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"paint\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"doors\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"windows\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"}},\"labor\":{\"mason\":{\"name\":\"Masonry - \\u20b9\\/m\\u00b3\",\"qty\":\"5\",\"rate\":\"90\",\"amount\":\"450\"},\"plaster\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"painting\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"electrical\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"plumbing\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"flooring\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"roofing\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"}},\"utilities\":{\"sanitary\":{\"name\":\"WC, basin, shower set\",\"qty\":\"6\",\"rate\":\"9000\",\"amount\":\"54000\"},\"kitchen\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"electrical_fixtures\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"water_tank\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"hvac\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"gas_water\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others1\":{\"name\":\"\",\"amount\":\"\"},\"others2\":{\"name\":\"\",\"amount\":\"\"},\"others3\":{\"name\":\"\",\"amount\":\"\"}},\"misc\":{\"transport\":{\"name\":\"Material transport local\",\"qty\":\"50\",\"rate\":\"50\",\"amount\":\"2500\"},\"contingency\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"fees\":{\"name\":\"\",\"amount\":\"\"},\"cleaning\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"safety\":{\"name\":\"\",\"qty\":\"\",\"rate\":\"\",\"amount\":\"\"},\"others1\":{\"name\":\"\",\"amount\":\"\"},\"others2\":{\"name\":\"\",\"amount\":\"\"},\"others3\":{\"name\":\"\",\"amount\":\"\"}},\"totals\":{\"materials\":\"19000\",\"labor\":\"450\",\"utilities\":\"54000\",\"misc\":\"2500\",\"grand\":\"75950\"},\"brands\":\"\"}');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `contractor_send_estimate_files`
+--
+
+CREATE TABLE `contractor_send_estimate_files` (
+  `id` int(11) NOT NULL,
+  `estimate_id` int(11) NOT NULL,
+  `path` varchar(512) NOT NULL,
+  `original_name` varchar(255) DEFAULT NULL,
+  `ext` varchar(16) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `designs`
 --
 
@@ -265,10 +335,8 @@ CREATE TABLE `designs` (
 --
 
 INSERT INTO `designs` (`id`, `layout_request_id`, `architect_id`, `design_title`, `description`, `design_files`, `status`, `created_at`, `updated_at`, `homeowner_id`, `batch_id`, `layout_json`, `technical_details`) VALUES
-(10, 20, 27, 'modern', '', '[{\"original\":\"5.png\",\"stored\":\"68cbdbb6e25c96.18389048_1758190518.png\",\"ext\":\"png\",\"path\":\"\\/buildhub\\/backend\\/uploads\\/designs\\/68cbdbb6e25c96.18389048_1758190518.png\"}]', 'finalized', '2025-09-18 10:15:18', '2025-09-21 12:12:00', NULL, NULL, NULL, '{}'),
-(18, 62, 33, 'ygyf', '', '[{\"original\":\"2.png\",\"stored\":\"68d10901ccf4a6.65761448_1758529793.png\",\"ext\":\"png\",\"path\":\"\\/buildhub\\/backend\\/uploads\\/designs\\/68d10901ccf4a6.65761448_1758529793.png\"}]', 'finalized', '2025-09-22 08:29:53', '2025-09-22 08:30:26', NULL, NULL, NULL, '{\"floor_plans\":{\"living_room_dimensions\":\"51\",\"master_bedroom_dimensions\":\"49\",\"kitchen_dimensions\":\"46\",\"other_room_dimensions\":\"45\",\"door_window_positions\":\"bvh\",\"circulation_paths\":\"jhb\"},\"site_orientation\":{\"orientation\":\",m m, \",\"access_points\":\"ihih\"}}'),
-(19, 66, 27, 'Modern 2 bhk', '', '[{\"original\":\"1.png\",\"stored\":\"68d55d6848d6c3.43317542_1758813544.png\",\"ext\":\"png\",\"path\":\"\\/buildhub\\/backend\\/uploads\\/designs\\/68d55d6848d6c3.43317542_1758813544.png\"}]', 'finalized', '2025-09-25 15:19:04', '2025-09-25 15:25:56', NULL, NULL, NULL, '{\"floor_plans\":{\"living_room_dimensions\":\"20 * 50\",\"kitchen_dimensions\":\"12 * 50\",\"master_bedroom_dimensions\":\"16 * 12\",\"other_room_dimensions\":\"bathroom\",\"door_window_positions\":\"north\",\"circulation_paths\":\"hallway\"},\"site_orientation\":{\"plot_boundaries\":\"kkk\",\"orientation\":\"north\",\"access_points\":\"main entrance\"},\"structural\":{\"load_bearing_walls\":\"wall\",\"column_positions\":\"20*50\",\"foundation_outline\":\"jh\",\"roof_outline\":\"10 m\"},\"elevations\":{\"front_elevation\":\"dvds\",\"cross_sections\":\"dsdvs\",\"height_details\":\"10 m\"},\"construction\":{\"wall_thickness\":\"5\",\"ceiling_heights\":\"12\",\"building_codes\":\"bddf\",\"critical_instructions\":\"fbfdd\"}}'),
-(20, 68, 27, 'modern', '', '[{\"original\":\"1.png\",\"stored\":\"68d62315880b59.21849364_1758864149.png\",\"ext\":\"png\",\"path\":\"\\/buildhub\\/backend\\/uploads\\/designs\\/68d62315880b59.21849364_1758864149.png\"}]', 'finalized', '2025-09-26 05:22:29', '2025-09-28 09:07:46', NULL, NULL, NULL, '{\"floor_plans\":{\"living_room_dimensions\":\"20\"}}');
+(21, 86, 27, 'nbn', '', '[{\"original\":\"4.png\",\"stored\":\"68e51548c6d1c5.76863274_1759843656.png\",\"ext\":\"png\",\"path\":\"\\/buildhub\\/backend\\/uploads\\/designs\\/68e51548c6d1c5.76863274_1759843656.png\"}]', 'finalized', '2025-10-07 13:27:36', '2025-10-07 13:30:32', NULL, NULL, NULL, '{\"floor_plans\":{\"living_room_dimensions\":\"24 × 18 ft\",\"master_bedroom_dimensions\":\"18 × 14 ft\"},\"structural\":{\"foundation_outline\":\"Isolated footings; basement optional\",\"roof_outline\":\"Flat + partial sloped accents; terrace deck\"},\"construction\":{\"wall_thickness\":\"External 250–300 mm with high insulation; internal 115–150 mm\",\"ceiling_heights\":\"Ground 3.4 m; Upper 3.2 m\",\"building_codes\":\"High energy performance; local villa standards\",\"critical_instructions\":\"Provision for home automation and solar PV\"},\"meta\":{\"building_type\":\"residential\"},\"elevations\":{\"front_elevation\":\"Monolithic volumes; concealed gutters; frameless corners\",\"height_details\":\"Clear height 3.0 m; floor-to-floor 3.2 m\"}}'),
+(22, 86, 27, 'hgvv', '', '[{\"original\":\"2.png\",\"stored\":\"68ef98b6b90964.28887100_1760532662.png\",\"ext\":\"png\",\"path\":\"\\/buildhub\\/backend\\/uploads\\/designs\\/68ef98b6b90964.28887100_1760532662.png\"}]', 'proposed', '2025-10-15 12:51:02', '2025-10-15 12:51:02', NULL, NULL, NULL, '{\"floor_plans\":{\"living_room_dimensions\":\"20 × 15 ft\",\"master_bedroom_dimensions\":\"16 × 12 ft\",\"layout_description\":\" jhg\",\"kitchen_dimensions\":\"12 × 10 ft\"},\"structural\":{\"load_bearing_walls\":\"Reinforced concrete walls at cores; 200 mm slabs\",\"column_positions\":\"8 m grid; edge columns 300×600 mm\",\"foundation_outline\":\"Isolated footings; M30 concrete\",\"roof_outline\":\"Flat RCC slab with insulation\"},\"construction\":{\"wall_thickness\":\"External 230 mm RCC + insulation + plaster; Internal 115 mm block\",\"ceiling_heights\":\"Living 3.1 m; Bedrooms 3.0 m; Kitchen 2.9 m\",\"building_codes\":\"IBC 2021 / IS 456 as applicable\",\"critical_instructions\":\"Use Fe500 rebars; cover as per exposure class XC2\"},\"meta\":{\"building_type\":\"residential\"},\"elevations\":{\"front_elevation\":\"Monolithic volumes; concealed gutters; frameless corners\",\"height_details\":\"Clear height 3.0 m; floor-to-floor 3.2 m\"}}');
 
 -- --------------------------------------------------------
 
@@ -345,8 +413,8 @@ CREATE TABLE `layout_library` (
 --
 
 INSERT INTO `layout_library` (`id`, `title`, `layout_type`, `bedrooms`, `bathrooms`, `area`, `description`, `image_url`, `design_file_url`, `price_range`, `technical_details`, `architect_id`, `status`, `created_at`, `updated_at`, `floor_plans`, `room_dimensions`, `door_window_positions`, `circulation_paths`, `plot_boundaries`, `orientation_north`, `access_points`, `load_bearing_walls`, `column_positions`, `foundation_outline`, `roof_outline`, `front_elevation`, `cross_sections`, `height_details`, `wall_thickness`, `ceiling_heights`, `building_codes`, `critical_instructions`) VALUES
-(10, '3BHK', 'Modern', 3, 3, 2500, '', '/buildhub/backend/uploads/designs/lib_1757227454_e98c35d1.jpeg', '/buildhub/backend/uploads/designs/libfile_1757227454_11c2e8a3.jpg', '80-90 laks', NULL, 27, 'active', '2025-09-07 06:44:14', '2025-09-17 07:40:21', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(13, 'Modern 3BHK Hosue', 'Modern', 3, 3, 3000, '', '/buildhub/backend/uploads/designs/lib_1758475689_df7bb48f.jpeg', '/buildhub/backend/uploads/designs/libfile_1758471904_696c8d06.png', '85-90', NULL, 27, 'active', '2025-09-21 16:11:24', '2025-09-21 17:28:09', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+(10, '3BHK', 'Modern', 3, 3, 2500, '', '/buildhub/backend/uploads/designs/lib_1759842787_f51c001b.jpeg', '/buildhub/backend/uploads/designs/libfile_1759842787_e8794d84.png', '80-90 laks', NULL, 27, 'active', '2025-09-07 06:44:14', '2025-10-07 13:13:07', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+(13, 'Modern 3BHK Hosue', 'Modern', 3, 3, 3000, '', '/buildhub/backend/uploads/designs/lib_1759842744_d4b24a9c.webp', '/buildhub/backend/uploads/designs/libfile_1759842744_a818e016.png', '85-90', NULL, 27, 'active', '2025-09-21 16:11:24', '2025-10-07 13:12:24', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -378,6 +446,35 @@ CREATE TABLE `layout_library_technical_details` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `layout_payments`
+--
+
+CREATE TABLE `layout_payments` (
+  `id` int(11) NOT NULL,
+  `homeowner_id` int(11) NOT NULL,
+  `architect_id` int(11) NOT NULL,
+  `design_id` int(11) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `currency` varchar(3) DEFAULT 'INR',
+  `payment_status` enum('pending','completed','failed','refunded') DEFAULT 'pending',
+  `razorpay_order_id` varchar(255) DEFAULT NULL,
+  `razorpay_payment_id` varchar(255) DEFAULT NULL,
+  `razorpay_signature` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `layout_payments`
+--
+
+INSERT INTO `layout_payments` (`id`, `homeowner_id`, `architect_id`, `design_id`, `amount`, `currency`, `payment_status`, `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature`, `created_at`, `updated_at`) VALUES
+(1, 19, 27, 21, 10000.00, 'INR', 'completed', 'order_RR2lGaoiT33vYn', NULL, NULL, '2025-10-08 16:24:06', '2025-10-08 16:31:45'),
+(2, 28, 27, 21, 10000.00, 'INR', 'completed', 'order_RR2lgfHwcHMffl', 'pay_RR2m1DQUoCjxRz', '26626580d80ac0e667db72b0dfd5fc86fdf05eedab55c90fa29189332b7c2e60', '2025-10-08 16:24:30', '2025-10-08 16:25:01');
 
 -- --------------------------------------------------------
 
@@ -417,19 +514,9 @@ CREATE TABLE `layout_requests` (
 --
 
 INSERT INTO `layout_requests` (`id`, `user_id`, `homeowner_id`, `plot_size`, `budget_range`, `requirements`, `preferred_style`, `status`, `created_at`, `updated_at`, `location`, `timeline`, `selected_layout_id`, `layout_type`, `layout_file`, `site_images`, `reference_images`, `room_images`, `orientation`, `site_considerations`, `material_preferences`, `budget_allocation`, `floor_rooms`, `num_floors`) VALUES
-(20, 30, 30, '2000', '2500000', '{\"plot_shape\":\"rectangle\",\"topography\":\"flat\",\"development_laws\":\"nil\",\"family_needs\":\"nil\",\"rooms\":\"5\",\"aesthetic\":\"modern\",\"notes\":\"\"}', NULL, 'deleted', '2025-09-18 10:14:42', '2025-09-20 16:23:09', 'Munnar', '0-6 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(62, 28, 28, '3000', '9000000', '{\"plot_shape\":\"hvh\",\"topography\":\"jbjbj\",\"development_laws\":\"bb\",\"family_needs\":\"jbbj\",\"rooms\":\"3\",\"aesthetic\":\"vv\",\"notes\":\"\"}', NULL, 'pending', '2025-09-22 08:25:49', '2025-09-22 08:25:49', 'Kottakkal', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(66, 28, 28, '2100', '5500000', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"nil\",\"family_needs\":\"nothing special\",\"rooms\":\"3\",\"aesthetic\":\"modern\",\"notes\":\"\"}', NULL, 'deleted', '2025-09-25 15:14:06', '2025-10-02 10:31:44', 'Kollam', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(68, 19, 19, '2000', '5000000', '{\"plot_shape\":\"rectangle\",\"topography\":\"flat\",\"development_laws\":\"nil\",\"family_needs\":\"\",\"rooms\":\"3\",\"aesthetic\":\"modern\",\"notes\":\"\"}', NULL, 'deleted', '2025-09-26 05:16:10', '2025-09-28 09:09:54', 'Koothattukulam', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(69, 19, 19, '2000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly, Storage space, Energy efficient\",\"rooms\":\"\",\"aesthetic\":\"Modern\",\"notes\":\"\",\"site_images\":[{\"id\":\"68d8e31620aaf\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/19_a8d5aba2e09ecc76.webp\"}],\"reference_images\":[],\"room_images\":{\"master_bedroom\":[{\"id\":1759044388131.9763,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/2620b368-37b0-410c-8d05-6286572948ff\"}]}}', NULL, 'pending', '2025-09-28 07:28:28', '2025-09-28 07:28:28', 'Kottayam', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(70, 28, 28, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly, Work-from-home\",\"rooms\":\"\",\"aesthetic\":\"Contemporary\",\"notes\":\"\",\"site_images\":[{\"id\":\"68d8e4cc74f90\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_c01cae37088323e3.webp\"}],\"reference_images\":[],\"room_images\":{\"master_bedroom\":[{\"id\":1759044820967.2327,\"file\":[],\"name\":\"2.jpeg\",\"size\":11870,\"url\":\"blob:http:\\/\\/localhost:3000\\/256b3c69-6c50-44f0-a7e7-2ef1d7fcde96\"}]}}', NULL, 'deleted', '2025-09-28 07:34:27', '2025-09-28 07:54:49', 'Mumbai', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(72, 28, 28, '2500', '50-75 Lakhs', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"Standard setbacks\",\"family_needs\":\"Elder-friendly, Work-from-home\",\"rooms\":\"3 BHK\",\"aesthetic\":\"Modern\",\"notes\":\"Test requirements\",\"orientation\":\"North-facing\",\"site_considerations\":\"Good sunlight, privacy needed\",\"material_preferences\":\"Eco-friendly, Low maintenance\",\"budget_allocation\":\"40% structure, 30% finishes, 30% services\",\"num_floors\":\"2\",\"preferred_style\":\"Contemporary\",\"site_images\":[],\"reference_images\":[],\"room_images\":[]}', 'Contemporary', 'deleted', '2025-09-28 07:52:50', '2025-09-28 07:54:50', 'Test City', '6-12 months', NULL, 'custom', NULL, '[]', '[]', '[]', 'North-facing', 'Good sunlight, privacy needed', 'Eco-friendly, Low maintenance', '40% structure, 30% finishes, 30% services', '{\"floor1\":{\"bedrooms\":2,\"bathrooms\":1}}', '2'),
-(77, 28, 28, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly\",\"rooms\":\"\",\"aesthetic\":\"Contemporary\",\"notes\":\"\",\"orientation\":\"North-facing\",\"site_considerations\":\"\",\"material_preferences\":\"Marble, Granite, Natural Stone\",\"budget_allocation\":\"Quality over quantity\",\"num_floors\":\"1\",\"preferred_style\":\"Contemporary\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1,\\\"dining_room\\\":1,\\\"kitchen\\\":1,\\\"study_room\\\":1,\\\"prayer_room\\\":1,\\\"guest_room\\\":1,\\\"store_room\\\":1,\\\"garage\\\":1,\\\"utility_area\\\":1}}\",\"site_images\":[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}],\"reference_images\":[],\"room_images\":{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}}', 'Contemporary', 'deleted', '2025-09-28 08:26:03', '2025-10-02 10:31:47', 'Mumbai', '6-12 months', NULL, 'custom', NULL, '[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}]', '[]', '{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}', 'North-facing', '', 'Marble, Granite, Natural Stone', 'Quality over quantity', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1,\"dining_room\":1,\"kitchen\":1,\"study_room\":1,\"prayer_room\":1,\"guest_room\":1,\"store_room\":1,\"garage\":1,\"utility_area\":1}}', '1'),
-(78, 28, 28, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly\",\"rooms\":\"\",\"aesthetic\":\"Contemporary\",\"notes\":\"\",\"orientation\":\"North-facing\",\"site_considerations\":\"\",\"material_preferences\":\"Marble, Granite, Natural Stone\",\"budget_allocation\":\"Quality over quantity\",\"num_floors\":\"1\",\"preferred_style\":\"Contemporary\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1,\\\"dining_room\\\":1,\\\"kitchen\\\":1,\\\"study_room\\\":1,\\\"prayer_room\\\":1,\\\"guest_room\\\":1,\\\"store_room\\\":1,\\\"garage\\\":1,\\\"utility_area\\\":1}}\",\"site_images\":[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}],\"reference_images\":[],\"room_images\":{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}}', 'Contemporary', 'deleted', '2025-09-28 08:29:31', '2025-10-02 10:31:47', 'Mumbai', '6-12 months', NULL, 'custom', NULL, '[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}]', '[]', '{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}', 'North-facing', '', 'Marble, Granite, Natural Stone', 'Quality over quantity', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1,\"dining_room\":1,\"kitchen\":1,\"study_room\":1,\"prayer_room\":1,\"guest_room\":1,\"store_room\":1,\"garage\":1,\"utility_area\":1}}', '1'),
-(79, 28, 28, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly\",\"rooms\":\"\",\"aesthetic\":\"Contemporary\",\"notes\":\"\",\"orientation\":\"North-facing\",\"site_considerations\":\"\",\"material_preferences\":\"Marble, Granite, Natural Stone\",\"budget_allocation\":\"Quality over quantity\",\"num_floors\":\"1\",\"preferred_style\":\"Contemporary\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1,\\\"dining_room\\\":1,\\\"kitchen\\\":1,\\\"study_room\\\":1,\\\"prayer_room\\\":1,\\\"guest_room\\\":1,\\\"store_room\\\":1,\\\"garage\\\":1,\\\"utility_area\\\":1}}\",\"site_images\":[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}],\"reference_images\":[],\"room_images\":{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}}', 'Contemporary', 'deleted', '2025-09-28 08:29:57', '2025-10-02 10:31:48', 'Mumbai', '6-12 months', NULL, 'custom', NULL, '[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}]', '[]', '{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}', 'North-facing', '', 'Marble, Granite, Natural Stone', 'Quality over quantity', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1,\"dining_room\":1,\"kitchen\":1,\"study_room\":1,\"prayer_room\":1,\"guest_room\":1,\"store_room\":1,\"garage\":1,\"utility_area\":1}}', '1'),
-(80, 28, 28, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly\",\"rooms\":\"\",\"aesthetic\":\"Contemporary\",\"notes\":\"\",\"orientation\":\"North-facing\",\"site_considerations\":\"\",\"material_preferences\":\"Marble, Granite, Natural Stone\",\"budget_allocation\":\"Quality over quantity\",\"num_floors\":\"1\",\"preferred_style\":\"Contemporary\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1,\\\"dining_room\\\":1,\\\"kitchen\\\":1,\\\"study_room\\\":1,\\\"prayer_room\\\":1,\\\"guest_room\\\":1,\\\"store_room\\\":1,\\\"garage\\\":1,\\\"utility_area\\\":1}}\",\"site_images\":[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}],\"reference_images\":[],\"room_images\":{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}}', 'Contemporary', 'deleted', '2025-09-28 08:32:19', '2025-10-02 10:31:48', 'Mumbai', '6-12 months', NULL, 'custom', NULL, '[{\"id\":\"68d8f0e7a993d\",\"file\":null,\"name\":\"1.webp\",\"size\":220842,\"url\":\"\\/buildhub\\/uploads\\/site_images\\/28_b77eb818078bf425.webp\"}]', '[]', '{\"master_bedroom\":[{\"id\":1759047922385.3518,\"file\":[],\"name\":\"1.webp\",\"size\":220842,\"url\":\"blob:http:\\/\\/localhost:3000\\/33f054a3-1ff7-4ddb-969d-cebe30ec1071\"}]}', 'North-facing', '', 'Marble, Granite, Natural Stone', 'Quality over quantity', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1,\"dining_room\":1,\"kitchen\":1,\"study_room\":1,\"prayer_room\":1,\"guest_room\":1,\"store_room\":1,\"garage\":1,\"utility_area\":1}}', '1'),
-(81, 35, 35, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"\",\"family_needs\":\"Elder-friendly, Wheelchair accessible, Home office, Security features\",\"rooms\":\"\",\"aesthetic\":\"Luxury\",\"notes\":\"\",\"orientation\":\"South-facing\",\"site_considerations\":\"\",\"material_preferences\":\"Concrete, Brick\",\"budget_allocation\":\"Balanced approach\",\"num_floors\":\"2\",\"preferred_style\":\"Luxury\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1,\\\"dining_room\\\":1,\\\"kitchen\\\":1,\\\"study_room\\\":1,\\\"prayer_room\\\":1,\\\"guest_room\\\":1,\\\"store_room\\\":1,\\\"garage\\\":1,\\\"utility_area\\\":1},\\\"floor2\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1,\\\"dining_room\\\":1,\\\"kitchen\\\":1,\\\"study_room\\\":1,\\\"prayer_room\\\":1,\\\"guest_room\\\":1,\\\"store_room\\\":1}}\",\"site_images\":[],\"reference_images\":[],\"room_images\":[]}', 'Luxury', 'approved', '2025-09-28 09:13:21', '2025-09-28 09:27:47', 'Chennai', '12-18 months', NULL, 'custom', NULL, '[]', '[]', '[]', 'South-facing', '', 'Concrete, Brick', 'Balanced approach', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1,\"dining_room\":1,\"kitchen\":1,\"study_room\":1,\"prayer_room\":1,\"guest_room\":1,\"store_room\":1,\"garage\":1,\"utility_area\":1},\"floor2\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1,\"dining_room\":1,\"kitchen\":1,\"study_room\":1,\"prayer_room\":1,\"guest_room\":1,\"store_room\":1}}', '2'),
-(82, 35, 35, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"\",\"topography\":\"\",\"development_laws\":\"\",\"family_needs\":\"Security features, Low maintenance\",\"rooms\":\"\",\"aesthetic\":\"\",\"notes\":\"\",\"orientation\":\"\",\"site_considerations\":\"\",\"material_preferences\":\"\",\"budget_allocation\":\"\",\"num_floors\":\"\",\"preferred_style\":\"\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1}}\",\"site_images\":[],\"reference_images\":[],\"room_images\":[]}', '', 'approved', '2025-09-28 09:37:05', '2025-09-28 09:37:31', '', '6-12 months', NULL, 'custom', NULL, '[]', '[]', '[]', '', '', '', '', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1}}', '');
+(62, 28, 28, '3000', '9000000', '{\"plot_shape\":\"hvh\",\"topography\":\"jbjbj\",\"development_laws\":\"bb\",\"family_needs\":\"jbbj\",\"rooms\":\"3\",\"aesthetic\":\"vv\",\"notes\":\"\"}', NULL, 'deleted', '2025-09-22 08:25:49', '2025-10-02 16:43:05', 'Kottakkal', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+(66, 28, 28, '2100', '5500000', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Flat\",\"development_laws\":\"nil\",\"family_needs\":\"nothing special\",\"rooms\":\"3\",\"aesthetic\":\"modern\",\"notes\":\"\"}', NULL, 'deleted', '2025-09-25 15:14:06', '2025-10-02 16:43:09', 'Kollam', '12-18 months', NULL, 'custom', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+(86, 28, 28, '3000', '75 Lakhs - 1 Crore', '{\"plot_shape\":\"Rectangular\",\"topography\":\"Slightly Sloped\",\"development_laws\":\"\",\"family_needs\":\"\",\"rooms\":\"\",\"aesthetic\":\"Traditional\",\"notes\":\"\",\"orientation\":\"South-facing\",\"site_considerations\":\"\",\"material_preferences\":\"Marble, Vitrified Tiles\",\"budget_allocation\":\"Balanced approach\",\"num_floors\":\"2\",\"preferred_style\":\"Traditional\",\"floor_rooms\":\"{\\\"floor1\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1,\\\"living_room\\\":1},\\\"floor2\\\":{\\\"master_bedroom\\\":1,\\\"bedrooms\\\":1,\\\"attached_bathrooms\\\":1,\\\"common_bathrooms\\\":1}}\",\"site_images\":[{\"id\":\"68deacff07dac\",\"file\":null,\"name\":\"11.webp\",\"size\":42242,\"url\":\"\\/buildhub\\/backend\\/uploads\\/site_images\\/28_68deacff07b1f.webp\"}],\"reference_images\":[],\"room_images\":{\"floor1\":{\"master_bedroom\":[{\"id\":\"68deacbd684ca\",\"name\":\"master bed.jpg\",\"size\":42453,\"url\":\"\\/buildhub\\/backend\\/uploads\\/room_images\\/28_68deacbd67dce.jpg\",\"floor\":1}]}}}', 'Traditional', 'approved', '2025-10-02 16:49:17', '2025-10-02 16:50:46', 'Kottayam', '12-18 months', NULL, 'custom', NULL, '[{\"id\":\"68deacff07dac\",\"file\":null,\"name\":\"11.webp\",\"size\":42242,\"url\":\"\\/buildhub\\/backend\\/uploads\\/site_images\\/28_68deacff07b1f.webp\"}]', '[]', '{\"floor1\":{\"master_bedroom\":[{\"id\":\"68deacbd684ca\",\"name\":\"master bed.jpg\",\"size\":42453,\"url\":\"\\/buildhub\\/backend\\/uploads\\/room_images\\/28_68deacbd67dce.jpg\",\"floor\":1}]}}', 'South-facing', '', 'Marble, Vitrified Tiles', 'Balanced approach', '{\"floor1\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1,\"living_room\":1},\"floor2\":{\"master_bedroom\":1,\"bedrooms\":1,\"attached_bathrooms\":1,\"common_bathrooms\":1}}', '2');
 
 -- --------------------------------------------------------
 
@@ -453,20 +540,8 @@ CREATE TABLE `layout_request_assignments` (
 --
 
 INSERT INTO `layout_request_assignments` (`id`, `layout_request_id`, `homeowner_id`, `architect_id`, `message`, `status`, `created_at`, `updated_at`) VALUES
-(9, 20, 30, 27, 'Custom design request from wizard', 'declined', '2025-09-18 10:14:42', '2025-09-18 15:41:19'),
-(20, 62, 28, 27, 'Custom design request from wizard', 'declined', '2025-09-22 08:25:49', '2025-09-24 16:17:06'),
-(21, 62, 28, 31, 'Custom design request from wizard', 'declined', '2025-09-22 08:25:49', '2025-09-28 07:45:51'),
-(22, 62, 28, 33, 'Custom design request from wizard', 'accepted', '2025-09-22 08:25:49', '2025-09-22 08:29:03'),
-(23, 66, 28, 27, 'Custom design request from wizard', 'declined', '2025-09-25 15:14:06', '2025-09-28 08:39:01'),
-(24, 66, 28, 31, 'Custom design request from wizard', 'declined', '2025-09-25 15:14:06', '2025-09-28 07:39:36'),
-(25, 66, 28, 34, 'Custom design request from wizard', 'sent', '2025-09-25 15:14:06', '2025-09-25 15:14:06'),
-(26, 68, 19, 27, 'Custom design request from wizard', 'declined', '2025-09-26 05:16:10', '2025-09-28 08:38:59'),
-(27, 69, 19, 27, 'Custom design request from wizard', 'declined', '2025-09-28 07:28:28', '2025-09-28 08:38:57'),
-(28, 69, 19, 31, 'Custom design request from wizard', 'declined', '2025-09-28 07:28:28', '2025-09-28 07:35:10'),
-(29, 70, 28, 31, 'Custom design request from wizard', 'declined', '2025-09-28 07:34:27', '2025-09-28 09:16:18'),
-(30, 80, 28, 27, 'Custom design request from wizard', 'declined', '2025-09-28 08:32:19', '2025-09-28 08:52:11'),
-(31, 81, 35, 31, 'Custom design request from wizard', 'declined', '2025-09-28 09:13:21', '2025-09-28 09:28:51'),
-(32, 82, 35, 31, 'Custom design request from wizard', 'accepted', '2025-09-28 09:37:05', '2025-09-28 09:37:31');
+(40, 86, 28, 27, 'Custom design request from wizard', 'accepted', '2025-10-02 16:49:17', '2025-10-02 16:50:46'),
+(41, 86, 28, 31, 'Custom design request from wizard', 'sent', '2025-10-02 16:49:17', '2025-10-02 16:49:17');
 
 -- --------------------------------------------------------
 
@@ -694,7 +769,9 @@ INSERT INTO `users` (`id`, `first_name`, `last_name`, `profile_image`, `bio`, `e
 (32, 'Amal', 'Samuel', NULL, NULL, 'thomasshijin90@gmail.com', '$2y$10$QeLhw1WzOr9RRyFr5UJd1eYge9qLg1A6s2z98YKKVGsIb8Dk7iVjG', 'homeowner', 'approved', 1, NULL, NULL, '2025-09-17 13:20:34', '2025-09-19 08:11:33', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
 (33, 'Linsha', 'Nadir', NULL, NULL, 'linshan2026@mca.ajce.in', '$2y$10$xnBF0c6kzGtZ15OLQELJg.pxAxkruyq9O.pITuNr0XaVr8blQSBrG', 'architect', 'approved', 1, NULL, '/uploads/portfolios/68d10766bb3e1_1.png', '2025-09-22 08:23:02', '2025-09-24 15:44:52', NULL, 'Interior Design', 0, NULL, NULL, NULL, '7558958478', NULL, NULL, 'Malappuram', NULL, NULL),
 (34, 'Savio', 'Joseph', NULL, NULL, 'saviojoseph2026@mca.ajce.in', '$2y$10$5cBxbUh2PhhTK0013cmvneDeSJJmNPsyYCl6kDbCxn2b6RqNT0bzC', 'architect', 'approved', 1, NULL, '/uploads/portfolios/68d4c250e8f94_2222.png', '2025-09-25 04:17:21', '2025-09-25 04:41:39', NULL, 'Urban Planner', 0, NULL, NULL, NULL, '9656819474', NULL, NULL, 'Kottayam', NULL, NULL),
-(35, 'SHIJIN', 'THOMAS', NULL, NULL, 'thomasshijin6@gmail.com', '$2y$10$S2jih5XV.2Bb3gfpdji76.xS89SXuglKVpkIpPG9UsrYvU809/ddq', 'homeowner', 'pending', 1, NULL, NULL, '2025-09-28 09:11:23', '2025-09-28 09:11:23', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+(35, 'SHIJIN', 'THOMAS', NULL, NULL, 'thomasshijin6@gmail.com', '$2y$10$S2jih5XV.2Bb3gfpdji76.xS89SXuglKVpkIpPG9UsrYvU809/ddq', 'homeowner', 'pending', 1, NULL, NULL, '2025-09-28 09:11:23', '2025-09-28 09:11:23', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+(36, 'Thomas', 'Joseph', NULL, NULL, 'thomasshijin281@gmail.com', '$2y$10$89COFm04m7rM9oTBLXdDee8nzohwua1AmFvutXrZXYqi68Dls2adu', 'homeowner', 'pending', 1, NULL, NULL, '2025-10-06 16:00:36', '2025-10-06 16:00:36', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+(37, 'Shijin', 'Thomas', NULL, NULL, 'shijinthomas81@gmail.com', '$2y$10$.tyScF6DTz3gYhm.CcHC3uKG2GHNEz5F1kuegebG/mNJ/KhU9avKy', 'contractor', 'approved', 1, '/uploads/licenses/68e3e7ffec8f6_68b5c450e97c92.78819543_1756742736.pdf', NULL, '2025-10-06 16:02:08', '2025-10-06 16:02:29', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 --
 -- Triggers `users`
@@ -781,6 +858,12 @@ ALTER TABLE `contractor_assignment_hides`
   ADD KEY `idx_contractor` (`contractor_id`);
 
 --
+-- Indexes for table `contractor_layout_sends`
+--
+ALTER TABLE `contractor_layout_sends`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indexes for table `contractor_proposals`
 --
 ALTER TABLE `contractor_proposals`
@@ -807,6 +890,20 @@ ALTER TABLE `contractor_reviews`
   ADD KEY `idx_contractor_reviews_homeowner` (`homeowner_id`),
   ADD KEY `idx_contractor_reviews_request` (`layout_request_id`),
   ADD KEY `idx_contractor_reviews_rating` (`rating`);
+
+--
+-- Indexes for table `contractor_send_estimates`
+--
+ALTER TABLE `contractor_send_estimates`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `send_id` (`send_id`);
+
+--
+-- Indexes for table `contractor_send_estimate_files`
+--
+ALTER TABLE `contractor_send_estimate_files`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `estimate_id` (`estimate_id`);
 
 --
 -- Indexes for table `designs`
@@ -836,6 +933,16 @@ ALTER TABLE `layout_library_technical_details`
   ADD PRIMARY KEY (`id`),
   ADD KEY `layout_library_id` (`layout_library_id`),
   ADD KEY `architect_id` (`architect_id`);
+
+--
+-- Indexes for table `layout_payments`
+--
+ALTER TABLE `layout_payments`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `architect_id` (`architect_id`),
+  ADD KEY `idx_layout_payments_homeowner` (`homeowner_id`),
+  ADD KEY `idx_layout_payments_design` (`design_id`),
+  ADD KEY `idx_layout_payments_status` (`payment_status`);
 
 --
 -- Indexes for table `layout_requests`
@@ -957,6 +1064,12 @@ ALTER TABLE `contractor_assignment_hides`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
+-- AUTO_INCREMENT for table `contractor_layout_sends`
+--
+ALTER TABLE `contractor_layout_sends`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
 -- AUTO_INCREMENT for table `contractor_proposals`
 --
 ALTER TABLE `contractor_proposals`
@@ -975,10 +1088,22 @@ ALTER TABLE `contractor_reviews`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `contractor_send_estimates`
+--
+ALTER TABLE `contractor_send_estimates`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+
+--
+-- AUTO_INCREMENT for table `contractor_send_estimate_files`
+--
+ALTER TABLE `contractor_send_estimate_files`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `designs`
 --
 ALTER TABLE `designs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `design_comments`
@@ -999,16 +1124,22 @@ ALTER TABLE `layout_library_technical_details`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
+-- AUTO_INCREMENT for table `layout_payments`
+--
+ALTER TABLE `layout_payments`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
 -- AUTO_INCREMENT for table `layout_requests`
 --
 ALTER TABLE `layout_requests`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=84;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=87;
 
 --
 -- AUTO_INCREMENT for table `layout_request_assignments`
 --
 ALTER TABLE `layout_request_assignments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=42;
 
 --
 -- AUTO_INCREMENT for table `layout_technical_details`
@@ -1056,7 +1187,7 @@ ALTER TABLE `support_replies`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=36;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
 
 --
 -- Constraints for dumped tables
@@ -1124,6 +1255,14 @@ ALTER TABLE `layout_library`
 ALTER TABLE `layout_library_technical_details`
   ADD CONSTRAINT `layout_library_technical_details_ibfk_1` FOREIGN KEY (`layout_library_id`) REFERENCES `layout_library` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `layout_library_technical_details_ibfk_2` FOREIGN KEY (`architect_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `layout_payments`
+--
+ALTER TABLE `layout_payments`
+  ADD CONSTRAINT `layout_payments_ibfk_1` FOREIGN KEY (`homeowner_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `layout_payments_ibfk_2` FOREIGN KEY (`architect_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `layout_payments_ibfk_3` FOREIGN KEY (`design_id`) REFERENCES `designs` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `layout_requests`
