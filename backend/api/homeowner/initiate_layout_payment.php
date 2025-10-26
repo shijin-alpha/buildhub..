@@ -1,6 +1,7 @@
 <?php
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Razorpay\Api\Api;
@@ -25,8 +26,32 @@ try {
 
     $api = new Api($keyId, $keySecret);
 
+    // Look up architect-set price from DB when not overridden
+    $amountRupees = 0;
+    if ($amountOverride > 0) {
+        $amountRupees = (int)$amountOverride;
+    } else {
+        try {
+            $database = new Database();
+            $db = $database->getConnection();
+            $stmt = $db->prepare("SELECT view_price FROM designs WHERE id = :id LIMIT 1");
+            $stmt->bindValue(':id', $designId, PDO::PARAM_INT);
+            $stmt->execute();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $vp = isset($row['view_price']) ? (float)$row['view_price'] : 0.0;
+            if ($vp > 0) {
+                $amountRupees = (int)round($vp);
+            }
+        } catch (Throwable $e) {
+            // fall back silently
+        }
+        if ($amountRupees <= 0) {
+            $amountRupees = 8000; // fallback base price
+        }
+    }
+
     // Calculate amount in paise
-    $amountPaise = ($amountOverride > 0 ? $amountOverride : 8000) * 100;
+    $amountPaise = $amountRupees * 100;
 
     // Create order
     $order = $api->order->create([

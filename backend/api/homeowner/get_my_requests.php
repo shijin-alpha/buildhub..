@@ -52,6 +52,7 @@ try {
         $requests[] = [
             'id' => $row['id'],
             'plot_size' => $row['plot_size'],
+            'building_size' => $row['building_size'] ?? null,
             'budget_range' => $row['budget_range'],
             'requirements' => $row['requirements'],
             // decode structured requirements if JSON

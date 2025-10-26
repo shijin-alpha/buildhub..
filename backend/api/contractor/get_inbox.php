@@ -56,14 +56,36 @@ try {
         }
     } catch (Throwable $e) {}
 
-    $stmt = $db->prepare("SELECT s.*, 
-        CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS homeowner_name,
-        u.email AS homeowner_email
+    // Fetch from both contractor_layout_sends and contractor_inbox tables
+    $stmt = $db->prepare("
+        SELECT s.id, s.contractor_id, s.homeowner_id, s.layout_id, s.design_id, NULL as estimate_id,
+               s.message, s.payload, s.created_at, s.acknowledged_at, s.due_date,
+               CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS homeowner_name,
+               u.email AS homeowner_email,
+               'layout_request' as type,
+               'New layout sent' as title,
+               'unread' as status
         FROM contractor_layout_sends s
         LEFT JOIN users u ON u.id = s.homeowner_id
-        WHERE s.contractor_id = :cid
-        ORDER BY s.id DESC");
-    $stmt->bindValue(':cid', $contractorId, PDO::PARAM_INT);
+        WHERE s.contractor_id = :cid1
+        
+        UNION ALL
+        
+        SELECT ci.id, ci.contractor_id, ci.homeowner_id, NULL as layout_id, NULL as design_id, ci.estimate_id,
+               ci.message, NULL as payload, ci.created_at, ci.acknowledged_at, ci.due_date,
+               CONCAT(COALESCE(u2.first_name,''), ' ', COALESCE(u2.last_name,'')) AS homeowner_name,
+               u2.email AS homeowner_email,
+               ci.type,
+               ci.title,
+               ci.status
+        FROM contractor_inbox ci
+        LEFT JOIN users u2 ON u2.id = ci.homeowner_id
+        WHERE ci.contractor_id = :cid2
+        
+        ORDER BY created_at DESC
+    ");
+    $stmt->bindValue(':cid1', $contractorId, PDO::PARAM_INT);
+    $stmt->bindValue(':cid2', $contractorId, PDO::PARAM_INT);
     $stmt->execute();
 
     $items = [];
@@ -81,11 +103,15 @@ try {
             'homeowner_email' => $row['homeowner_email'] ?? null,
             'layout_id' => is_null($row['layout_id']) ? null : (int)$row['layout_id'],
             'design_id' => is_null($row['design_id']) ? null : (int)$row['design_id'],
+            'estimate_id' => is_null($row['estimate_id']) ? null : (int)$row['estimate_id'],
+            'type' => $row['type'] ?? 'layout_request',
+            'title' => $row['title'] ?? 'New layout sent',
             'message' => $row['message'],
             'payload' => $payload,
             'created_at' => $row['created_at'],
             'acknowledged_at' => $row['acknowledged_at'] ?? null,
-            'due_date' => $row['due_date'] ?? null
+            'due_date' => $row['due_date'] ?? null,
+            'status' => $row['status'] ?? 'unread'
         ];
     }
 

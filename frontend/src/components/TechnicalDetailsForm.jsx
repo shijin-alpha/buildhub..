@@ -1,574 +1,338 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import InfoPopup from './InfoPopup';
+import React, { useState, useMemo } from 'react';
+import '../styles/TechnicalDetailsForm.css';
 
 const TechnicalDetailsForm = ({ data, setData, onNext, onPrev }) => {
-  const [activeSection, setActiveSection] = useState('floor-plans');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [buildingType, setBuildingType] = useState('');
-  const LS_KEY = 'buildhub_architect_tech_details_v1';
-  const LS_PROGRESS = 'buildhub_architect_tech_details_progress_v1';
+  const [activeSection, setActiveSection] = useState('floor_plans');
+  const [selectedTemplate, setSelectedTemplate] = useState('');
 
-  const templates = useMemo(() => ([
+  const [formData, setFormData] = useState({
+    floor_plan_layout: data.technical_details?.floor_plan_layout || '',
+    room_dimensions: data.technical_details?.room_dimensions || {
+      living_room: '',
+      master_bedroom: '',
+      kitchen: '',
+      other_rooms: ''
+    },
+    door_window_positions: data.technical_details?.door_window_positions || '',
+    circulation_paths: data.technical_details?.circulation_paths || '',
+    structural_elements: data.technical_details?.structural_elements || '',
+    elevations_sections: data.technical_details?.elevations_sections || '',
+    construction_notes: data.technical_details?.construction_notes || '',
+    foundation_type: data.technical_details?.foundation_type || '',
+    structural_materials: data.technical_details?.structural_materials || '',
+    load_bearing_elements: data.technical_details?.load_bearing_elements || '',
+    facade_treatment: data.technical_details?.facade_treatment || '',
+    section_details: data.technical_details?.section_details || '',
+    building_height: data.technical_details?.building_height || '',
+    material_specifications: data.technical_details?.material_specifications || '',
+    construction_methods: data.technical_details?.construction_methods || '',
+    special_requirements: data.technical_details?.special_requirements || '',
+    electrical_system: data.technical_details?.electrical_system || '',
+    plumbing_system: data.technical_details?.plumbing_system || '',
+    hvac_system: data.technical_details?.hvac_system || '',
+    fire_safety: data.technical_details?.fire_safety || '',
+    accessibility_features: data.technical_details?.accessibility_features || '',
+    energy_efficiency: data.technical_details?.energy_efficiency || '',
+    estimated_cost: data.technical_details?.estimated_cost || '',
+    cost_breakdown: data.technical_details?.cost_breakdown || '',
+    material_costs: data.technical_details?.material_costs || '',
+    labor_costs: data.technical_details?.labor_costs || '',
+    view_price: data.technical_details?.view_price || data.view_price || 0
+  });
+
+  // Template definitions
+  const templates = useMemo(() => [
     {
-      id: 'residential_concrete', name: 'Residential – Concrete baseline',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'Reinforced concrete walls at cores; 200 mm slabs',
-          column_positions: '8 m grid; edge columns 300×600 mm',
-          foundation_outline: 'Isolated footings; M30 concrete',
-          roof_outline: 'Flat RCC slab with insulation'
-        },
-        construction: {
-          wall_thickness: 'External 230 mm RCC + insulation + plaster; Internal 115 mm block',
-          ceiling_heights: 'Living 3.1 m; Bedrooms 3.0 m; Kitchen 2.9 m',
-          building_codes: 'IBC 2021 / IS 456 as applicable',
-          critical_instructions: 'Use Fe500 rebars; cover as per exposure class XC2'
-        }
+      id: 'residential_concrete',
+      name: 'Residential – Concrete baseline',
+      data: {
+        structural_elements: 'RCC framed structure with concrete columns, beams, and slabs. Standard residential construction with M20 grade concrete.',
+        foundation_type: 'RCC Foundation with strip footing',
+        structural_materials: 'M20 grade concrete, Fe415 steel reinforcement',
+        electrical_system: 'Standard residential electrical layout with MCB distribution board',
+        plumbing_system: 'CPVC pipes for water supply, PVC for drainage',
+        hvac_system: 'Natural ventilation with ceiling fans',
+        estimated_cost: '₹15,00,000 - ₹20,00,000'
       }
     },
     {
-      id: 'steel_office', name: 'Office – Steel frame + curtain wall',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'Steel moment frames; braced cores',
-          column_positions: '9 m × 9 m grid; HSS 300×300',
-          foundation_outline: 'Pile caps with steel base plates',
-          roof_outline: 'Lightweight metal deck with insulation'
-        },
-        construction: {
-          wall_thickness: 'Curtain wall with IGU; party walls 150 mm GWB on studs',
-          ceiling_heights: 'Office 3.0 m clear; Lobby 4.5 m',
-          building_codes: 'IBC 2021; ASCE 7-22 for loads',
-          critical_instructions: 'Intumescent paint to achieve 2-hr rating'
-        }
+      id: 'steel_office',
+      name: 'Office – Steel frame + curtain wall',
+      data: {
+        structural_elements: 'Steel frame structure with composite steel-concrete floors. Modern office building design.',
+        foundation_type: 'Raft foundation with pile foundation',
+        structural_materials: 'Structural steel grade Fe500, M25 grade concrete',
+        electrical_system: 'Commercial electrical system with UPS backup',
+        plumbing_system: 'GI pipes for water supply, cast iron for drainage',
+        hvac_system: 'Centralized AC system with VRF technology',
+        estimated_cost: '₹25,00,000 - ₹35,00,000'
       }
     },
     {
-      id: 'timber_school', name: 'School – Timber CLT',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'CLT shear walls with GLT beams',
-          column_positions: '7.2 m grid; GLT posts 200×200',
-          foundation_outline: 'Strip footing; anchor bolts',
-          roof_outline: 'CLT panels with green roof assembly'
-        },
-        construction: {
-          wall_thickness: 'External CLT 140 mm + insulation; internal 100 mm',
-          ceiling_heights: 'Classrooms 3.3 m; Corridors 3.0 m',
-          building_codes: 'EN Eurocodes / local timber codes',
-          critical_instructions: 'Moisture protection during erection'
-        }
+      id: 'timber_school',
+      name: 'School – Timber CLT',
+      data: {
+        structural_elements: 'Cross-laminated timber (CLT) structure with steel connections',
+        foundation_type: 'Strip foundation with timber posts',
+        structural_materials: 'CLT panels, structural timber, steel connections',
+        electrical_system: 'Educational facility electrical with safety features',
+        plumbing_system: 'PEX pipes for water supply, PVC for drainage',
+        hvac_system: 'Natural ventilation with mechanical assistance',
+        estimated_cost: '₹18,00,000 - ₹25,00,000'
       }
     },
     {
-      id: 'residential_contemporary', name: 'Residential – Contemporary',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'RCC shear walls with large openings; transfer beams at living spaces',
-          column_positions: 'Irregular grid to allow open-plan; concealed edge columns',
-          foundation_outline: 'Raft foundation for mixed soil strata',
-          roof_outline: 'Flat slab with parapet; provision for PV mounts'
-        },
-        elevations: {
-          front_elevation: 'Clean horizontal lines; large glazing; minimal ornamentation',
-          height_details: 'Floor-to-floor 3.3 m; thin slab edges expressed'
-        },
-        construction: {
-          wall_thickness: 'External 230 mm RCC + EPS insulation + render; internal 100–115 mm partitions',
-          ceiling_heights: 'Living 3.2 m; bedrooms 3.0 m',
-          building_codes: 'IBC 2021; energy code per region',
-          critical_instructions: 'Thermal breaks on balconies; high-performance glazing U≤1.6 W/m²K'
-        }
+      id: 'residential_contemporary',
+      name: 'Residential – Contemporary',
+      data: {
+        structural_elements: 'Modern RCC structure with cantilevered elements and glass facades',
+        foundation_type: 'RCC foundation with basement',
+        structural_materials: 'M25 grade concrete, Fe500 steel, glass curtain wall',
+        electrical_system: 'Smart home electrical system with automation',
+        plumbing_system: 'PEX pipes with smart water management',
+        hvac_system: 'VRF air conditioning with heat recovery',
+        estimated_cost: '₹30,00,000 - ₹45,00,000'
       }
     },
     {
-      id: 'residential_traditional', name: 'Residential – Traditional',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'Brick/block load-bearing walls with RCC bands',
-          foundation_outline: 'Strip footing; plinth beam; DPC at 150 mm above GL',
-          roof_outline: 'Pitched truss roof with clay tiles'
-        },
-        elevations: {
-          front_elevation: 'Symmetry, eaves, and framed openings; verandah',
-          height_details: 'Plinth 600 mm; typical floor-to-floor 3.0 m'
-        },
-        construction: {
-          wall_thickness: 'External 345 mm cavity/solid brick; internal 115–230 mm',
-          ceiling_heights: 'Ground 3.3 m; Upper 3.0 m',
-          building_codes: 'Local heritage guidelines where applicable',
-          critical_instructions: 'Moisture management; ridge ventilation'
-        }
+      id: 'residential_traditional',
+      name: 'Residential – Traditional',
+      data: {
+        structural_elements: 'Traditional masonry construction with RCC roof',
+        foundation_type: 'Strip foundation with masonry walls',
+        structural_materials: 'Brick masonry, M15 grade concrete, traditional roofing',
+        electrical_system: 'Standard residential electrical with traditional aesthetics',
+        plumbing_system: 'Traditional plumbing with modern fixtures',
+        hvac_system: 'Natural ventilation with traditional cooling methods',
+        estimated_cost: '₹12,00,000 - ₹18,00,000'
       }
     },
     {
-      id: 'residential_minimalist', name: 'Residential – Modern Minimal',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'RCC flat slab with minimal beams; slender columns',
-          roof_outline: 'Flat roof with inverted insulation system'
-        },
-        elevations: {
-          front_elevation: 'Monolithic volumes; concealed gutters; frameless corners',
-          height_details: 'Clear height 3.0 m; floor-to-floor 3.2 m'
-        },
-        construction: {
-          wall_thickness: 'External 200–230 mm + exterior insulation finish system',
-          ceiling_heights: 'Consistent 3.0 m',
-          building_codes: 'Energy and acoustic performance emphasized',
-          critical_instructions: 'Shadow gaps; integrated concealments for MEP'
-        }
+      id: 'residential_minimalist',
+      name: 'Residential – Modern Minimal',
+      data: {
+        structural_elements: 'Minimalist RCC structure with clean lines and open spaces',
+        foundation_type: 'RCC foundation with floating slab',
+        structural_materials: 'M20 grade concrete, minimal steel, clean finishes',
+        electrical_system: 'Hidden electrical system with minimal visible elements',
+        plumbing_system: 'Concealed plumbing with minimalist fixtures',
+        hvac_system: 'Underfloor heating with minimal visible systems',
+        estimated_cost: '₹20,00,000 - ₹30,00,000'
       }
     },
     {
-      id: 'commercial_retail', name: 'Commercial – Retail shell',
-      prefill: {
-        structural: {
-          column_positions: '8–9 m grid; long-span beams at storefronts',
-          foundation_outline: 'Pile/raft depending on site; high live loads areas'
-        },
-        site_orientation: {
-          access_points: 'Service bay access; customer entry; emergency exits per code'
-        },
-        construction: {
-          wall_thickness: 'Facade curtain wall/storefront glazing; demising walls 150–200 mm GWB',
-          ceiling_heights: 'Retail floor 4.0–4.5 m; back-of-house 3.0 m',
-          building_codes: 'IBC 2021; sprinkler and egress per NFPA',
-          critical_instructions: 'Accessibility aisles; smoke extraction interfaces'
-        }
+      id: 'commercial_retail',
+      name: 'Commercial – Retail shell',
+      data: {
+        structural_elements: 'Steel frame with large open spaces for retail flexibility',
+        foundation_type: 'Raft foundation for heavy loads',
+        structural_materials: 'Structural steel, composite floors, curtain wall system',
+        electrical_system: 'High-capacity commercial electrical with backup',
+        plumbing_system: 'Commercial plumbing with multiple connections',
+        hvac_system: 'Centralized HVAC with zone control',
+        estimated_cost: '₹40,00,000 - ₹60,00,000'
       }
     },
     {
-      id: 'commercial_mixeduse', name: 'Commercial – Mixed-use podium + tower',
-      prefill: {
-        structural: {
-          column_positions: 'Podium transfer girders; tower typical grid 8.4 m',
-          roof_outline: 'Podium landscaped roof; tower MEP terrace'
-        },
-        construction: {
-          wall_thickness: 'Podium facade heavy cladding; tower unitized curtain wall',
-          ceiling_heights: 'Retail 4.5 m; amenities 3.6 m; tower 3.1 m',
-          building_codes: 'IBC 2021; mixed-occupancy separation',
-          critical_instructions: 'Acoustic separation between uses; fire compartmentation details'
-        }
+      id: 'commercial_mixeduse',
+      name: 'Commercial – Mixed-use podium + tower',
+      data: {
+        structural_elements: 'Mixed-use structure with podium and tower elements',
+        foundation_type: 'Deep foundation with basement levels',
+        structural_materials: 'High-strength concrete M30+, structural steel',
+        electrical_system: 'Multi-zone electrical system for different uses',
+        plumbing_system: 'Complex plumbing system for multiple functions',
+        hvac_system: 'Zoned HVAC system for different building uses',
+        estimated_cost: '₹50,00,000 - ₹80,00,000'
       }
     },
     {
-      id: 'residential_villa', name: 'Residential – Luxury Villa',
-      prefill: {
-        floor_plans: {
-          living_room_dimensions: '24 × 18 ft',
-          master_bedroom_dimensions: '18 × 14 ft'
-        },
-        structural: {
-          foundation_outline: 'Isolated footings; basement optional',
-          roof_outline: 'Flat + partial sloped accents; terrace deck'
-        },
-        construction: {
-          wall_thickness: 'External 250–300 mm with high insulation; internal 115–150 mm',
-          ceiling_heights: 'Ground 3.4 m; Upper 3.2 m',
-          building_codes: 'High energy performance; local villa standards',
-          critical_instructions: 'Provision for home automation and solar PV'
-        }
+      id: 'residential_villa',
+      name: 'Residential – Luxury Villa',
+      data: {
+        structural_elements: 'Luxury RCC structure with premium finishes and features',
+        foundation_type: 'RCC foundation with basement and parking',
+        structural_materials: 'High-grade concrete M25+, premium steel, luxury finishes',
+        electrical_system: 'Premium electrical system with smart home features',
+        plumbing_system: 'Premium plumbing with luxury fixtures',
+        hvac_system: 'Premium HVAC with smart climate control',
+        estimated_cost: '₹60,00,000 - ₹1,00,00,000'
       }
     },
     {
-      id: 'residential_apartment_midrise', name: 'Residential – Mid-rise Apartments',
-      prefill: {
-        structural: {
-          load_bearing_walls: 'RCC shear/core with frame; stairs and lift cores',
-          column_positions: 'Typical bay 7.2–8.4 m'
-        },
-        construction: {
-          wall_thickness: 'External 200–230 mm; internal 100–150 mm',
-          ceiling_heights: 'Typical 2.9–3.0 m',
-          building_codes: 'Local multi-family codes; fire egress and refuge floor',
-          critical_instructions: 'Acoustic separation between units; fire-stopping at MEP penetrations'
-        }
+      id: 'residential_apartment_midrise',
+      name: 'Residential – Mid-rise Apartments',
+      data: {
+        structural_elements: 'Mid-rise RCC structure optimized for apartment living',
+        foundation_type: 'RCC foundation with basement parking',
+        structural_materials: 'M25 grade concrete, Fe500 steel, apartment finishes',
+        electrical_system: 'Apartment electrical system with individual meters',
+        plumbing_system: 'Apartment plumbing with individual connections',
+        hvac_system: 'Individual AC units with common ventilation',
+        estimated_cost: '₹35,00,000 - ₹50,00,000'
       }
     }
-  ]), []);
+  ], []);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      const rawProgress = localStorage.getItem(LS_PROGRESS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setData(prev => ({ ...prev, technical_details: { ...prev.technical_details, ...parsed } }));
+  // Section definitions
+  const sections = useMemo(() => [
+    {
+      id: 'floor_plans',
+      title: 'Floor Plans & Layout',
+      icon: '🏠',
+      description: 'Complete the fields below to provide technical details for this section'
+    },
+    {
+      id: 'structural',
+      title: 'Structural Elements',
+      icon: '🏗️',
+      description: 'Specify structural components and construction methods'
+    },
+    {
+      id: 'elevations',
+      title: 'Key Elevations & Sections',
+      icon: '📐',
+      description: 'Provide details about building elevations and cross-sections'
+    },
+    {
+      id: 'construction',
+      title: 'Construction Notes',
+      icon: '📋',
+      description: 'Additional construction specifications and considerations'
+    },
+    {
+      id: 'systems',
+      title: 'Building Systems',
+      icon: '⚡',
+      description: 'Electrical, plumbing, HVAC, and other building systems'
+    },
+    {
+      id: 'pricing',
+      title: 'Cost Estimation',
+      icon: '💰',
+      description: 'Pricing information and cost breakdown'
+    }
+  ], []);
+
+  const handleInputChange = (field, value) => {
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    
+    // Update parent data
+    setData({
+      ...data,
+      technical_details: newFormData
+    });
+  };
+
+  const handleRoomDimensionChange = (room, value) => {
+    const newRoomDimensions = { ...formData.room_dimensions, [room]: value };
+    const newFormData = { ...formData, room_dimensions: newRoomDimensions };
+    setFormData(newFormData);
+    
+    // Update parent data
+    setData({
+      ...data,
+      technical_details: newFormData
+    });
+  };
+
+  const handleTemplateChange = (templateId) => {
+    setSelectedTemplate(templateId);
+    if (templateId) {
+      const template = templates.find(t => t.id === templateId);
+      if (template) {
+        const newFormData = { ...formData, ...template.data };
+        setFormData(newFormData);
+        setData({
+          ...data,
+          technical_details: newFormData
+        });
       }
-      if (rawProgress) setActiveSection(rawProgress);
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    }
+  };
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(data.technical_details || {}));
-      localStorage.setItem(LS_PROGRESS, activeSection);
-    } catch {}
-  }, [data.technical_details, activeSection]);
-
-  const sections = [
-    { id: 'floor-plans', title: '🏠 Floor Plans & Layout', icon: '🏠' },
-    { id: 'site-orientation', title: '🌍 Site & Orientation', icon: '🌍' },
-    { id: 'structural', title: '🏗️ Structural Elements', icon: '🏗️' },
-    { id: 'elevations', title: '📐 Key Elevations & Sections', icon: '📐' },
-    { id: 'construction', title: '📋 Construction Notes', icon: '📋' }
-  ];
+  const validateCurrentSection = () => {
+    // Simple validation - just return true for now
+    // You can add section-specific validation here
+    return true;
+  };
 
   const handleNext = () => {
-    const currentIndex = sections.findIndex(section => section.id === activeSection);
+    const currentIndex = sections.findIndex(s => s.id === activeSection);
     if (currentIndex < sections.length - 1) {
-      // Go to next internal section
       setActiveSection(sections[currentIndex + 1].id);
-    } else {
-      // All sections covered, go to next wizard step
-      onNext();
     }
   };
 
   const handlePrev = () => {
-    const currentIndex = sections.findIndex(section => section.id === activeSection);
+    const currentIndex = sections.findIndex(s => s.id === activeSection);
     if (currentIndex > 0) {
-      // Go to previous internal section
       setActiveSection(sections[currentIndex - 1].id);
-    } else {
-      // At first section, go to previous wizard step
-      onPrev();
     }
   };
 
-  const updateData = (section, field, value) => {
-    console.log('🔍 TechnicalDetailsForm updateData called:', { section, field, value });
-    setData(prev => {
-      const newData = {
-        ...prev,
-        technical_details: {
-          ...prev.technical_details,
-          [section]: {
-            ...prev.technical_details?.[section],
-            [field]: value
-          }
-        }
-      };
-      console.log('🔍 New technical_details data:', newData.technical_details);
-      return newData;
-    });
-  };
-
-  const applyTemplate = (tplId) => {
-    const tpl = templates.find(t => t.id === tplId);
-    setSelectedTemplateId(tplId);
-    if (!tpl) return;
-    setData(prev => ({
-      ...prev,
-      technical_details: {
-        ...prev.technical_details,
-        ...tpl.prefill
-      }
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    // Update the parent data with technical details including view_price
+    setData(prevData => ({
+      ...prevData,
+      technical_details: formData,
+      view_price: formData.view_price
     }));
-  };
-
-  const exportDetails = () => {
-    const blob = new Blob([JSON.stringify(data.technical_details || {}, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'technical_details.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  // Smart suggestions
-  const applyBuildingTypePreset = (type) => {
-    setBuildingType(type);
-    if (!type) return;
-    const presets = {
-      residential: {
-        construction: {
-          wall_thickness: 'External 230 mm; Internal 115 mm',
-          ceiling_heights: 'Living 3.0 m; Bedrooms 2.9 m; Kitchen 2.8 m',
-          building_codes: 'Local residential code; fire egress per IBC',
-          critical_instructions: 'Provide damp-proof course and thermal insulation per climate zone'
-        },
-        floor_plans: {
-          living_room_dimensions: '20 × 15 ft',
-          master_bedroom_dimensions: '16 × 12 ft',
-          kitchen_dimensions: '12 × 10 ft'
-        }
-      },
-      office: {
-        construction: {
-          wall_thickness: 'Partitions 100–150 mm GWB on studs; cores concrete',
-          ceiling_heights: 'Open office 3.0 m clear; lobby 4.2 m',
-          building_codes: 'IBC 2021; ASHRAE ventilation rates',
-          critical_instructions: 'Acoustic control in meeting rooms; raised flooring for services'
-        },
-        structural: {
-          column_positions: '9 m × 9 m grid; HSS 300×300',
-          roof_outline: 'Metal deck + insulation'
-        }
-      },
-      commercial: {
-        construction: {
-          wall_thickness: 'Curtain wall/storefront; demising walls 150–200 mm',
-          ceiling_heights: 'Retail 4.2 m; BOH 3.0 m',
-          building_codes: 'IBC 2021; NFPA sprinklers and egress',
-          critical_instructions: 'Accessible routes; smoke extraction'
-        }
-      },
-      contemporary: {
-        elevations: {
-          front_elevation: 'Clean lines, large glazing, minimal ornament',
-          height_details: 'F2F ~3.2–3.3 m; thin slab edges'
-        },
-        construction: {
-          building_codes: 'Energy code emphasis; high-performance envelope'
-        }
-      },
-      school: {
-        construction: {
-          wall_thickness: 'External 200–250 mm; internal 100–150 mm',
-          ceiling_heights: 'Classrooms 3.3 m; corridors 3.0 m',
-          building_codes: 'Local education facility codes; accessibility per ADA/EN',
-          critical_instructions: 'Daylighting and glare control; durable finishes'
-        }
-      }
-    };
-    const preset = presets[type];
-    if (!preset) return;
-    setData(prev => ({
-      ...prev,
-      technical_details: {
-        ...prev.technical_details,
-        ...(preset.floor_plans ? { floor_plans: { ...(prev.technical_details?.floor_plans||{}), ...preset.floor_plans } } : {}),
-        ...(preset.site_orientation ? { site_orientation: { ...(prev.technical_details?.site_orientation||{}), ...preset.site_orientation } } : {}),
-        ...(preset.structural ? { structural: { ...(prev.technical_details?.structural||{}), ...preset.structural } } : {}),
-        ...(preset.elevations ? { elevations: { ...(prev.technical_details?.elevations||{}), ...preset.elevations } } : {}),
-        ...(preset.construction ? { construction: { ...(prev.technical_details?.construction||{}), ...preset.construction } } : {}),
-        meta: { ...(prev.technical_details?.meta||{}), building_type: type }
-      }
-    }));
-  };
-
-  const magicFill = () => {
-    // Heuristic parser from description/file names
-    const desc = (data.description || '').toLowerCase();
-    const names = [data.layout_file?.name, data.preview_image?.name, ...(data.files||[]).map(f=>f?.name)].filter(Boolean).join(' ').toLowerCase();
-    const text = `${desc} ${names}`;
-    // room hints
-    const is3bhk = /\b3\s*bhk\b|\b3 bedroom\b/.test(text);
-    const is2bhk = /\b2\s*bhk\b|\b2 bedroom\b/.test(text);
-    const isOffice = /office|workspace|cowork/.test(text);
-    const isRetail = /retail|shop|storefront|mall|boutique/.test(text);
-    const isSchool = /school|classroom|campus/.test(text);
-    const isContemporary = /contemporary|modern minimal|minimalist/.test(text);
-    const isTraditional = /traditional|heritage|vernacular/.test(text);
-    const isVilla = /villa|bungalow|farmhouse/.test(text);
-    const isApartment = /apartment|mid[- ]?rise|multi[- ]?family/.test(text);
-    if (isOffice) applyBuildingTypePreset('office');
-    else if (isRetail) applyBuildingTypePreset('commercial');
-    else if (isSchool) applyBuildingTypePreset('school');
-    else applyBuildingTypePreset('residential');
-
-    if (isContemporary) applyTemplate('residential_contemporary');
-    if (isTraditional) applyTemplate('residential_traditional');
-    if (isVilla) applyTemplate('residential_villa');
-    if (isApartment) applyTemplate('residential_apartment_midrise');
-    if (isRetail) applyTemplate('commercial_retail');
-
-    const fp = {};
-    if (is3bhk) {
-      fp.living_room_dimensions = '22 × 16 ft';
-      fp.master_bedroom_dimensions = '16 × 13 ft';
-      fp.other_room_dimensions = 'Bedroom 2: 14 × 12 ft; Bedroom 3: 12 × 11 ft';
-    } else if (is2bhk) {
-      fp.living_room_dimensions = '20 × 14 ft';
-      fp.master_bedroom_dimensions = '15 × 12 ft';
-      fp.other_room_dimensions = 'Bedroom 2: 12 × 11 ft';
-    }
-    if (Object.keys(fp).length) {
-      setData(prev => ({
-        ...prev,
-        technical_details: {
-          ...prev.technical_details,
-          floor_plans: { ...(prev.technical_details?.floor_plans||{}), ...fp }
-        }
-      }));
-    }
+    onNext();
   };
 
   const renderFloorPlansSection = () => (
     <div className="technical-section">
-      <h3>🏠 Floor Plans & Layout</h3>
-      
       <div className="form-group">
         <label>Floor Plan Layout Description</label>
         <textarea
-          rows="4"
-          value={data.technical_details?.floor_plans?.layout_description || ''}
-          onChange={(e) => updateData('floor_plans', 'layout_description', e.target.value)}
+          value={formData.floor_plan_layout}
+          onChange={(e) => handleInputChange('floor_plan_layout', e.target.value)}
           placeholder="Describe the floor plan layout, room arrangements, and spatial organization..."
+          rows="4"
         />
       </div>
 
       <div className="form-group">
-        <label>
-          Room Dimensions
-          <InfoPopup 
-            content={
-              <div>
-                <strong>Default Room Dimensions (ft):</strong><br/>
-                • Living Room: 20 × 15 (300 sq ft)<br/>
-                • Master Bedroom: 16 × 12 (192 sq ft)<br/>
-                • Kitchen: 12 × 10 (120 sq ft)<br/>
-                • Bedroom 2: 14 × 12 (168 sq ft)<br/>
-                • Bedroom 3: 12 × 10 (120 sq ft)<br/>
-                • Bathroom: 8 × 6 (48 sq ft)<br/>
-                • Dining Room: 14 × 12 (168 sq ft)<br/>
-                <em>Format: Length × Width (e.g., 20 × 15 ft)</em>
-              </div>
-            }
-            position="top"
-          >
-            <span style={{ marginLeft: '8px', cursor: 'pointer', color: '#6b7280' }}>ℹ️</span>
-          </InfoPopup>
-        </label>
+        <label>Room Dimensions</label>
         <div className="dimensions-grid">
           <div className="dimension-item">
-            <label>
-              Living Room
-              <InfoPopup 
-                content="Typical size: 20 × 15 ft (300 sq ft). Minimum: 12 × 10 ft. Consider furniture placement and traffic flow."
-                position="top"
-              >
-                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
-              </InfoPopup>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                value={data.technical_details?.floor_plans?.living_room_dimensions || ''}
-                onChange={(e) => updateData('floor_plans', 'living_room_dimensions', e.target.value)}
-                placeholder="e.g., 20 × 15 ft"
-                style={{ paddingRight: '30px' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#6b7280',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  pointerEvents: 'none'
-                }}
-              >
-                ×
-              </span>
-            </div>
+            <label>Living Room</label>
+            <input
+              type="text"
+              value={formData.room_dimensions.living_room}
+              onChange={(e) => handleRoomDimensionChange('living_room', e.target.value)}
+              placeholder="e.g., 20 × 15 ft"
+            />
           </div>
           <div className="dimension-item">
-            <label>
-              Master Bedroom
-              <InfoPopup 
-                content="Typical size: 16 × 12 ft (192 sq ft). Minimum: 12 × 10 ft. Include space for king bed, dressers, and walk-in closet."
-                position="top"
-              >
-                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
-              </InfoPopup>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                value={data.technical_details?.floor_plans?.master_bedroom_dimensions || ''}
-                onChange={(e) => updateData('floor_plans', 'master_bedroom_dimensions', e.target.value)}
-                placeholder="e.g., 16 × 12 ft"
-                style={{ paddingRight: '30px' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#6b7280',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  pointerEvents: 'none'
-                }}
-              >
-                ×
-              </span>
-            </div>
+            <label>Master Bedroom</label>
+            <input
+              type="text"
+              value={formData.room_dimensions.master_bedroom}
+              onChange={(e) => handleRoomDimensionChange('master_bedroom', e.target.value)}
+              placeholder="e.g., 16 × 12 ft"
+            />
           </div>
           <div className="dimension-item">
-            <label>
-              Kitchen
-              <InfoPopup 
-                content="Typical size: 12 × 10 ft (120 sq ft). Minimum: 8 × 8 ft. Include work triangle: sink, stove, refrigerator."
-                position="top"
-              >
-                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
-              </InfoPopup>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                value={data.technical_details?.floor_plans?.kitchen_dimensions || ''}
-                onChange={(e) => updateData('floor_plans', 'kitchen_dimensions', e.target.value)}
-                placeholder="e.g., 12 × 10 ft"
-                style={{ paddingRight: '30px' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#6b7280',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  pointerEvents: 'none'
-                }}
-              >
-                ×
-              </span>
-            </div>
+            <label>Kitchen</label>
+            <input
+              type="text"
+              value={formData.room_dimensions.kitchen}
+              onChange={(e) => handleRoomDimensionChange('kitchen', e.target.value)}
+              placeholder="e.g., 12 × 10 ft"
+            />
           </div>
           <div className="dimension-item">
-            <label>
-              Other Rooms
-              <InfoPopup 
-                content="Common dimensions: Bedroom 2: 14 × 12 ft, Bedroom 3: 12 × 10 ft, Bathroom: 8 × 6 ft, Dining Room: 14 × 12 ft. Format: Room Name: Length × Width ft"
-                position="top"
-              >
-                <span style={{ marginLeft: '4px', cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>ℹ️</span>
-              </InfoPopup>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <textarea
-                rows="3"
-                value={data.technical_details?.floor_plans?.other_room_dimensions || ''}
-                onChange={(e) => updateData('floor_plans', 'other_room_dimensions', e.target.value)}
-                placeholder="Bedroom 2: 14 × 12 ft, Bedroom 3: 12 × 10 ft, Bathroom: 8 × 6 ft..."
-                style={{ paddingRight: '30px', resize: 'vertical' }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: '10px',
-                  top: '10px',
-                  color: '#6b7280',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  pointerEvents: 'none'
-                }}
-              >
-                ×
-              </span>
-            </div>
+            <label>Other Rooms</label>
+            <textarea
+              value={formData.room_dimensions.other_rooms}
+              onChange={(e) => handleRoomDimensionChange('other_rooms', e.target.value)}
+              placeholder="Bedroom 2: 14 × 12 ft, Bedroom 3: 12 × 10 ft, Bathroom: 8 × 6 ft..."
+              rows="3"
+            />
           </div>
         </div>
       </div>
@@ -576,293 +340,438 @@ const TechnicalDetailsForm = ({ data, setData, onNext, onPrev }) => {
       <div className="form-group">
         <label>Door & Window Positions</label>
         <textarea
-          rows="4"
-          value={data.technical_details?.floor_plans?.door_window_positions || ''}
-          onChange={(e) => updateData('floor_plans', 'door_window_positions', e.target.value)}
+          value={formData.door_window_positions}
+          onChange={(e) => handleInputChange('door_window_positions', e.target.value)}
           placeholder="Specify door and window locations, sizes, and orientations..."
+          rows="4"
         />
       </div>
 
       <div className="form-group">
         <label>Main Circulation Paths</label>
         <textarea
-          rows="3"
-          value={data.technical_details?.floor_plans?.circulation_paths || ''}
-          onChange={(e) => updateData('floor_plans', 'circulation_paths', e.target.value)}
+          value={formData.circulation_paths}
+          onChange={(e) => handleInputChange('circulation_paths', e.target.value)}
           placeholder="Describe hallways, staircases, and main circulation routes..."
-        />
-      </div>
-    </div>
-  );
-
-  const renderSiteOrientationSection = () => (
-    <div className="technical-section">
-      <h3>🌍 Site & Orientation</h3>
-      
-      <div className="form-group">
-        <label>Plot Boundaries</label>
-        <textarea
           rows="3"
-          value={data.technical_details?.site_orientation?.plot_boundaries || ''}
-          onChange={(e) => updateData('site_orientation', 'plot_boundaries', e.target.value)}
-          placeholder="Describe plot boundaries, setbacks, and property lines..."
         />
       </div>
 
-      <div className="form-group">
-        <label>Orientation (North Direction)</label>
-        <textarea
-          rows="3"
-          value={data.technical_details?.site_orientation?.orientation || ''}
-          onChange={(e) => updateData('site_orientation', 'orientation', e.target.value)}
-          placeholder="Specify north direction, solar orientation, and site positioning..."
-        />
-      </div>
-
-      <div className="form-group">
-        <label>Access Points</label>
-        <textarea
-          rows="3"
-          value={data.technical_details?.site_orientation?.access_points || ''}
-          onChange={(e) => updateData('site_orientation', 'access_points', e.target.value)}
-          placeholder="Describe entrances, driveways, and access routes..."
-        />
+      {/* Section Navigation */}
+      <div className="section-navigation">
+        <button type="button" onClick={handlePrev} className="btn btn-secondary" disabled={activeSection === 'floor_plans'}>
+          ← Previous
+        </button>
+        <button type="button" onClick={handleNext} className="btn btn-primary">
+          Next: Structural Elements →
+        </button>
       </div>
     </div>
   );
 
   const renderStructuralSection = () => (
     <div className="technical-section">
-      <h3>🏗️ Structural Elements</h3>
-      
       <div className="form-group">
-        <label>Load-bearing Walls</label>
+        <label>Structural System</label>
         <textarea
-          rows="3"
-          value={data.technical_details?.structural?.load_bearing_walls || ''}
-          onChange={(e) => updateData('structural', 'load_bearing_walls', e.target.value)}
-          placeholder="Identify load-bearing walls and their positions..."
+          value={formData.structural_elements}
+          onChange={(e) => handleInputChange('structural_elements', e.target.value)}
+          placeholder="Describe structural system, materials, load-bearing elements, foundation type..."
+          rows="4"
         />
       </div>
 
       <div className="form-group">
-        <label>Column Positions</label>
-        <textarea
-          rows="3"
-          value={data.technical_details?.structural?.column_positions || ''}
-          onChange={(e) => updateData('structural', 'column_positions', e.target.value)}
-          placeholder="Specify column locations and dimensions..."
+        <label>Foundation Type</label>
+        <input
+          type="text"
+          value={formData.foundation_type}
+          onChange={(e) => handleInputChange('foundation_type', e.target.value)}
+          placeholder="e.g., RCC Foundation, Pile Foundation, Strip Foundation..."
         />
       </div>
 
       <div className="form-group">
-        <label>Foundation Outline</label>
+        <label>Structural Materials</label>
         <textarea
+          value={formData.structural_materials}
+          onChange={(e) => handleInputChange('structural_materials', e.target.value)}
+          placeholder="Specify concrete grade, steel specifications, masonry details..."
           rows="3"
-          value={data.technical_details?.structural?.foundation_outline || ''}
-          onChange={(e) => updateData('structural', 'foundation_outline', e.target.value)}
-          placeholder="Describe foundation layout and specifications..."
         />
       </div>
 
       <div className="form-group">
-        <label>Roof Outline</label>
+        <label>Load Bearing Elements</label>
         <textarea
+          value={formData.load_bearing_elements}
+          onChange={(e) => handleInputChange('load_bearing_elements', e.target.value)}
+          placeholder="Describe columns, beams, walls, and other load-bearing components..."
           rows="3"
-          value={data.technical_details?.structural?.roof_outline || ''}
-          onChange={(e) => updateData('structural', 'roof_outline', e.target.value)}
-          placeholder="Describe roof structure and design..."
         />
+      </div>
+
+      {/* Section Navigation */}
+      <div className="section-navigation">
+        <button type="button" onClick={handlePrev} className="btn btn-secondary">
+          ← Previous
+        </button>
+        <button type="button" onClick={handleNext} className="btn btn-primary">
+          Next: Elevations & Sections →
+        </button>
       </div>
     </div>
   );
 
   const renderElevationsSection = () => (
     <div className="technical-section">
-      <h3>📐 Key Elevations & Sections</h3>
-      
       <div className="form-group">
-        <label>Front Elevation</label>
+        <label>Elevation Details</label>
         <textarea
-          rows="3"
-          value={data.technical_details?.elevations?.front_elevation || ''}
-          onChange={(e) => updateData('elevations', 'front_elevation', e.target.value)}
-          placeholder="Describe front elevation design and features..."
+          value={formData.elevations_sections}
+          onChange={(e) => handleInputChange('elevations_sections', e.target.value)}
+          placeholder="Describe building elevations, facade treatments, section details..."
+          rows="4"
         />
       </div>
 
       <div className="form-group">
-        <label>Cross Sections</label>
+        <label>Facade Treatment</label>
         <textarea
+          value={formData.facade_treatment}
+          onChange={(e) => handleInputChange('facade_treatment', e.target.value)}
+          placeholder="Specify exterior finishes, cladding materials, architectural features..."
           rows="3"
-          value={data.technical_details?.elevations?.cross_sections || ''}
-          onChange={(e) => updateData('elevations', 'cross_sections', e.target.value)}
-          placeholder="Describe cross-sectional views and details..."
         />
       </div>
 
       <div className="form-group">
-        <label>Height Details</label>
+        <label>Section Details</label>
         <textarea
+          value={formData.section_details}
+          onChange={(e) => handleInputChange('section_details', e.target.value)}
+          placeholder="Describe cross-sections, wall thicknesses, floor-to-floor heights..."
           rows="3"
-          value={data.technical_details?.elevations?.height_details || ''}
-          onChange={(e) => updateData('elevations', 'height_details', e.target.value)}
-          placeholder="Specify floor heights, ceiling heights, and vertical dimensions..."
         />
+      </div>
+
+      <div className="form-group">
+        <label>Building Height</label>
+        <input
+          type="text"
+          value={formData.building_height}
+          onChange={(e) => handleInputChange('building_height', e.target.value)}
+          placeholder="e.g., 10.5m (Ground + 2 floors)"
+        />
+      </div>
+
+      {/* Section Navigation */}
+      <div className="section-navigation">
+        <button type="button" onClick={handlePrev} className="btn btn-secondary">
+          ← Previous
+        </button>
+        <button type="button" onClick={handleNext} className="btn btn-primary">
+          Next: Construction Details →
+        </button>
       </div>
     </div>
   );
 
   const renderConstructionSection = () => (
     <div className="technical-section">
-      <h3>📋 Construction Notes</h3>
-      
       <div className="form-group">
-        <label>Wall Thickness</label>
+        <label>Construction Specifications</label>
         <textarea
-          rows="3"
-          value={data.technical_details?.construction?.wall_thickness || ''}
-          onChange={(e) => updateData('construction', 'wall_thickness', e.target.value)}
-          placeholder="Specify wall thickness for different types..."
-        />
-      </div>
-
-      <div className="form-group">
-        <label>Ceiling Heights</label>
-        <textarea
-          rows="3"
-          value={data.technical_details?.construction?.ceiling_heights || ''}
-          onChange={(e) => updateData('construction', 'ceiling_heights', e.target.value)}
-          placeholder="Specify ceiling heights for different rooms..."
-        />
-      </div>
-
-      <div className="form-group">
-        <label>Building Codes</label>
-        <textarea
-          rows="3"
-          value={data.technical_details?.construction?.building_codes || ''}
-          onChange={(e) => updateData('construction', 'building_codes', e.target.value)}
-          placeholder="List applicable building codes and compliance requirements..."
-        />
-      </div>
-
-      <div className="form-group">
-        <label>Critical Instructions</label>
-        <textarea
+          value={formData.construction_notes}
+          onChange={(e) => handleInputChange('construction_notes', e.target.value)}
+          placeholder="Include material specifications, construction methods, special requirements..."
           rows="4"
-          value={data.technical_details?.construction?.critical_instructions || ''}
-          onChange={(e) => updateData('construction', 'critical_instructions', e.target.value)}
-          placeholder="Any critical construction instructions, special considerations, or important notes..."
         />
+      </div>
+
+      <div className="form-group">
+        <label>Material Specifications</label>
+        <textarea
+          value={formData.material_specifications}
+          onChange={(e) => handleInputChange('material_specifications', e.target.value)}
+          placeholder="Specify brands, grades, and quality standards for materials..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Construction Methods</label>
+        <textarea
+          value={formData.construction_methods}
+          onChange={(e) => handleInputChange('construction_methods', e.target.value)}
+          placeholder="Describe construction techniques, sequencing, and methodologies..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Special Requirements</label>
+        <textarea
+          value={formData.special_requirements}
+          onChange={(e) => handleInputChange('special_requirements', e.target.value)}
+          placeholder="Any special construction requirements, permits, or considerations..."
+          rows="3"
+        />
+      </div>
+
+      {/* Section Navigation */}
+      <div className="section-navigation">
+        <button type="button" onClick={handlePrev} className="btn btn-secondary">
+          ← Previous
+        </button>
+        <button type="button" onClick={handleNext} className="btn btn-primary">
+          Next: MEP Systems →
+        </button>
       </div>
     </div>
   );
 
-  const renderSectionContent = () => {
+  const renderSystemsSection = () => (
+    <div className="technical-section">
+      <div className="form-group">
+        <label>Electrical System</label>
+        <textarea
+          value={formData.electrical_system}
+          onChange={(e) => handleInputChange('electrical_system', e.target.value)}
+          placeholder="Describe electrical layout, load calculations, panel locations..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Plumbing System</label>
+        <textarea
+          value={formData.plumbing_system}
+          onChange={(e) => handleInputChange('plumbing_system', e.target.value)}
+          placeholder="Specify water supply, drainage, fixture locations..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>HVAC System</label>
+        <textarea
+          value={formData.hvac_system}
+          onChange={(e) => handleInputChange('hvac_system', e.target.value)}
+          placeholder="Describe heating, ventilation, and air conditioning systems..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Fire Safety</label>
+        <textarea
+          value={formData.fire_safety}
+          onChange={(e) => handleInputChange('fire_safety', e.target.value)}
+          placeholder="Specify fire safety measures, exits, sprinkler systems..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Accessibility Features</label>
+        <textarea
+          value={formData.accessibility_features}
+          onChange={(e) => handleInputChange('accessibility_features', e.target.value)}
+          placeholder="Describe accessibility compliance, ramps, elevators..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Energy Efficiency</label>
+        <textarea
+          value={formData.energy_efficiency}
+          onChange={(e) => handleInputChange('energy_efficiency', e.target.value)}
+          placeholder="Specify insulation, solar panels, energy-efficient systems..."
+          rows="3"
+        />
+      </div>
+
+      {/* Section Navigation */}
+      <div className="section-navigation">
+        <button type="button" onClick={handlePrev} className="btn btn-secondary">
+          ← Previous
+        </button>
+        <button type="button" onClick={() => { const result = validateCurrentSection(); if (result) handleNext(); }} className="btn btn-primary">
+          Next: Pricing & Timeline →
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderPricingSection = () => (
+    <div className="technical-section">
+      <div className="price-section">
+        <label>Estimated Total Cost</label>
+        <div className="price-input-container">
+          <input
+            type="text"
+            className="price-input"
+            value={formData.estimated_cost}
+            onChange={(e) => handleInputChange('estimated_cost', e.target.value)}
+            placeholder="e.g., ₹25,00,000"
+          />
+        </div>
+        <div className="field-help">
+          Enter the total estimated cost for the project including all materials and labor
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>Price to View Layout (₹)</label>
+        <input
+          type="number"
+          value={formData.view_price || 0}
+          onChange={(e) => handleInputChange('view_price', e.target.value)}
+          placeholder="e.g., 100"
+          min="0"
+          step="0.01"
+        />
+        <div className="field-help" style={{marginTop: '4px'}}>
+          Amount homeowners must pay to view this layout (Optional - set 0 for free)
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>Cost Breakdown</label>
+        <textarea
+          value={formData.cost_breakdown}
+          onChange={(e) => handleInputChange('cost_breakdown', e.target.value)}
+          placeholder="Provide detailed cost breakdown by category..."
+          rows="4"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Material Costs</label>
+        <textarea
+          value={formData.material_costs}
+          onChange={(e) => handleInputChange('material_costs', e.target.value)}
+          placeholder="Breakdown of material costs (concrete, steel, finishes, etc.)..."
+          rows="3"
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Labor Costs</label>
+        <textarea
+          value={formData.labor_costs}
+          onChange={(e) => handleInputChange('labor_costs', e.target.value)}
+          placeholder="Breakdown of labor costs (masonry, carpentry, electrical, etc.)..."
+          rows="3"
+        />
+      </div>
+
+      {/* Section Navigation */}
+      <div className="section-navigation">
+        <button type="button" onClick={handlePrev} className="btn btn-secondary">
+          ← Previous
+        </button>
+        <button type="button" onClick={handleSubmit} className="btn btn-primary">
+          Next: Files & Submit →
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderCurrentSection = () => {
     switch (activeSection) {
-      case 'floor-plans':
+      case 'floor_plans':
         return renderFloorPlansSection();
-      case 'site-orientation':
-        return renderSiteOrientationSection();
       case 'structural':
         return renderStructuralSection();
       case 'elevations':
         return renderElevationsSection();
       case 'construction':
         return renderConstructionSection();
+      case 'systems':
+        return renderSystemsSection();
+      case 'pricing':
+        return renderPricingSection();
       default:
         return renderFloorPlansSection();
     }
   };
 
-  const isSectionComplete = (sectionId) => {
-    // All sections are now optional, so they're always considered complete
-    return true;
-  };
+  const currentSection = sections.find(s => s.id === activeSection);
 
   return (
-    <div className="technical-details-form">
-      <div className="technical-header">
-        <h2>Technical Design Details</h2>
-        <p>Provide comprehensive technical information about your architectural design</p>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }}>
-          <div className="form-inline">
-            <label style={{ marginRight: 8 }}>Quick template</label>
-            <select value={selectedTemplateId} onChange={(e) => applyTemplate(e.target.value)}>
-              <option value="">Select template…</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+    <div className="technical-details-form-new">
+      {/* Header */}
+      <div className="technical-header-new">
+        <div className="header-left">
+          <button className="modal-close-new" onClick={onPrev}>
+            ×
+          </button>
+          <div className="header-info">
+            <h2>Technical Design Details</h2>
+            <div className="progress-indicator">
+              <span className="progress-text">Step 2 of 3</span>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: '66%' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="header-right">
+          <div className="template-selector">
+            <label>Template:</label>
+            <select 
+              value={selectedTemplate} 
+              onChange={(e) => handleTemplateChange(e.target.value)}
+            >
+              <option value="">Select a template...</option>
+              {templates.map(template => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
               ))}
             </select>
           </div>
-          <button className="btn btn-secondary" type="button" onClick={exportDetails}>Export JSON</button>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }}>
-          <div className="form-inline">
-            <label style={{ marginRight: 8 }}>Building type</label>
-            <select value={buildingType} onChange={(e)=>applyBuildingTypePreset(e.target.value)}>
-              <option value="">Select…</option>
-              <option value="residential">Residential</option>
-              <option value="office">Office</option>
-              <option value="commercial">Commercial</option>
-              <option value="school">School</option>
-              <option value="contemporary">Contemporary</option>
-            </select>
-          </div>
-          <div className="form-inline">
-            <label style={{ marginRight: 8 }}>Quick template</label>
-            <select value={selectedTemplateId} onChange={(e) => applyTemplate(e.target.value)}>
-              <option value="">Select template…</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-          <button className="btn btn-secondary" type="button" onClick={magicFill}>Magic Fill</button>
-          <button className="btn btn-secondary" type="button" onClick={exportDetails}>Export JSON</button>
-        </div>
-        <div className="section-progress">
-          <span>Section {sections.findIndex(s => s.id === activeSection) + 1} of {sections.length}: {sections.find(s => s.id === activeSection)?.title}</span>
         </div>
       </div>
 
-      <div className="technical-layout">
-        <div className="technical-sidebar">
-          <div className="section-nav">
-            {sections.map(section => (
+      {/* Main Content */}
+      <div className="technical-main-new">
+        {/* Sidebar */}
+        <div className="technical-sidebar-new">
+          <div className="section-nav-new">
+            {sections.map((section, index) => (
               <button
                 key={section.id}
-                className={`section-nav-item ${activeSection === section.id ? 'active' : ''} ${isSectionComplete(section.id) ? 'complete' : ''}`}
+                className={`section-nav-item-new ${activeSection === section.id ? 'active' : ''}`}
                 onClick={() => setActiveSection(section.id)}
               >
-                <span className="section-icon">{section.icon}</span>
-                <span className="section-title">{section.title}</span>
-                {isSectionComplete(section.id) && <span className="complete-indicator">✓</span>}
+                <div className="section-number">{index + 1}</div>
+                <div className="section-info">
+                  <span className="section-icon-new">{section.icon}</span>
+                  <span className="section-title-new">{section.title}</span>
+                </div>
               </button>
             ))}
           </div>
         </div>
 
-        <div className="technical-content">
-          {renderSectionContent()}
+        {/* Content Area */}
+        <div className="technical-content-new">
+          <div className="content-header">
+            <h3>{currentSection?.title}</h3>
+            <p>{currentSection?.description}</p>
+          </div>
+          <div className="content-body">
+            {renderCurrentSection()}
+          </div>
         </div>
       </div>
 
-      <div className="technical-footer">
-        <button className="btn btn-secondary" onClick={handlePrev}>
-          Back
-        </button>
-        <button 
-          className="btn btn-primary" 
-          onClick={handleNext}
-        >
-          {activeSection === sections[sections.length - 1].id ? 'Next Step' : 'Next Section'}
-        </button>
-      </div>
     </div>
   );
 };
 
 export default TechnicalDetailsForm;
-

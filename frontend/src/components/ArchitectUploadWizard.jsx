@@ -19,6 +19,8 @@ export default function ArchitectUploadWizard() {
     preview_image: null,
     layout_file: null,
     files: [], // legacy field for backward compatibility
+    // Payment pricing
+    view_price: '', // Price for homeowners to view the layout
   });
   const [loading, setLoading] = useState(false);
 
@@ -101,6 +103,8 @@ export default function ArchitectUploadWizard() {
       if (data.technical_details && Object.keys(data.technical_details).length > 0) {
         formData.append('technical_details', JSON.stringify(data.technical_details));
       }
+      // Payment pricing
+      if (data.view_price) formData.append('view_price', data.view_price);
       // Prefer new structured fields
       if (data.preview_image) formData.append('preview_image', data.preview_image);
       if (data.layout_file) formData.append('layout_file', data.layout_file);
@@ -108,9 +112,9 @@ export default function ArchitectUploadWizard() {
       (data.files || []).forEach(f => formData.append('design_files[]', f));
       const res = await fetch('/buildhub/backend/api/architect/upload_design.php', { method: 'POST', body: formData });
       const json = await res.json();
-      if (json.success) window.history.back(); else alert(json.message || 'Failed');
+      if (json.success) window.history.back(); else toast.error(json.message || 'Failed');
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setLoading(false);
     }
@@ -190,7 +194,7 @@ export default function ArchitectUploadWizard() {
               <label>Design Title</label>
               <input value={data.design_title} onChange={e=>setData({...data, design_title: e.target.value})} />
             </div>
-            <div className="field">
+            <div className="field" style={{gridColumn:'1 / -1'}}>
               <label>Description</label>
               <textarea rows={4} value={data.description} onChange={e=>setData({...data, description: e.target.value})} />
             </div>
@@ -262,6 +266,10 @@ export default function ArchitectUploadWizard() {
                   <div className="review-item">
                     <div className="review-label">Description</div>
                     <div className="review-value">{data.description || 'No description'}</div>
+                  </div>
+                  <div className="review-item">
+                    <div className="review-label">View Price</div>
+                    <div className="review-value">{data.view_price ? `₹${data.view_price}` : 'Free'}</div>
                   </div>
                 </div>
               </div>

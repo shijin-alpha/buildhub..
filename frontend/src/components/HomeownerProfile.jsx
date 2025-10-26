@@ -68,11 +68,13 @@ const HomeownerProfile = () => {
         setLoading(true);
         setError('');
         const sessionUser = JSON.parse(sessionStorage.getItem('user') || '{}');
+        console.log('Session user:', sessionUser);
         if (!sessionUser.id) {
           setError('User not found. Please log in again.');
           setTimeout(() => navigate('/login'), 2000);
           return;
         }
+        console.log('Fetching profile for user_id:', sessionUser.id);
         const response = await fetch(`/buildhub/backend/api/homeowner/get_profile.php?user_id=${sessionUser.id}`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
@@ -82,16 +84,16 @@ const HomeownerProfile = () => {
         const responseData = await response.json();
         if (!responseData.success) throw new Error(responseData.message || 'Failed to fetch user data');
 
-        setUser(responseData);
+        setUser(responseData.data);
         setFormData({
-          first_name: responseData.first_name || '',
-          last_name: responseData.last_name || '',
-          email: responseData.email || '',
-          phone: responseData.phone || '',
-          location: responseData.location || '',
-          avatar_url: responseData.avatar_url || ''
+          first_name: responseData.data.first_name || '',
+          last_name: responseData.data.last_name || '',
+          email: responseData.data.email || '',
+          phone: responseData.data.phone || '',
+          location: responseData.data.location || '',
+          avatar_url: responseData.data.avatar_url || ''
         });
-        if (responseData.avatar_url) setPreviewUrl(responseData.avatar_url);
+        if (responseData.data.avatar_url) setPreviewUrl(responseData.data.avatar_url);
       } catch (err) {
         if (isMountedRef.current) {
           console.error('Error fetching user data:', err);
@@ -254,20 +256,20 @@ const HomeownerProfile = () => {
       const sessionUser = JSON.parse(sessionStorage.getItem('user') || '{}');
       sessionStorage.setItem('user', JSON.stringify({
         ...sessionUser,
-        ...updatedUser,
+        ...updatedUser.data,
         avatar_url: avatarUrl
       }));
 
       setSuccess('Profile updated successfully!');
       toast.success('Profile updated successfully!');
-      setUser(updatedUser);
+      setUser(updatedUser.data);
       setFormData({
-        first_name: updatedUser.first_name || '',
-        last_name: updatedUser.last_name || '',
-        email: updatedUser.email || '',
-        phone: updatedUser.phone || '',
-        location: updatedUser.location || '',
-        avatar_url: avatarUrl || updatedUser.avatar_url || ''
+        first_name: updatedUser.data.first_name || '',
+        last_name: updatedUser.data.last_name || '',
+        email: updatedUser.data.email || '',
+        phone: updatedUser.data.phone || '',
+        location: updatedUser.data.location || '',
+        avatar_url: avatarUrl || updatedUser.data.avatar_url || ''
       });
       setViewMode('view');
       navigate('/homeowner-dashboard', { replace: true });

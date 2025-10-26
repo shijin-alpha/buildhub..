@@ -52,7 +52,7 @@ const ArchitectDashboard = () => {
   const [imageModal, setImageModal] = useState({ open: false, image: null, title: '' });
   const [expandedImages, setExpandedImages] = useState({});
   const [libraryForm, setLibraryForm] = useState({
-    title: '', layout_type: '', bedrooms: '', bathrooms: '', area: '', price_range: '', description: '', image: null, design_file: null, technical_details: {}
+    title: '', layout_type: '', bedrooms: '', bathrooms: '', area: '', price_range: '', view_price: 0, description: '', image: null, design_file: null, technical_details: {}
   });
 
   // Upload form state
@@ -372,7 +372,7 @@ const ArchitectDashboard = () => {
     if (!editLayout) return;
     const fd = new FormData();
     fd.append('id', editLayout.id);
-    ['title','layout_type','bedrooms','bathrooms','area','price_range','description','status'].forEach(k=>{
+    ['title','layout_type','bedrooms','bathrooms','area','price_range','description','status','view_price'].forEach(k=>{
       if (editLayout[k] !== undefined && editLayout[k] !== null && editLayout[k] !== '') fd.append(k, editLayout[k]);
     });
     if (editLayout.image) fd.append('image', editLayout.image);
@@ -384,30 +384,65 @@ const ArchitectDashboard = () => {
         setSuccess('Layout updated');
         setEditLayout(null);
         fetchMyLibrary();
+        setTimeout(() => setSuccess(''), 3000);
       } else {
         setError(json.message || 'Failed to update layout');
+        setTimeout(() => setError(''), 3000);
       }
     } catch (e) {
       setError('Error updating layout');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
   const toggleLayoutStatus = async (item) => {
+    console.log('=== TOGGLE LAYOUT STATUS DEBUG ===');
+    console.log('Item:', item);
+    console.log('Item ID:', item?.id, 'Type:', typeof item?.id);
+    
+    if (!item) {
+      setError('Invalid layout item');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+    
+    const layoutId = item.id;
+    console.log('Layout ID:', layoutId);
+    
+    if (layoutId === undefined || layoutId === null) {
+      console.error('Layout ID is missing or invalid');
+      setError('Layout ID is missing');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+    
     const target = item.status === 'active' ? 'inactive' : 'active';
+    const payload = { id: Number(layoutId), status: target };
+    
+    console.log('Payload:', payload);
+    
     try {
       const res = await fetch('/buildhub/backend/api/architect/update_layout_library_item.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, status: target })
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
       const json = await res.json();
+      console.log('Response:', json);
       if (json.success) {
-        setLibraryLayouts(prev => prev.map(x => x.id === item.id ? { ...x, status: target } : x));
+        setLibraryLayouts(prev => prev.map(x => x.id === layoutId ? { ...x, status: target } : x));
+        setSuccess(`Layout ${target === 'active' ? 'activated' : 'deactivated'} successfully`);
+        setTimeout(() => setSuccess(''), 3000);
       } else {
         setError(json.message || 'Failed to change status');
+        setTimeout(() => setError(''), 3000);
       }
     } catch (e) {
       setError('Error changing status');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
@@ -551,6 +586,10 @@ const ArchitectDashboard = () => {
       if (uploadData.description) formData.append('description', uploadData.description);
       if (uploadData.technical_details && Object.keys(uploadData.technical_details).length > 0) {
         formData.append('technical_details', JSON.stringify(uploadData.technical_details));
+      }
+      // Include architect-set view price if entered in technical details flow
+      if (typeof uploadData.view_price !== 'undefined' && uploadData.view_price !== null && String(uploadData.view_price).trim() !== '') {
+        formData.append('view_price', String(uploadData.view_price));
       }
       
       // Handle multiple files
@@ -827,10 +866,166 @@ const ArchitectDashboard = () => {
                                 : request.requirements_parsed.family_needs}</p>
                             )}
                             {request.requirements_parsed.rooms && (
-                              <p>• Rooms: {Array.isArray(request.requirements_parsed.rooms) 
-                                ? request.requirements_parsed.rooms.join(', ') 
-                                : request.requirements_parsed.rooms}</p>
+                              <div style={{ marginBottom: '8px' }}>
+                                <p style={{ margin: '0 0 8px 0', fontWeight: '600' }}>• Rooms:</p>
+                                <div style={{ marginLeft: '10px' }}>
+                                  {(() => {
+                                    let roomsList = [];
+                                    if (Array.isArray(request.requirements_parsed.rooms)) {
+                                      roomsList = request.requirements_parsed.rooms;
+                                    } else if (typeof request.requirements_parsed.rooms === 'string') {
+                                      roomsList = request.requirements_parsed.rooms.split(',').map(room => room.trim()).filter(room => room);
+                                    }
+                                    
+                                    const roomCounts = {};
+                                    roomsList.forEach(room => {
+                                      roomCounts[room] = (roomCounts[room] || 0) + 1;
+                                    });
+                                    
+                                    return Object.entries(roomCounts).map(([roomType, count]) => (
+                                      <span key={roomType} style={{ 
+                                        display: 'inline-block',
+                                        margin: '2px 4px 2px 0',
+                                        padding: '3px 6px',
+                                        backgroundColor: '#dbeafe',
+                                        color: '#1e40af',
+                                        borderRadius: '8px',
+                                        fontSize: '11px',
+                                        fontWeight: '500'
+                                      }}>
+                                        {roomType.replace(/_/g, ' ')}: {count}
+                                      </span>
+                                    ));
+                                  })()}
+                                </div>
+                              </div>
                             )}
+                            
+                            {/* Floor-wise Room Distribution */}
+                            {request.floor_rooms && (
+                              <div style={{ marginBottom: '8px' }}>
+                                <p style={{ margin: '0 0 8px 0', fontWeight: '600' }}>• Floor-wise Rooms:</p>
+                                <div style={{ marginLeft: '10px' }}>
+                                  {(() => {
+                                    // Handle different floor_rooms data formats
+                                    let floorData = {};
+                                    
+                                    if (Array.isArray(request.floor_rooms)) {
+                                      // If it's an array, convert to object format
+                                      request.floor_rooms.forEach((floor, idx) => {
+                                        floorData[`floor${idx + 1}`] = floor;
+                                      });
+                                    } else if (typeof request.floor_rooms === 'object' && request.floor_rooms !== null) {
+                                      // If it's already an object, use it directly
+                                      floorData = request.floor_rooms;
+                                    } else if (typeof request.floor_rooms === 'string') {
+                                      // If it's a JSON string, parse it
+                                      try {
+                                        floorData = JSON.parse(request.floor_rooms);
+                                      } catch (e) {
+                                        console.error('Error parsing floor_rooms:', e);
+                                        return null;
+                                      }
+                                    }
+                                    
+                                    return Object.entries(floorData).map(([floorKey, floorRooms]) => {
+                                      if (!floorRooms || typeof floorRooms !== 'object') return null;
+                                      
+                                      const totalRooms = Object.values(floorRooms).reduce((sum, count) => sum + (count || 0), 0);
+                                      if (totalRooms === 0) return null;
+                                      
+                                      const floorNumber = floorKey.replace('floor', '');
+                                      
+                                      return (
+                                        <div key={floorKey} style={{ 
+                                          marginBottom: '6px', 
+                                          padding: '6px', 
+                                          backgroundColor: '#f8fafc', 
+                                          borderRadius: '6px',
+                                          border: '1px solid #e5e7eb'
+                                        }}>
+                                          <div style={{ 
+                                            fontSize: '11px', 
+                                            fontWeight: '600', 
+                                            color: '#374151', 
+                                            marginBottom: '4px',
+                                            textTransform: 'capitalize'
+                                          }}>
+                                            {floorNumber === '1' ? 'Ground Floor' : `Floor ${floorNumber}`}
+                                          </div>
+                                          <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.2' }}>
+                                            {Object.entries(floorRooms).map(([roomType, count]) => {
+                                              if (!count || count === 0) return null;
+                                              
+                                              return (
+                                                <span key={roomType} style={{ 
+                                                  display: 'inline-block',
+                                                  margin: '1px 3px 1px 0',
+                                                  padding: '2px 6px',
+                                                  background: '#dbeafe',
+                                                  color: '#1e40af',
+                                                  borderRadius: '8px',
+                                                  fontSize: '10px',
+                                                  fontWeight: '500'
+                                                }}>
+                                                  {roomType.replace(/_/g, ' ')}: {count}
+                                                </span>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    });
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Fallback: Show floor distribution based on num_floors if floor_rooms is not available */}
+                            {!request.floor_rooms && request.num_floors && parseInt(request.num_floors) > 1 && (
+                              <div style={{ marginBottom: '12px' }}>
+                                <p style={{ margin: '0 0 12px 0', fontWeight: '700', fontSize: '14px', color: '#374151' }}>
+                                  🏗️ Floor Details ({request.num_floors} Floors):
+                                </p>
+                                <div style={{ 
+                                  display: 'grid', 
+                                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                                  gap: '10px',
+                                  marginLeft: '10px'
+                                }}>
+                                  {Array.from({ length: parseInt(request.num_floors) }, (_, idx) => {
+                                    const floorNumber = idx + 1;
+                                    return (
+                                      <div key={`floor${floorNumber}`} style={{ 
+                                        padding: '12px 14px', 
+                                        backgroundColor: floorNumber === 1 ? '#eff6ff' : '#f0fdf4', 
+                                        borderRadius: '8px',
+                                        border: `1px solid ${floorNumber === 1 ? '#bfdbfe' : '#bbf7d0'}`,
+                                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
+                                        transition: 'all 0.2s ease'
+                                      }}>
+                                        <div style={{ 
+                                          fontSize: '13px', 
+                                          fontWeight: '700', 
+                                          color: floorNumber === 1 ? '#1e40af' : '#166534', 
+                                          marginBottom: '6px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px'
+                                        }}>
+                                          <span>{floorNumber === 1 ? '🏠' : '🏢'}</span>
+                                          <span>{floorNumber === 1 ? 'Ground Floor' : `Floor ${floorNumber}`}</span>
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#6b7280', fontStyle: 'italic' }}>
+                                          Planning phase
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            
                             {request.requirements_parsed.plot_shape && (
                               <p>• Plot Shape: {request.requirements_parsed.plot_shape}</p>
                             )}
@@ -884,148 +1079,237 @@ const ArchitectDashboard = () => {
                   </div>
                   {expandedAssignments[request.id] && (
                     <div className="expanded-details" style={{
-                      marginTop: '24px', 
-                      padding: '32px', 
+                      marginTop: '20px', 
+                      padding: '24px', 
                       background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)', 
-                      borderRadius: '16px',
+                      borderRadius: '12px',
                       border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      position: 'relative',
+                      overflow: 'visible',
+                      width: '100%',
+                      minHeight: 'auto',
+                      zIndex: 1
                     }}>
                       
-                      {/* Project Overview Section */}
-                      <div className="project-overview" style={{marginBottom: '40px'}}>
+                      {/* Compact Project Overview */}
+                      <div className="project-overview" style={{marginBottom: '24px'}}>
                         <div style={{
                           display: 'flex', 
                           alignItems: 'center', 
-                          marginBottom: '24px',
-                          padding: '0 0 16px 0',
-                          borderBottom: '2px solid #e2e8f0'
+                          justifyContent: 'space-between',
+                          marginBottom: '16px',
+                          padding: '0 0 12px 0',
+                          borderBottom: '1px solid #e2e8f0'
                         }}>
-                          <span style={{fontSize: '24px', marginRight: '12px'}}>📋</span>
-                          <h4 style={{margin: 0, color: '#1f2937', fontSize: '22px', fontWeight: '700'}}>Project Overview</h4>
+                          <div style={{display: 'flex', alignItems: 'center'}}>
+                            <span style={{fontSize: '20px', marginRight: '8px'}}>📋</span>
+                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '18px', fontWeight: '600'}}>Project Overview</h4>
                         </div>
-                        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px'}}>
+                          <div style={{
+                            display: 'flex',
+                            gap: '8px',
+                            fontSize: '12px',
+                            color: '#6b7280'
+                          }}>
+                            <span style={{
+                              background: '#e0f2fe',
+                              color: '#0369a1',
+                              padding: '2px 8px',
+                            borderRadius: '12px', 
+                              fontWeight: '500'
+                            }}>
+                              {request.num_floors || 'N/A'} Floors
+                            </span>
+                            <span style={{
+                              background: '#f0fdf4',
+                              color: '#166534',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontWeight: '500'
+                            }}>
+                              {request.preferred_style || 'Any Style'}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Compact Info Grid */}
+                            <div style={{
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+                          gap: '16px',
+                              marginBottom: '20px'
+                            }}>
                           <div style={{
                             background: 'white', 
-                            padding: '24px', 
-                            borderRadius: '12px', 
+                            padding: '16px 20px', 
+                            borderRadius: '10px', 
                             border: '1px solid #e5e7eb',
-                            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-                            transition: 'all 0.2s ease-in-out'
+                            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                            transition: 'all 0.2s ease',
+                            minHeight: '80px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
                           }}>
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              marginBottom: '16px'
-                            }}>
-                              <span style={{fontSize: '18px', marginRight: '8px'}}>🏠</span>
-                              <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Basic Details</h5>
+                            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                              <span style={{fontSize: '16px', marginRight: '8px', color: '#3b82f6'}}>📐</span>
+                              <span style={{fontSize: '14px', fontWeight: '600', color: '#374151'}}>Plot Size</span>
                             </div>
-                            <div style={{fontSize: '14px', lineHeight: '1.8', color: '#4b5563'}}>
-                              <div style={{display: 'grid', gap: '12px'}}>
-                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
-                                  <span style={{fontWeight: '500', color: '#374151'}}>Plot Size:</span>
-                                  <span style={{color: '#6b7280'}}>{request.plot_size || 'Not specified'}</span>
+                            <div style={{fontSize: '16px', fontWeight: '500', color: '#1f2937'}}>
+                              {request.plot_size || 'Not specified'}
                                 </div>
-                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
-                                  <span style={{fontWeight: '500', color: '#374151'}}>Budget Range:</span>
-                                  <span style={{color: '#6b7280'}}>{request.budget_range || 'Not specified'}</span>
                                 </div>
-                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
-                                  <span style={{fontWeight: '500', color: '#374151'}}>Number of Floors:</span>
-                                  <span style={{color: '#6b7280'}}>{request.num_floors || 'Not specified'}</span>
+                          
+                          <div style={{
+                            background: 'white', 
+                            padding: '16px 20px', 
+                            borderRadius: '10px', 
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                            transition: 'all 0.2s ease',
+                            minHeight: '80px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                              <span style={{fontSize: '16px', marginRight: '8px', color: '#10b981'}}>💰</span>
+                              <span style={{fontSize: '14px', fontWeight: '600', color: '#374151'}}>Budget Range</span>
                                 </div>
-                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
-                                  <span style={{fontWeight: '500', color: '#374151'}}>Preferred Style:</span>
-                                  <span style={{color: '#6b7280'}}>{request.preferred_style || 'Not specified'}</span>
+                            <div style={{fontSize: '16px', fontWeight: '500', color: '#1f2937'}}>
+                              {request.budget_range || 'Not specified'}
                                 </div>
-                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6'}}>
-                                  <span style={{fontWeight: '500', color: '#374151'}}>Timeline:</span>
-                                  <span style={{color: '#6b7280'}}>{request.timeline || 'Not specified'}</span>
                                 </div>
-                                <div style={{display: 'flex', justifyContent: 'space-between', padding: '8px 0'}}>
-                                  <span style={{fontWeight: '500', color: '#374151'}}>Location:</span>
-                                  <span style={{color: '#6b7280'}}>{request.location || 'Not specified'}</span>
+                          
+                          <div style={{
+                            background: 'white', 
+                            padding: '16px 20px', 
+                            borderRadius: '10px', 
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                            transition: 'all 0.2s ease',
+                            minHeight: '80px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                              <span style={{fontSize: '16px', marginRight: '8px', color: '#f59e0b'}}>⏱️</span>
+                              <span style={{fontSize: '14px', fontWeight: '600', color: '#374151'}}>Timeline</span>
                                 </div>
-                              </div>
+                            <div style={{fontSize: '16px', fontWeight: '500', color: '#1f2937'}}>
+                              {request.timeline || 'Not specified'}
                             </div>
                           </div>
                           
-                          {request.orientation && (
                             <div style={{
                               background: 'white', 
-                              padding: '24px', 
-                              borderRadius: '12px', 
+                            padding: '16px 20px', 
+                            borderRadius: '10px', 
                               border: '1px solid #e5e7eb',
-                              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-                              transition: 'all 0.2s ease-in-out'
-                            }}>
+                            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                            transition: 'all 0.2s ease',
+                            minHeight: '80px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                              <span style={{fontSize: '16px', marginRight: '8px', color: '#8b5cf6'}}>📍</span>
+                              <span style={{fontSize: '14px', fontWeight: '600', color: '#374151'}}>Location</span>
+                            </div>
+                            <div style={{fontSize: '16px', fontWeight: '500', color: '#1f2937'}}>
+                              {request.location || 'Not specified'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Additional Info Row */}
                               <div style={{
+                          display: 'flex',
+                          gap: '12px',
+                          flexWrap: 'wrap',
+                          alignItems: 'center'
+                        }}>
+                          {request.orientation && (
+                            <div style={{
+                              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                              padding: '8px 12px',
+                              borderRadius: '20px',
+                              border: '1px solid #bae6fd',
                                 display: 'flex',
                                 alignItems: 'center',
-                                marginBottom: '16px'
-                              }}>
-                                <span style={{fontSize: '18px', marginRight: '8px'}}>🧭</span>
-                                <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Site Orientation</h5>
-                              </div>
-                              <p style={{fontSize: '14px', margin: 0, color: '#6b7280', lineHeight: '1.6'}}>{request.orientation}</p>
+                              gap: '6px',
+                              fontSize: '14px',
+                              fontWeight: '500',
+                              color: '#0369a1'
+                            }}>
+                              <span>🧭</span>
+                              <span>Orientation: {request.orientation}</span>
                             </div>
                           )}
                           
                           {request.budget_allocation && (
                             <div style={{
-                              background: 'white', 
-                              padding: '24px', 
-                              borderRadius: '12px', 
-                              border: '1px solid #e5e7eb',
-                              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-                              transition: 'all 0.2s ease-in-out'
-                            }}>
-                              <div style={{
+                              background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                              padding: '8px 12px',
+                              borderRadius: '20px',
+                              border: '1px solid #bbf7d0',
                                 display: 'flex',
                                 alignItems: 'center',
-                                marginBottom: '16px'
-                              }}>
-                                <span style={{fontSize: '18px', marginRight: '8px'}}>💰</span>
-                                <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Budget Allocation</h5>
-                              </div>
-                              <p style={{fontSize: '14px', margin: 0, color: '#6b7280', lineHeight: '1.6'}}>{request.budget_allocation}</p>
+                              gap: '6px',
+                              fontSize: '14px',
+                              fontWeight: '500',
+                              color: '#166534'
+                            }}>
+                              <span>💰</span>
+                              <span>Allocation: {request.budget_allocation}</span>
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Material Preferences */}
+                      {/* Material Preferences - Compact */}
                       {request.material_preferences && request.material_preferences.length > 0 && (
-                        <div className="material-preferences" style={{marginBottom: '40px'}}>
+                        <div className="material-preferences" style={{marginBottom: '20px'}}>
                           <div style={{
                             display: 'flex', 
                             alignItems: 'center', 
-                            marginBottom: '24px',
-                            padding: '0 0 16px 0',
-                            borderBottom: '2px solid #e2e8f0'
+                            marginBottom: '12px'
                           }}>
-                            <span style={{fontSize: '24px', marginRight: '12px'}}>🏗️</span>
-                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '22px', fontWeight: '700'}}>Material Preferences</h4>
+                            <span style={{fontSize: '16px', marginRight: '8px', color: '#3b82f6'}}>🏗️</span>
+                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '16px', fontWeight: '600'}}>Material Preferences</h4>
+                            <span style={{
+                              marginLeft: '8px',
+                              background: '#e0f2fe',
+                              color: '#0369a1',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '13px',
+                              fontWeight: '500'
+                            }}>
+                              {request.material_preferences.length} materials
+                            </span>
                           </div>
                           <div style={{
                             background: 'white', 
-                            padding: '24px', 
-                            borderRadius: '12px', 
+                            padding: '12px 16px', 
+                            borderRadius: '8px', 
                             border: '1px solid #e5e7eb',
-                            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
                           }}>
-                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '12px'}}>
+                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px'}}>
                               {request.material_preferences.map((material, idx) => (
                                 <span key={idx} style={{
                                   background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', 
                                   color: 'white', 
-                                  padding: '8px 16px', 
-                                  borderRadius: '20px', 
+                                  padding: '6px 14px', 
+                                  borderRadius: '16px', 
                                   fontSize: '14px',
                                   fontWeight: '500',
-                                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
-                                  transition: 'all 0.2s ease-in-out',
+                                  boxShadow: '0 1px 3px rgba(59, 130, 246, 0.3)',
+                                  transition: 'all 0.2s ease',
                                   cursor: 'default'
                                 }}>
                                   {material}
@@ -1036,101 +1320,285 @@ const ArchitectDashboard = () => {
                         </div>
                       )}
 
-                      {/* Floor Plans & Room Details */}
+                      {/* Floor Plans & Room Details - Enhanced */}
                       {request.floor_rooms && request.floor_rooms.length > 0 && (
-                        <div className="floor-plans" style={{marginBottom: '24px'}}>
-                          <h4 style={{margin: '0 0 12px 0', color: '#374151', fontSize: '18px', fontWeight: '600'}}>🏠 Floor Plans & Room Details</h4>
-                          {request.floor_rooms.map((floor, floorIdx) => (
-                            <div key={floorIdx} style={{background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '12px'}}>
-                              <h5 style={{margin: '0 0 12px 0', color: '#374151', fontWeight: '600'}}>Floor {floor.floor}</h5>
-                              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px'}}>
-                                {Object.entries(floor.rooms || {}).map(([roomType, rooms]) => (
-                                  <div key={roomType}>
-                                    <strong style={{textTransform: 'capitalize', color: '#374151'}}>{roomType.replace('_', ' ')}:</strong>
-                                    <ul style={{margin: '4px 0', paddingLeft: '16px', fontSize: '14px'}}>
-                                      {rooms.map((room, roomIdx) => (
-                                        <li key={roomIdx}>{room.name} {room.size && `(${room.size})`}</li>
-                                      ))}
-                                    </ul>
+                        <div className="floor-plans" style={{marginBottom: '20px'}}>
+                          <div style={{
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            marginBottom: '16px'
+                          }}>
+                            <span style={{fontSize: '18px', marginRight: '8px', color: '#8b5cf6'}}>🏗️</span>
+                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '18px', fontWeight: '700'}}>Floor-wise Room Distribution</h4>
+                            <span style={{
+                              marginLeft: '12px',
+                              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                              color: 'white',
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)'
+                            }}>
+                              {request.floor_rooms.length} Floor{request.floor_rooms.length > 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div style={{
+                            display: 'grid', 
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
+                            gap: '14px'
+                          }}>
+                          {request.floor_rooms.map((floor, floorIdx) => {
+                              const floorNumber = parseInt(floor.floor || floorIdx + 1);
+                              const roomCount = Object.values(floor.rooms || {}).reduce((sum, val) => sum + (typeof val === 'number' ? val : val.length || 0), 0);
+                              
+                              return (
+                              <div key={floorIdx} style={{
+                                background: 'linear-gradient(to bottom right, #ffffff, #f8fafc)', 
+                                padding: '16px 18px', 
+                                borderRadius: '12px', 
+                                border: floorNumber === 1 ? '2px solid #3b82f6' : '2px solid #10b981',
+                                boxShadow: floorNumber === 1 
+                                  ? '0 4px 12px rgba(59, 130, 246, 0.15)' 
+                                  : '0 4px 12px rgba(16, 185, 129, 0.15)',
+                                transition: 'all 0.3s ease',
+                                position: 'relative',
+                                overflow: 'hidden'
+                              }}>
+                                {/* Background decoration */}
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '-20px',
+                                  right: '-20px',
+                                  width: '80px',
+                                  height: '80px',
+                                  borderRadius: '50%',
+                                  background: floorNumber === 1 
+                                    ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' 
+                                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                  opacity: 0.1
+                                }} />
+                                
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  marginBottom: '12px',
+                                  paddingBottom: '12px',
+                                  borderBottom: `2px solid ${floorNumber === 1 ? '#bfdbfe' : '#bbf7d0'}`,
+                                  position: 'relative',
+                                  zIndex: 1
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                      fontSize: '24px',
+                                      background: floorNumber === 1 
+                                        ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' 
+                                        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                      width: '36px',
+                                      height: '36px',
+                                      borderRadius: '8px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      boxShadow: floorNumber === 1 
+                                        ? '0 2px 8px rgba(59, 130, 246, 0.3)' 
+                                        : '0 2px 8px rgba(16, 185, 129, 0.3)',
+                                      color: 'white',
+                                      fontWeight: '700'
+                                    }}>
+                                      {floorNumber === 1 ? '🏠' : '🏢'}
+                                    </span>
+                                    <h5 style={{
+                                      margin: 0, 
+                                      color: floorNumber === 1 ? '#1e40af' : '#166534', 
+                                      fontWeight: '700', 
+                                      fontSize: '17px'
+                                    }}>
+                                      {floorNumber === 1 ? 'Ground Floor' : `Floor ${floorNumber}`}
+                                    </h5>
                                   </div>
-                                ))}
+                                  <span style={{
+                                    background: floorNumber === 1 ? '#dbeafe' : '#d1fae5',
+                                    color: floorNumber === 1 ? '#1e40af' : '#166534',
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px',
+                                    fontWeight: '700'
+                                  }}>
+                                    {roomCount} Rooms
+                                  </span>
+                                </div>
+                                <div style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: '8px',
+                                  position: 'relative',
+                                  zIndex: 1
+                                }}>
+                                {Object.entries(floor.rooms || {}).map(([roomType, rooms]) => {
+                                    const count = typeof rooms === 'number' ? rooms : (rooms.length || 0);
+                                    return (
+                                    <div key={roomType} style={{
+                                      background: 'white',
+                                      padding: '8px 12px',
+                                      borderRadius: '8px',
+                                      border: '1px solid #e2e8f0',
+                                      fontSize: '13px',
+                                      fontWeight: '600',
+                                      color: '#475569',
+                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px'
+                                    }}>
+                                      <span style={{ fontSize: '16px' }}>
+                                        {roomType === 'bedrooms' ? '🛏️' : 
+                                         roomType === 'bathrooms' ? '🚿' : 
+                                         roomType === 'kitchen' ? '🍳' :
+                                         roomType === 'living_room' ? '🛋️' :
+                                         roomType === 'dining_room' ? '🍽️' : '🏠'}
+                                      </span>
+                                      <span>{roomType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: {count}</span>
+                                  </div>
+                                  );
+                                  })}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Site Considerations */}
-                      {request.site_considerations && (
-                        <div className="site-considerations" style={{marginBottom: '24px'}}>
-                          <h4 style={{margin: '0 0 12px 0', color: '#374151', fontSize: '18px', fontWeight: '600'}}>🌍 Site Considerations</h4>
-                          <div style={{background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb'}}>
-                            <p style={{fontSize: '14px', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap'}}>{request.site_considerations}</p>
+                          );
+                          })}
                           </div>
                         </div>
                       )}
 
-                      {/* Images Gallery */}
-                      <div className="images-section" style={{marginBottom: '40px'}}>
+                      {/* Site Considerations - Compact */}
+                      {request.site_considerations && (
+                        <div className="site-considerations" style={{marginBottom: '20px'}}>
+                          <div style={{
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            marginBottom: '12px'
+                          }}>
+                            <span style={{fontSize: '16px', marginRight: '8px', color: '#059669'}}>🌍</span>
+                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '16px', fontWeight: '600'}}>Site Considerations</h4>
+                          </div>
+                          <div style={{
+                            background: 'white', 
+                            padding: '12px 16px', 
+                            borderRadius: '8px', 
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
+                          }}>
+                            <p style={{
+                              fontSize: '15px', 
+                              margin: 0, 
+                              lineHeight: '1.6', 
+                              color: '#4b5563',
+                              whiteSpace: 'pre-wrap'
+                            }}>
+                              {request.site_considerations}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Images Gallery - Compact */}
+                      <div className="images-section" style={{marginBottom: '24px'}}>
                         <div style={{
                           display: 'flex', 
                           alignItems: 'center', 
-                          marginBottom: '24px',
-                          padding: '0 0 16px 0',
-                          borderBottom: '2px solid #e2e8f0'
+                          justifyContent: 'space-between',
+                          marginBottom: '16px',
+                          padding: '0 0 12px 0',
+                          borderBottom: '1px solid #e2e8f0'
                         }}>
-                          <span style={{fontSize: '24px', marginRight: '12px'}}>📸</span>
-                          <h4 style={{margin: 0, color: '#1f2937', fontSize: '22px', fontWeight: '700'}}>Project Images</h4>
+                          <div style={{display: 'flex', alignItems: 'center'}}>
+                            <span style={{fontSize: '18px', marginRight: '8px', color: '#3b82f6'}}>📸</span>
+                            <h4 style={{margin: 0, color: '#1f2937', fontSize: '16px', fontWeight: '600'}}>Project Images</h4>
+                          </div>
+                          <div style={{
+                            display: 'flex',
+                            gap: '8px',
+                            fontSize: '11px',
+                            color: '#6b7280'
+                          }}>
+                            {request.site_images && request.site_images.length > 0 && (
+                              <span style={{
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '13px',
+                                fontWeight: '500'
+                              }}>
+                                {request.site_images.length} site
+                              </span>
+                            )}
+                            {request.room_images && Object.keys(request.room_images).length > 0 && (
+                              <span style={{
+                                background: '#f0fdf4',
+                                color: '#166534',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '13px',
+                                fontWeight: '500'
+                              }}>
+                                {Object.values(request.room_images).flat().length} room
+                              </span>
+                            )}
+                          </div>
                         </div>
                         
-                          {/* Site Images */}
+                          {/* Site Images - Compact */}
                         {request.site_images && request.site_images.length > 0 && (
-                          <div style={{marginBottom: '32px'}}>
+                          <div style={{marginBottom: '20px'}}>
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
-                              marginBottom: '16px'
+                              marginBottom: '12px'
                             }}>
-                              <span style={{fontSize: '18px', marginRight: '8px'}}>🏞️</span>
-                              <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '18px'}}>Site Images</h5>
+                              <span style={{fontSize: '14px', marginRight: '6px', color: '#059669'}}>🏞️</span>
+                              <h5 style={{margin: 0, color: '#374151', fontWeight: '600', fontSize: '16px'}}>Site Images</h5>
                               <span style={{
-                                marginLeft: '12px',
+                                marginLeft: '8px',
                                 background: '#e0f2fe',
                                 color: '#0369a1',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
+                                padding: '4px 8px',
+                                borderRadius: '10px',
                                 fontSize: '12px',
                                 fontWeight: '500'
                               }}>
-                                {request.site_images.length} image{request.site_images.length !== 1 ? 's' : ''}
+                                {request.site_images.length}
                               </span>
                             </div>
-                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px'}}>
+                            <div style={{
+                              display: 'grid', 
+                              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
+                              gap: '12px'
+                            }}>
                               {request.site_images.map((img, idx) => (
                                 <div key={`site-${idx}`} 
                                      className="image-card" 
                                      style={{
                                        position: 'relative', 
-                                       borderRadius: '12px', 
+                                       borderRadius: '8px', 
                                        overflow: 'hidden',
-                                       boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                                       transition: 'all 0.3s ease',
+                                       boxShadow: '0 1px 4px rgba(0, 0, 0, 0.1)',
+                                       transition: 'all 0.2s ease',
                                        cursor: 'pointer',
-                                       border: '2px solid transparent'
+                                       border: '1px solid #e5e7eb'
                                      }}
                                      onMouseEnter={(e) => {
                                        const card = e.currentTarget;
                                        card.style.transform = 'scale(1.02)';
-                                       card.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.15)';
-                                       card.style.borderColor = '#3b82f6';
+                                       card.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
                                        const overlay = card.querySelector('.hover-overlay');
                                        if (overlay) overlay.style.display = 'flex';
                                      }}
                                      onMouseLeave={(e) => {
                                        const card = e.currentTarget;
                                        card.style.transform = 'scale(1)';
-                                       card.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                                       card.style.borderColor = 'transparent';
+                                       card.style.boxShadow = '0 1px 4px rgba(0, 0, 0, 0.1)';
                                        const overlay = card.querySelector('.hover-overlay');
                                        if (overlay) overlay.style.display = 'none';
                                      }}
@@ -1138,22 +1606,22 @@ const ArchitectDashboard = () => {
                                   <img 
                                     src={typeof img === 'string' ? img : img.url} 
                                 alt={`Site ${idx + 1}`} 
-                                    style={{width: '100%', height: '180px', objectFit: 'cover'}}
+                                    style={{width: '100%', height: '120px', objectFit: 'cover'}}
                                 onError={(e) => {e.target.style.display = 'none'}}
                               />
                                   <div style={{
                                     position: 'absolute', 
-                                    top: '12px', 
-                                    left: '12px', 
-                                    background: 'linear-gradient(135deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 100%)', 
+                                    top: '6px', 
+                                    left: '6px', 
+                                    background: 'rgba(0,0,0,0.7)', 
                                     color: 'white', 
-                                    padding: '6px 12px', 
-                                    borderRadius: '8px', 
+                                    padding: '4px 10px', 
+                                    borderRadius: '6px', 
                                     fontSize: '12px', 
                                     fontWeight: '600',
                                     backdropFilter: 'blur(4px)'
                                   }}>
-                                    🏞️ Site {idx + 1}
+                                    Site {idx + 1}
                                   </div>
                                   {/* Action buttons overlay - shown on hover */}
                                   <div className="hover-overlay" style={{
@@ -1162,12 +1630,12 @@ const ArchitectDashboard = () => {
                                     left: 0,
                                     right: 0,
                                     bottom: 0,
-                                    background: 'rgba(0,0,0,0.5)',
+                                    background: 'rgba(0,0,0,0.6)',
                                     display: 'none',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '12px',
-                                    transition: 'opacity 0.3s ease'
+                                    gap: '8px',
+                                    transition: 'opacity 0.2s ease'
                                   }}>
                                     <button
                                       onClick={(e) => {
@@ -1175,19 +1643,19 @@ const ArchitectDashboard = () => {
                                         window.open(typeof img === 'string' ? img : img.url, '_blank');
                                       }}
                                       style={{
-                                        padding: '8px 16px',
-                                        background: 'rgba(255,255,255,0.9)',
+                                        padding: '8px 14px',
+                                        background: 'rgba(255,255,255,0.95)',
                                         border: 'none',
-                                        borderRadius: '6px',
+                                        borderRadius: '4px',
                                         fontSize: '13px',
                                         fontWeight: '600',
                                         color: '#374151',
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '6px',
+                                        gap: '4px',
                                         backdropFilter: 'blur(4px)',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                                        boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
                                       }}
                                     >
                                       👁️ View
@@ -1197,10 +1665,10 @@ const ArchitectDashboard = () => {
                                       download={`site-image-${idx + 1}`}
                                       onClick={(e) => e.stopPropagation()}
                                       style={{
-                                        padding: '8px 16px',
-                                        background: 'rgba(59, 130, 246, 0.9)',
+                                          padding: '8px 14px',
+                                          background: 'rgba(59, 130, 246, 0.95)',
                                         border: 'none',
-                                        borderRadius: '6px',
+                                          borderRadius: '4px',
                                         fontSize: '13px',
                                         fontWeight: '600',
                                         color: 'white',
@@ -1208,9 +1676,9 @@ const ArchitectDashboard = () => {
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '6px',
+                                          gap: '4px',
                                         backdropFilter: 'blur(4px)',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                                          boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
                                       }}
                                     >
                                       💾 Download
@@ -1364,11 +1832,37 @@ const ArchitectDashboard = () => {
                         )}
                       </div>
 
-                      {/* Detailed Requirements */}
+                      {/* Detailed Requirements - Compact */}
                       {request.requirements_parsed && (
                         <div className="detailed-requirements">
-                          <h4 style={{margin: '0 0 12px 0', color: '#374151', fontSize: '18px', fontWeight: '600'}}>📝 Detailed Requirements</h4>
-                          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px'}}>
+                          <div style={{
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'space-between',
+                            marginBottom: '16px',
+                            padding: '0 0 12px 0',
+                            borderBottom: '1px solid #e2e8f0'
+                          }}>
+                            <div style={{display: 'flex', alignItems: 'center'}}>
+                              <span style={{fontSize: '18px', marginRight: '8px', color: '#f59e0b'}}>📝</span>
+                              <h4 style={{margin: 0, color: '#1f2937', fontSize: '16px', fontWeight: '600'}}>Detailed Requirements</h4>
+                            </div>
+                            <span style={{
+                              background: '#fef3c7',
+                              color: '#d97706',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '13px',
+                              fontWeight: '500'
+                            }}>
+                              {Object.keys(request.requirements_parsed).filter(key => key !== 'notes' && request.requirements_parsed[key]).length} items
+                            </span>
+                          </div>
+                          <div style={{
+                            display: 'grid', 
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+                            gap: '16px'
+                          }}>
                             {Object.entries(request.requirements_parsed).map(([key, value]) => {
                               if (!value || key === 'notes') return null;
                               
@@ -1389,7 +1883,63 @@ const ArchitectDashboard = () => {
                                 
                                 // Handle arrays
                                 if (Array.isArray(parsedVal)) {
+                                  // Special handling for rooms array - show counts
+                                  if (key === 'rooms') {
+                                    // Count occurrences of each room type
+                                    const roomCounts = {};
+                                    parsedVal.forEach(room => {
+                                      roomCounts[room] = (roomCounts[room] || 0) + 1;
+                                    });
+                                    
+                                    return (
+                                      <div style={{ marginTop: '4px' }}>
+                                        {Object.entries(roomCounts).map(([roomType, count]) => (
+                                          <span key={roomType} style={{ 
+                                            display: 'inline-block',
+                                            margin: '2px 4px 2px 0',
+                                            padding: '4px 8px',
+                                            backgroundColor: '#dbeafe',
+                                            color: '#1e40af',
+                                            borderRadius: '12px',
+                                            fontSize: '12px',
+                                            fontWeight: '500'
+                                          }}>
+                                            {roomType.replace(/_/g, ' ')}: {count}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
                                   return parsedVal.join(', ');
+                                }
+                                
+                                // Handle string values that might be comma-separated rooms
+                                if (typeof parsedVal === 'string' && key === 'rooms') {
+                                  // Split comma-separated rooms and count them
+                                  const roomsList = parsedVal.split(',').map(room => room.trim()).filter(room => room);
+                                  const roomCounts = {};
+                                  roomsList.forEach(room => {
+                                    roomCounts[room] = (roomCounts[room] || 0) + 1;
+                                  });
+                                  
+                                  return (
+                                    <div style={{ marginTop: '4px' }}>
+                                      {Object.entries(roomCounts).map(([roomType, count]) => (
+                                        <span key={roomType} style={{ 
+                                          display: 'inline-block',
+                                          margin: '2px 4px 2px 0',
+                                          padding: '4px 8px',
+                                          backgroundColor: '#dbeafe',
+                                          color: '#1e40af',
+                                          borderRadius: '12px',
+                                          fontSize: '12px',
+                                          fontWeight: '500'
+                                        }}>
+                                          {roomType.replace(/_/g, ' ')}: {count}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  );
                                 }
                                 
                                 // Handle objects (like floor_rooms, site_images, etc.)
@@ -1580,29 +2130,58 @@ const ArchitectDashboard = () => {
                               return (
                                 <div key={key} style={{
                                   background: 'white', 
-                                  padding: '10px', 
-                                  borderRadius: '6px', 
+                                  padding: '16px 20px', 
+                                  borderRadius: '12px', 
                                   border: '1px solid #e5e7eb',
-                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                                  transition: 'box-shadow 0.2s ease'
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                  transition: 'all 0.2s ease',
+                                  position: 'relative',
+                                  overflow: 'visible'
                                 }}>
                                   <div style={{
-                                    fontWeight: '600', 
-                                    marginBottom: '4px', 
-                                    textTransform: 'capitalize', 
-                                    color: '#374151',
-                                    fontSize: '13px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px'
+                                    marginBottom: '12px'
+                                  }}>
+                                    <div style={{
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '8px',
+                                      background: 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      marginRight: '12px',
+                                      fontSize: '14px'
                                   }}>
                                     {key.includes('image') && '📷'}
                                     {key === 'floor_rooms' && '🏠'}
                                     {key.includes('material') && '🧱'}
                                     {key.includes('budget') && '💰'}
+                                      {key.includes('family') && '👨‍👩‍👧‍👦'}
+                                      {key.includes('plot') && '📐'}
+                                      {key.includes('topography') && '🏔️'}
+                                      {key.includes('aesthetic') && '🎨'}
+                                      {key.includes('orientation') && '🧭'}
+                                      {!key.includes('image') && !key.includes('floor') && !key.includes('material') && !key.includes('budget') && !key.includes('family') && !key.includes('plot') && !key.includes('topography') && !key.includes('aesthetic') && !key.includes('orientation') && '📋'}
+                                    </div>
+                                    <div style={{
+                                      fontWeight: '600', 
+                                      textTransform: 'capitalize', 
+                                      color: '#1f2937',
+                                      fontSize: '16px',
+                                      flex: 1
+                                    }}>
                                     {key.replace(/_/g, ' ')}
                                   </div>
-                                  <div style={{fontSize: '0.85rem', color: '#6b7280', lineHeight: '1.3'}}>
+                                  </div>
+                                  <div style={{
+                                    fontSize: '15px', 
+                                    color: '#374151', 
+                                    lineHeight: '1.6',
+                                    wordWrap: 'break-word',
+                                    overflowWrap: 'break-word'
+                                  }}>
                                     {typeof formattedValue === 'string' ? formattedValue : formattedValue}
                                   </div>
                                 </div>
@@ -1610,9 +2189,28 @@ const ArchitectDashboard = () => {
                             })}
                           </div>
                           {request.requirements_parsed.notes && (
-                            <div style={{marginTop: '12px', background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e5e7eb'}}>
-                              <div style={{fontWeight: '600', marginBottom: '4px', color: '#374151'}}>Additional Notes</div>
-                              <div style={{fontSize: '0.9rem', color: '#6b7280', whiteSpace: 'pre-wrap'}}>
+                            <div style={{
+                              marginTop: '16px', 
+                              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', 
+                              padding: '12px 16px', 
+                              borderRadius: '8px', 
+                              border: '1px solid #f59e0b',
+                              boxShadow: '0 1px 3px rgba(245, 158, 11, 0.1)'
+                            }}>
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                marginBottom: '6px'
+                              }}>
+                                <span style={{fontSize: '14px', marginRight: '6px', color: '#d97706'}}>📝</span>
+                                <div style={{fontWeight: '600', color: '#92400e', fontSize: '15px'}}>Additional Notes</div>
+                              </div>
+                              <div style={{
+                                fontSize: '14px', 
+                                color: '#92400e', 
+                                lineHeight: '1.5',
+                                whiteSpace: 'pre-wrap'
+                              }}>
                                 {request.requirements_parsed.notes}
                               </div>
                             </div>
@@ -1652,6 +2250,7 @@ const ArchitectDashboard = () => {
                   }}
             expandedAssignments={expandedAssignments}
             setExpandedAssignments={setExpandedAssignments}
+            toast={toast}
                 />
             </div>
         </div>
@@ -1699,7 +2298,7 @@ const ArchitectDashboard = () => {
               {myDesigns.map(design => (
                 <div key={design.id} className="layout-card">
                   <div className="layout-card-content">
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                    <div className="layout-header">
                       <h4 className="layout-title">{design.design_title || 'Untitled Design'}</h4>
                       <span className={`badge ${badgeClass(design.status || 'proposed')}`}>{formatStatus(design.status || 'proposed')}</span>
                     </div>
@@ -1711,7 +2310,7 @@ const ArchitectDashboard = () => {
                       <p><strong>Email:</strong> {design.client_email || 'Not specified'}</p>
                     </div>
 
-                    <div className="request-details" style={{marginTop:8}}>
+                    <div className="request-details">
                       <h4>Request Details:</h4>
                       <p><strong>Plot Size:</strong> {design.plot_size || '-'}</p>
                       <p><strong>Budget:</strong> {design.budget_range || '-'}</p>
@@ -1720,7 +2319,7 @@ const ArchitectDashboard = () => {
                         const looksJson = req.startsWith('{') && req.endsWith('}');
                         if (looksJson) {
                           return (
-                            <div>
+                            <div className="requirements-section">
                               <strong>Requirements:</strong>
                               <div style={{ marginTop: 6 }}>
                                 <NeatJsonCard raw={req} title="Requirements" />
@@ -1729,7 +2328,7 @@ const ArchitectDashboard = () => {
                           );
                         }
                         return (
-                          <div>
+                          <div className="requirements-section">
                             <strong>Requirements:</strong>
                             <div style={{whiteSpace:'pre-wrap'}}>{design.requirements}</div>
                           </div>
@@ -1738,12 +2337,12 @@ const ArchitectDashboard = () => {
                     </div>
 
                     {design.technical_details && (
-                      <div className="technical-details-section" style={{marginTop:16}}>
+                      <div className="technical-details-section">
                         <TechnicalDetailsDisplay technicalDetails={design.technical_details} />
                       </div>
                     )}
 
-                    <div style={{display:'flex', gap:8, flexWrap:'wrap', margin:'6px 0'}}>
+                    <div className="file-links">
                       {Array.isArray(design.files) && design.files.length > 0 ? (
                         design.files.slice(0,3).map((f, idx) => (
                           (isImageUrl(f.path) || isPdfUrl(f.path)) ? (
@@ -1757,7 +2356,7 @@ const ArchitectDashboard = () => {
                       )}
                     </div>
 
-                    <div className="review-section" style={{marginTop:8}}>
+                    <div className="review-section">
                       <h4>Review</h4>
                       {Array.isArray(archReviews) && archReviews.filter(rv => rv.design_id === design.id).length > 0 ? (
                         archReviews.filter(rv => rv.design_id === design.id).slice(0,1).map(rv => (
@@ -1869,19 +2468,20 @@ const ArchitectDashboard = () => {
                      )}
                     <div style={{display:'flex', gap:8, flexWrap:'wrap', margin:'6px 0'}}>
                       {item.image_url && (
-                        <button className="btn btn-secondary" onClick={()=>openPreview(item)}>View Preview</button>
+                        <button type="button" className="btn btn-secondary" onClick={()=>openPreview(item)}>View Preview</button>
                       )}
                       {item.design_file_url && (
                         isImageUrl(item.design_file_url) || isPdfUrl(item.design_file_url) ? (
-                          <button className="btn" onClick={()=>openPreview(item)}>View Layout</button>
+                          <button type="button" className="btn" onClick={()=>openPreview(item)}>View Layout</button>
                         ) : (
                           <a className="btn btn-link" href={item.design_file_url} target="_blank" rel="noreferrer">Download Layout</a>
                         )
                       )}
                     </div>
                     <div style={{display:'flex', gap:8, flexWrap:'wrap', margin:'6px 0'}}>
-                      <button className="btn btn-secondary" onClick={()=>openEditLayout(item)}>Edit</button>
+                      <button type="button" className="btn btn-secondary" onClick={()=>openEditLayout(item)}>Edit</button>
                       <button
+                        type="button"
                         className={`btn ${item.status === 'active' ? 'btn-danger' : 'btn-success'}`}
                         onClick={()=>toggleLayoutStatus(item)}
                       >
@@ -1899,28 +2499,111 @@ const ArchitectDashboard = () => {
       {showLibraryForm && (
         <div className="form-modal">
           <div className="form-content" style={{
-            maxWidth:'920px', 
-            maxHeight:'90vh', 
-            height: '90vh',
+            maxWidth:'920px',
+            width: '100%',
+            maxHeight: '90vh',
+            height: 'auto',
             display:'flex',
             flexDirection:'column',
-            position: 'relative'
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: '12px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
           }}>
-            <div className="form-header" style={{flexShrink:0}}>
-              <h3>Add Layout</h3>
-              <p>Publish a new layout to the library</p>
-              <div className="step-indicator" style={{marginTop: 10, display: 'flex', gap: 10}}>
-                <span className={`step active`}>Basic Info & Files</span>
+            <div className="form-header" style={{
+              flexShrink: 0, 
+              padding: '24px 28px', 
+              borderBottom: '1px solid #e5e7eb',
+              background: 'linear-gradient(to right, #f8fafc, #ffffff)',
+              position: 'relative'
+            }}>
+              <div style={{display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px'}}>
+                <div style={{flex: 1}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px'}}>
+                    <div style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                    }}>
+                      <span style={{fontSize: '20px'}}>➕</span>
+                    </div>
+                    <div>
+                      <h3 style={{
+                        margin: '0 0 2px 0', 
+                        fontSize: '1.5rem', 
+                        fontWeight: '700',
+                        color: '#111827',
+                        letterSpacing: '-0.01em'
+                      }}>Add Layout</h3>
+                      <p style={{
+                        margin: 0, 
+                        fontSize: '0.875rem', 
+                        color: '#6b7280',
+                        fontWeight: '500'
+                      }}>Publish a new layout to the library</p>
+                    </div>
+                  </div>
+                  <div className="step-indicator" style={{marginTop: '12px', display: 'flex', gap: '8px'}}>
+                    <span className={`step active`} style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      padding: '6px 16px',
+                      borderRadius: '20px',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                    }}>Basic Info & Files</span>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  className="modal-close" 
+                  onClick={() => setShowLibraryForm(false)} 
+                  style={{
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '22px',
+                    lineHeight: 1,
+                    flexShrink: 0,
+                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+                    transition: 'all 0.2s ease',
+                    fontWeight: '600'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.transform = 'scale(1.1)';
+                    e.target.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
+                  }}
+                >×</button>
               </div>
             </div>
-            <form onSubmit={submitNewLibraryItem} style={{display:'flex', flexDirection:'column', minHeight:0, flex:1}}>
+            <form onSubmit={submitNewLibraryItem} style={{display:'flex', flexDirection:'column', flex:1, minHeight: 0, overflow: 'hidden'}}>
               <div
                 className="scrollable-form-content"
                 style={{
                   flex:1,
                   overflowY:'auto',
-                  paddingRight:'8px',
-                  marginRight:'-8px',
+                  overflowX:'hidden',
+                  padding: '24px',
+                  paddingRight:'32px',
+                  maxHeight: 'calc(90vh - 200px)',
+                  minHeight: '300px',
                   scrollbarWidth:'thin',
                   scrollbarColor:'#cbd5e1 #f1f5f9'
                 }}
@@ -1975,6 +2658,11 @@ const ArchitectDashboard = () => {
                 <div className="form-group">
                   <label>Price Range</label>
                   <input type="text" value={libraryForm.price_range} onChange={(e)=>setLibraryForm({...libraryForm, price_range:e.target.value})} placeholder="e.g., 20-30 Lakhs"/>
+                </div>
+                <div className="form-group">
+                  <label>Price to View (₹)</label>
+                  <input type="number" value={libraryForm.view_price || 0} onChange={(e)=>setLibraryForm({...libraryForm, view_price:e.target.value})} placeholder="e.g., 100" min="0" step="0.01"/>
+                  <small style={{color:'#666'}}>Amount homeowners must pay to view this layout</small>
                 </div>
               </div>
               
@@ -2050,9 +2738,17 @@ const ArchitectDashboard = () => {
                 />
               </div>
               </div>
-              <div className="form-actions" style={{marginTop:'16px'}}>
-                <button type="submit" className="btn btn-primary">Add Layout</button>
+              <div className="form-actions" style={{
+                padding: '16px 24px',
+                borderTop: '1px solid #e5e7eb',
+                background: 'white',
+                flexShrink: 0,
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
                 <button type="button" className="btn btn-secondary" onClick={()=>setShowLibraryForm(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Add Layout</button>
               </div>
             </form>
           </div>
@@ -2062,29 +2758,111 @@ const ArchitectDashboard = () => {
       {editLayout && (
         <div className="form-modal">
           <div className="form-content" style={{
-            maxWidth:'920px', 
-            maxHeight:'90vh', 
-            display:'flex', 
-            flexDirection:'column'
+            maxWidth:'920px',
+            width: '100%',
+            maxHeight: '90vh',
+            height: 'auto',
+            display:'flex',
+            flexDirection:'column',
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: '12px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
           }}>
-            <div className="form-header" style={{flexShrink:0}}>
-              <h3>Edit Layout</h3>
-              <p>Update your library item</p>
-              <div className="form-steps" style={{marginTop: '12px'}}>
-                <div className="step active">
-                  <span className="step-number">1</span>
-                  <span className="step-label">Basic Info</span>
+            <div className="form-header" style={{
+              flexShrink: 0, 
+              padding: '24px 28px', 
+              borderBottom: '1px solid #e5e7eb',
+              background: 'linear-gradient(to right, #f8fafc, #ffffff)',
+              position: 'relative'
+            }}>
+              <div style={{display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px'}}>
+                <div style={{flex: 1}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px'}}>
+                    <div style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+                    }}>
+                      <span style={{fontSize: '20px'}}>📝</span>
+                    </div>
+                    <div>
+                      <h3 style={{
+                        margin: '0 0 2px 0', 
+                        fontSize: '1.5rem', 
+                        fontWeight: '700',
+                        color: '#111827',
+                        letterSpacing: '-0.01em'
+                      }}>Edit Layout</h3>
+                      <p style={{
+                        margin: 0, 
+                        fontSize: '0.875rem', 
+                        color: '#6b7280',
+                        fontWeight: '500'
+                      }}>Update your library item</p>
+                    </div>
+                  </div>
+                  <div className="step-indicator" style={{marginTop: '12px', display: 'flex', gap: '8px'}}>
+                    <span className={`step active`} style={{
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      color: 'white',
+                      padding: '6px 16px',
+                      borderRadius: '20px',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)'
+                    }}>Basic Info</span>
+                  </div>
                 </div>
+                <button 
+                  type="button" 
+                  className="modal-close" 
+                  onClick={closeEditLayout} 
+                  style={{
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '22px',
+                    lineHeight: 1,
+                    flexShrink: 0,
+                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+                    transition: 'all 0.2s ease',
+                    fontWeight: '600'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.transform = 'scale(1.1)';
+                    e.target.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
+                  }}
+                >×</button>
               </div>
             </div>
-            <div style={{
-              flex:1, 
-              overflowY:'auto', 
-              paddingRight:'8px',
-              marginRight:'-8px',
+            <div className="scrollable-form-content" style={{
+              flex:1,
+              overflowY:'auto',
+              overflowX:'hidden',
+              padding: '24px',
+              paddingRight:'32px',
+              maxHeight: 'calc(90vh - 200px)',
+              minHeight: '300px',
               scrollbarWidth:'thin',
               scrollbarColor:'#cbd5e1 #f1f5f9'
-            }} className="scrollable-form-content">
+            }}>
               <form onSubmit={(e) => e.preventDefault()} style={{paddingBottom:'16px'}}>
               <div className="form-row">
                 <div className="form-group">
@@ -2131,6 +2909,11 @@ const ArchitectDashboard = () => {
                  <div className="form-group">
                    <label>Price Range</label>
                    <input type="text" value={editLayout.price_range || ''} onChange={(e)=>setEditLayout({...editLayout, price_range:e.target.value})} placeholder="e.g., 20-30 Lakhs"/>
+                 </div>
+                 <div className="form-group">
+                   <label>Price to View (₹)</label>
+                   <input type="number" value={editLayout.view_price || 0} onChange={(e)=>setEditLayout({...editLayout, view_price:e.target.value})} placeholder="e.g., 100" min="0" step="0.01"/>
+                   <small style={{color:'#666'}}>Amount homeowners must pay to view this layout</small>
                  </div>
                </div>
                
@@ -2250,7 +3033,15 @@ const ArchitectDashboard = () => {
                </div>
               </form>
             </div>
-            <div className="form-actions" style={{flexShrink:0, marginTop:'16px', paddingTop:'16px', borderTop:'1px solid #e5e7eb'}}>
+            <div className="form-actions" style={{
+              padding: '16px 24px',
+              borderTop: '1px solid #e5e7eb',
+              background: 'white',
+              flexShrink: 0,
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end'
+            }}>
               <button type="button" className="btn btn-secondary" onClick={closeEditLayout}>Cancel</button>
               <button type="button" className="btn btn-primary" onClick={saveEditLayout}>Save Changes</button>
             </div>
@@ -2648,7 +3439,7 @@ const ArchitectDashboard = () => {
 };
 
 // Assigned Requests Component
-const AssignedRequests = ({ onCreateFromAssigned, expandedAssignments, setExpandedAssignments }) => {
+const AssignedRequests = ({ onCreateFromAssigned, expandedAssignments, setExpandedAssignments, toast }) => {
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -2724,9 +3515,9 @@ const AssignedRequests = ({ onCreateFromAssigned, expandedAssignments, setExpand
       if (data && data.success) {
         // Show success message
         if (action === 'accept') {
-          alert('Assignment accepted! The request is now available in your Available Requests section.');
+          toast.success('Assignment accepted! The request is now available in your Available Requests section.');
         } else if (action === 'decline') {
-          alert('Assignment declined.');
+          toast.success('Assignment declined.');
         }
         
         // Refresh both assigned requests and available requests
@@ -2734,13 +3525,13 @@ const AssignedRequests = ({ onCreateFromAssigned, expandedAssignments, setExpand
         // Trigger a page refresh to update the Available Requests section
         window.location.reload();
       } else {
-        alert('Failed to respond to assignment: ' + (data.message || 'Unknown error'));
+        toast.error('Failed to respond to assignment: ' + (data.message || 'Unknown error'));
       }
       
       return data && data.success ? (data.status || null) : null;
     } catch (error) {
       console.error('Error responding to assignment:', error);
-      alert('Network error occurred. Please try again.');
+      toast.error('Network error occurred. Please try again.');
       return null;
     }
   };
@@ -3055,7 +3846,18 @@ const RequestItem = ({ request, onCreateDesign }) => {
               )}
               {requirements.rooms && (
                 <div style={{ marginBottom: '8px' }}>
-                  <strong>Room Requirements:</strong> {Array.isArray(requirements.rooms) ? requirements.rooms.join(', ') : requirements.rooms}
+                  <strong>Room Requirements:</strong> {Array.isArray(requirements.rooms) 
+                    ? (() => {
+                        // Count occurrences of each room type
+                        const roomCounts = {};
+                        requirements.rooms.forEach(room => {
+                          roomCounts[room] = (roomCounts[room] || 0) + 1;
+                        });
+                        return Object.entries(roomCounts)
+                          .map(([room, count]) => `${room.replace(/_/g, ' ')}: ${count}`)
+                          .join(', ');
+                      })()
+                    : requirements.rooms}
                 </div>
               )}
               {request.site_considerations && (

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Stepper from './wizard/Stepper';
 import WizardLayout from './wizard/WizardLayout';
+import BuildHubSeal from './BuildHubSeal';
 
 export default function ContractorEstimateWizard() {
   // Prefill layout_request_id from URL if provided (from dashboard CTA)
@@ -21,8 +22,8 @@ export default function ContractorEstimateWizard() {
     try {
       const res = await fetch('/buildhub/backend/api/contractor/submit_proposal.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       const json = await res.json();
-      if (json.success) window.history.back(); else alert(json.message || 'Failed');
-    } catch { alert('Network error'); } finally { setLoading(false); }
+      if (json.success) window.history.back(); else toast.error(json.message || 'Failed');
+    } catch { toast.error('Network error'); } finally { setLoading(false); }
   }
 
   return (
@@ -36,6 +37,9 @@ export default function ContractorEstimateWizard() {
       {step === 0 && (
         <div className="section">
           <div className="section-header">Project</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', padding: '20px 0' }}>
+            <BuildHubSeal size="medium" />
+          </div>
           <div className="section-body grid-2">
             <div className="field">
               <label>Layout Request ID</label>

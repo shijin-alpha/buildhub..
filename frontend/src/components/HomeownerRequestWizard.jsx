@@ -1,19 +1,51 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useToast } from './ToastProvider.jsx';
 import Stepper from './wizard/Stepper';
 import WizardLayout from './wizard/WizardLayout';
 import SearchableDropdown from './SearchableDropdown';
+import TourGuide from './TourGuide';
+import ArchitectSelection from './ArchitectSelection';
+import TimelinePrediction from './TimelinePrediction';
+import HouseStyleSuggestions from './HouseStyleSuggestions';
 import { indianCities } from '../data/indianCities';
+import '../styles/FamilyNeeds.css';
+import '../styles/TourGuide.css';
+import '../styles/InteractiveOptionsFix.css';
+
+// Import the rules engine utility
+import designRulesEngine from '../utils/designRulesEngine';
+
+
+  // Helper function to convert budget range to numeric value
+const convertBudgetRangeToNumeric = (budgetRange) => {
+  const ranges = {
+    '5-10 Lakhs': 750000,      // 7.5 lakhs (middle of range)
+    '10-20 Lakhs': 1500000,    // 15 lakhs
+    '20-30 Lakhs': 2500000,    // 25 lakhs
+    '30-50 Lakhs': 4000000,    // 40 lakhs
+    '50-75 Lakhs': 6250000,    // 62.5 lakhs
+    '75 Lakhs - 1 Crore': 8750000,  // 87.5 lakhs
+    '1-2 Crores': 15000000,    // 1.5 crores
+    '2-5 Crores': 35000000,    // 3.5 crores
+    '5+ Crores': 75000000      // 7.5 crores (assume 5-10 crores)
+  };
+  return ranges[budgetRange] || 0;
+};
 
 export default function HomeownerRequestWizard() {
-  const steps = ['Preliminary', 'Site', 'Family', 'Budget', 'Orientation', 'Materials', 'Preferences', 'Review', 'Architect', 'Submit'];
+  const navigate = useNavigate();
+  const toast = useToast();
+  const steps = ['Preliminary', 'Site', 'Family', 'Preferences', 'Review', 'Architect', 'Submit'];
   const [step, setStep] = useState(0);
   const [data, setData] = useState({
-    plot_size: '', plot_shape: '', topography: '', development_laws: '',
+    plot_size: '', building_size: '', plot_shape: '', topography: '', development_laws: '',
     family_needs: [], rooms: [], budget_range: '', aesthetic: '', // Changed to arrays for multi-select
     requirements: '', location: '', timeline: '', num_floors: '',
     selected_layout_id: null, layout_type: 'custom',
     selected_architect_ids: [],
     custom_budget: '', // Added for custom budget input
+    plot_unit: 'cents', // Plot unit (cents, acres, sqft)
     floor_rooms: {}, // New: floor-wise room planning { floor1: { bedrooms: 2, bathrooms: 1, ... }, floor2: {...} }
     expandedFloors: { 1: true }, // Track which floors are expanded
     room_images: {}, // New: floor-specific images { floor1: { bedrooms: [images], kitchen: [images] }, floor2: { ... } }
@@ -24,28 +56,373 @@ export default function HomeownerRequestWizard() {
     material_preferences: [], // Material preferences array
     budget_allocation: '', // Budget allocation preferences
     reference_images: [], // Uploaded reference images
-    site_images: [] // Site photos and scans
+    site_images: [], // Site photos and scans
+    room_requirements: {} // Room requirements with counts { bedrooms: 2, bathrooms: 1, ... }
   });
+  
+  // State for rules engine integration
+  const [validationResult, setValidationResult] = useState(null);
+  const [suggestions, setSuggestions] = useState({});
+  const [allowedOptions, setAllowedOptions] = useState({
+    num_floors: ['1', '2', '3', '4', '5', '6+'],
+    material_preferences: [],
+    aesthetic: []
+  });
+  const [rulesEngineLoading, setRulesEngineLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [fieldWarnings, setFieldWarnings] = useState({});
+  const [realTimeRecommendations, setRealTimeRecommendations] = useState({});
+  const [estimatedCost, setEstimatedCost] = useState(null);
+  const [plotCategory, setPlotCategory] = useState(null);
+  const [budgetCategory, setBudgetCategory] = useState(null);
+  const [timelineData, setTimelineData] = useState(null);
+  const [selectedStyle, setSelectedStyle] = useState(null);
+  const [selectedArchitects, setSelectedArchitects] = useState([]); // Store architect objects with names
+  
   const [loading, setLoading] = useState(false);
+  const [showTourGuide, setShowTourGuide] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
   const next = () => setStep(s => Math.min(s + 1, steps.length - 1));
   const prev = () => setStep(s => Math.max(s - 1, 0));
 
+  // Tour guide functions
+  const handleTourNext = () => {
+    if (tourStep < steps.length - 1) {
+      setTourStep(tourStep + 1);
+    } else {
+      setShowTourGuide(false);
+    }
+  };
+
+  const handleTourPrev = () => {
+    if (tourStep > 0) {
+      setTourStep(tourStep - 1);
+    }
+  };
+
+  const handleTourSkip = () => {
+    setShowTourGuide(false);
+    // Mark tour as completed in localStorage
+    localStorage.setItem('buildhub_tour_completed', 'true');
+  };
+
+  const handleTourClose = () => {
+    setShowTourGuide(false);
+    // Mark tour as completed in localStorage
+    localStorage.setItem('buildhub_tour_completed', 'true');
+  };
+
+  // Auto-assign rooms to floors based on logical constraints
+  const autoAssignRoomsToFloors = (selectedRooms) => {
+    const numFloors = parseInt(data.num_floors) || 1;
+    const floorAssignments = {};
+    
+    // Initialize floor assignments
+    for (let i = 1; i <= numFloors; i++) {
+      floorAssignments[`floor${i}`] = {};
+    }
+    
+    // Define room-floor logic
+    const roomFloorLogic = {
+      // Ground floor only rooms
+      garage: [1],
+      master_bedroom: [1], // Master bedroom only on ground floor
+      kitchen: [1], // Kitchen only on ground floor
+      dining_room: [1], // Dining room only on ground floor
+      living_room: [1], // Living room only on ground floor
+      store_room: [1], // Usually ground floor
+      
+      // Can be on both floors
+      bedrooms: [1, 2], // Bedrooms can be on both floors
+      bathrooms: [1, 2], // Bathrooms can be on both floors
+      attached_bathroom: [1, 2], // Attached bathroom can be on both floors
+      
+      // Upper floors only (not ground floor)
+      balcony: numFloors > 1 ? [2] : [1], // Balcony not on ground floor
+      terrace: [numFloors], // Terrace always on top floor
+      
+      // Other rooms
+      study_room: numFloors > 1 ? [2] : [1],
+      prayer_room: numFloors > 1 ? [2] : [1],
+      guest_room: numFloors > 1 ? [2] : [1]
+    };
+    
+    // Assign rooms to floors
+    selectedRooms.forEach(roomType => {
+      const allowedFloors = roomFloorLogic[roomType] || [1];
+      const assignedFloor = allowedFloors[0]; // Use first allowed floor
+      const floorKey = `floor${assignedFloor}`;
+      
+      if (!floorAssignments[floorKey][roomType]) {
+        floorAssignments[floorKey][roomType] = 1; // Default count of 1
+      }
+    });
+    
+    return floorAssignments;
+  };
+
+  // Apply rules engine for suggestions only (not auto-changing values)
+  useEffect(() => {
+    const applyRules = async () => {
+      console.log('🤖 Form: Getting ML suggestions for fields:', { plot_size: data.plot_size, budget_range: data.budget_range, num_floors: data.num_floors });
+      console.log('🔄 Rules engine triggered by field changes');
+      
+      // Only get suggestions, don't auto-change user values
+      if (!data.plot_size && !data.budget_range && !data.aesthetic) {
+        console.log('⏭️ Skipping rules - no key fields filled');
+        return;
+      }
+      
+      setRulesEngineLoading(true);
+      
+      try {
+        console.log('🔄 Getting ML validation...');
+        
+        // Prepare data for ML with default budget if needed
+        const mlData = { ...data };
+        console.log('🤖 ML Data before processing:', { building_size: mlData.building_size, plot_size: mlData.plot_size });
+        
+        // Convert budget range to numeric value
+        if (mlData.budget_range && !mlData.budget) {
+          mlData.budget = convertBudgetRangeToNumeric(mlData.budget_range);
+          console.log('💰 Converted budget range to numeric:', mlData.budget_range, '->', mlData.budget);
+        }
+        
+        // Don't auto-estimate budget - let user set their own budget
+        if (mlData.plot_size && !mlData.budget) {
+          console.log('💰 Plot size provided but no budget set - user will set manually');
+        }
+        
+        // Get validation results
+        const result = await designRulesEngine.validateForm(mlData);
+        console.log('📊 ML Validation result:', result);
+        console.log('🤖 ML Data after processing:', { building_size: mlData.building_size, plot_size: mlData.plot_size });
+        setValidationResult(result);
+        
+        // Store ML results for display only (don't auto-change user values)
+        if (result.plot_category) {
+          console.log('📊 ML suggests plot category:', result.plot_category, '(for reference only)');
+          setPlotCategory(result.plot_category);
+        }
+        if (result.budget_category) {
+          console.log('💰 ML suggests budget category:', result.budget_category, '(for reference only)');
+          setBudgetCategory(result.budget_category);
+        }
+        if (result.estimated_cost) {
+          console.log('💰 ML estimates cost:', result.estimated_cost);
+          setEstimatedCost(result.estimated_cost);
+          
+          // Set timeline data from ML prediction
+          if (result.predicted_timeline) {
+            setTimelineData({
+              months: result.predicted_timeline,
+              confidence: 85, // Default confidence
+              phases: [
+                { name: 'Planning & Design', duration: Math.ceil(result.predicted_timeline * 0.2) },
+                { name: 'Foundation', duration: Math.ceil(result.predicted_timeline * 0.15) },
+                { name: 'Construction', duration: Math.ceil(result.predicted_timeline * 0.5) },
+                { name: 'Finishing', duration: Math.ceil(result.predicted_timeline * 0.15) }
+              ],
+              factors: [
+                { type: 'positive', text: `Plot size: ${result.plot_size_sqft ? Math.round(result.plot_size_sqft) : 'N/A'} sq ft` },
+                { type: 'positive', text: `Building size: ${result.building_size ? Math.round(result.building_size) : 'N/A'} sq ft` },
+                { type: 'positive', text: `Budget category: ${result.budget_category || 'N/A'}` }
+              ]
+            });
+          }
+          
+          console.log('💰 Estimated cost:', result.estimated_cost);
+          console.log('⏱️ Predicted timeline:', result.predicted_timeline, 'months');
+          console.log('🏠 Building size:', result.building_size);
+          console.log('📏 Plot size (sq ft):', result.plot_size_sqft);
+        }
+        
+        // Get suggestions
+        console.log('🔄 Getting ML suggestions...');
+        const newSuggestions = await designRulesEngine.getSuggestions(mlData);
+        console.log('💡 ML Suggestions:', newSuggestions);
+        setSuggestions(newSuggestions);
+        
+        // Get allowed options for key fields
+        console.log('🎯 Getting allowed options with mlData:', mlData);
+        const numFloorsOptions = await designRulesEngine.getAllowedOptions('num_floors', mlData);
+        const materialOptions = await designRulesEngine.getAllowedOptions('material_preferences', mlData);
+        const aestheticOptions = await designRulesEngine.getAllowedOptions('aesthetic', mlData);
+        
+        console.log('🎯 Allowed options:', { numFloorsOptions, materialOptions, aestheticOptions });
+        
+        setAllowedOptions(prev => ({
+          ...prev,
+          num_floors: numFloorsOptions && numFloorsOptions.length > 0 ? numFloorsOptions : prev.num_floors,
+          material_preferences: materialOptions && materialOptions.length > 0 ? materialOptions : prev.material_preferences,
+          aesthetic: aestheticOptions && aestheticOptions.length > 0 ? aestheticOptions : prev.aesthetic
+        }));
+        
+        // Extract field-specific errors and warnings
+        const errors = {};
+        const warnings = {};
+        if (result.errors) {
+          result.errors.forEach(error => {
+            if (error.toLowerCase().includes('plot')) {
+              errors.plot_size = error;
+            } else if (error.toLowerCase().includes('budget')) {
+              errors.budget_range = error;
+            } else if (error.toLowerCase().includes('floor')) {
+              errors.num_floors = error;
+            } else if (error.toLowerCase().includes('material')) {
+              errors.material_preferences = error;
+            } else if (error.toLowerCase().includes('aesthetic')) {
+              errors.aesthetic = error;
+            }
+          });
+        }
+        
+        if (result.warnings) {
+          result.warnings.forEach(warning => {
+            if (warning.toLowerCase().includes('floor')) {
+              warnings.num_floors = warning;
+            } else if (warning.toLowerCase().includes('material')) {
+              warnings.material_preferences = warning;
+            } else if (warning.toLowerCase().includes('budget')) {
+              warnings.budget_range = warning;
+            } else if (warning.toLowerCase().includes('aesthetic')) {
+              warnings.aesthetic = warning;
+            }
+          });
+        }
+        
+        setFieldErrors(errors);
+        setFieldWarnings(warnings);
+      } catch (error) {
+        console.error('Rules engine error:', error);
+      } finally {
+        setRulesEngineLoading(false);
+      }
+    };
+    
+    // Debounce the rules application to prevent infinite loops
+    const timeoutId = setTimeout(() => {
+    applyRules();
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
+  }, [data.plot_size, data.budget_range, data.aesthetic, data.num_floors, data.material_preferences, data.plot_shape, data.topography, data.orientation, data.budget_allocation, data.custom_budget]);
+
+  // Auto-assign timeline when timeline prediction is available
+  useEffect(() => {
+    if (timelineData && timelineData.months) {
+      let timelineValue = '';
+      const months = timelineData.months;
+      
+      if (months <= 3) {
+        timelineValue = '1-3 months';
+      } else if (months <= 6) {
+        timelineValue = '3-6 months';
+      } else if (months <= 12) {
+        timelineValue = '6-12 months';
+      } else if (months <= 24) {
+        timelineValue = '1-2 years';
+      } else {
+        timelineValue = '2+ years';
+      }
+      
+      // Always update timeline with ML prediction
+      setData(prev => ({ ...prev, timeline: timelineValue }));
+      console.log('⏰ Auto-assigned timeline:', timelineValue, 'based on', months, 'months');
+      
+      // Show success message for auto-assignment
+      setTimeout(() => {
+        console.log('✅ Timeline automatically assigned based on project complexity');
+      }, 100);
+    }
+  }, [timelineData]);
+
+  // Auto-assign aesthetic when style suggestions are available (DISABLED - user wants manual selection)
+  // useEffect(() => {
+  //   if (selectedStyle && !data.aesthetic) {
+  //     // Only auto-assign if user hasn't manually selected anything
+  //     console.log('🎨 Auto-assigning aesthetic suggestion:', selectedStyle.name);
+  //     setData(prev => ({ ...prev, aesthetic: selectedStyle.name }));
+  //   }
+  // }, [selectedStyle, data.aesthetic]);
+
+  // Real-time recommendations as user types
+  useEffect(() => {
+    const updateRealTimeRecommendations = async () => {
+      const recommendations = {};
+      
+      // Plot size recommendations
+      if (data.plot_size) {
+        const plotRecs = await designRulesEngine.getRealTimeRecommendations('plot_size', data.plot_size, data);
+        recommendations.plot_size = plotRecs;
+      }
+      
+      // Budget recommendations
+      if (data.budget_range || data.custom_budget) {
+        const budgetRecs = await designRulesEngine.getRealTimeRecommendations('budget_range', data.budget_range, data);
+        recommendations.budget_range = budgetRecs;
+      }
+      
+      // Floor recommendations
+      if (data.num_floors) {
+        const floorRecs = await designRulesEngine.getRealTimeRecommendations('num_floors', data.num_floors, data);
+        recommendations.num_floors = floorRecs;
+      }
+      
+      setRealTimeRecommendations(recommendations);
+    };
+    
+    // Debounce real-time recommendations
+    const timeoutId = setTimeout(() => {
+      updateRealTimeRecommendations();
+    }, 300);
+    
+    return () => clearTimeout(timeoutId);
+  }, [data.plot_size, data.budget_range, data.custom_budget, data.num_floors]);
+
+  // Check if this is the first time user and show tour
+  useEffect(() => {
+    const tourCompleted = localStorage.getItem('buildhub_tour_completed');
+    if (!tourCompleted) {
+      // Show tour after a short delay to let the page load
+      const timer = setTimeout(() => {
+        setShowTourGuide(true);
+        setTourStep(0);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Add keyboard shortcut for help (Ctrl + H)
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.ctrlKey && e.key === 'h') {
+        e.preventDefault();
+        setShowTourGuide(true);
+        setTourStep(step);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [step]);
+
   // Room types definition - moved to component level for accessibility
   const roomTypes = [
-    { key: 'master_bedroom', label: 'Master Bedroom', icon: '👑', short: 'MB', max: 2 },
+    { key: 'master_bedroom', label: 'Master Bedroom', icon: '👑', short: 'MB', max: 1, floorRestriction: 'each' }, // Only 1 per floor
     { key: 'bedrooms', label: 'Bedrooms', icon: '🛏️', short: 'BR', max: 8 },
     { key: 'attached_bathrooms', label: 'Attached Bathrooms', icon: '🚿', short: 'AB', max: 8 },
     { key: 'common_bathrooms', label: 'Common Bathrooms', icon: '🚽', short: 'CB', max: 6 },
     { key: 'living_room', label: 'Living Room', icon: '🛋️', short: 'LR', max: 3 },
     { key: 'dining_room', label: 'Dining Room', icon: '🍽️', short: 'DR', max: 2 },
-    { key: 'kitchen', label: 'Kitchen', icon: '🍳', short: 'K', max: 2 },
-    { key: 'study_room', label: 'Study Room', icon: '📚', short: 'SR', max: 3 },
-    { key: 'prayer_room', label: 'Prayer Room', icon: '🕉️', short: 'PR', max: 2 },
+    { key: 'kitchen', label: 'Kitchen', icon: '🍳', short: 'K', max: 2, floorRestriction: 'ground' }, // Only on ground floor
+    { key: 'study_area', label: 'Study Area', icon: '📚', short: 'SA', max: 3 },
+    { key: 'prayer_area', label: 'Prayer Area', icon: '🕉️', short: 'PA', max: 2 },
     { key: 'guest_room', label: 'Guest Room', icon: '🏠', short: 'GR', max: 3 },
-    { key: 'store_room', label: 'Store Room', icon: '📦', short: 'STR', max: 4 },
+    { key: 'store_room', label: 'Store Room', icon: '📦', short: 'STR', max: 4, floorRestriction: 'ground' }, // Only on ground floor
     { key: 'balcony', label: 'Balcony', icon: '🌅', short: 'B', max: 5, excludeFromGroundFloor: true },
     { key: 'terrace', label: 'Terrace', icon: '🏞️', short: 'T', max: 2, excludeFromGroundFloor: true },
-    { key: 'garage', label: 'Garage', icon: '🚗', short: 'G', max: 3 },
+    { key: 'garage', label: 'Garage', icon: '🚗', short: 'G', max: 3, floorRestriction: 'ground' }, // Only on ground floor
     { key: 'utility_area', label: 'Utility Area', icon: '🔧', short: 'UA', max: 2 }
   ];
 
@@ -61,6 +438,8 @@ export default function HomeownerRequestWizard() {
   const [expandedArchitectId, setExpandedArchitectId] = useState(null);
   const [reviewsCache, setReviewsCache] = useState({}); // { [architectId]: { reviews, avg_rating, review_count } }
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  // Active floor tab for family planning
+  const [activeFloorTab, setActiveFloorTab] = useState(1);
 
   // Prefill from URL query params when applicable (from library or deep link)
   useEffect(() => {
@@ -103,9 +482,13 @@ export default function HomeownerRequestWizard() {
             window.dispatchEvent && window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'success', message: 'Sent to contractors' } }));
             window.history.back();
           } else {
+            console.error('Failed to send to contractors:', j.message);
             alert(j.message || 'Failed to send to contractors');
           }
-        } catch (_) { alert('Network error'); }
+        } catch (_) { 
+          console.error('Network error');
+          alert('Network error');
+        }
         finally { setLoading(false); }
       })();
     }
@@ -170,23 +553,70 @@ export default function HomeownerRequestWizard() {
     setArchLoading(true);
     setArchError('');
     try {
-      const q = new URLSearchParams({
-        ...(params.search ? { search: params.search } : {}),
-        ...(params.specialization ? { specialization: params.specialization } : {}),
-        ...(params.min_experience ? { min_experience: params.min_experience } : {}),
-      }).toString();
-      const res = await fetch(`/buildhub/backend/api/homeowner/get_architects.php${q ? `?${q}` : ''}`);
+      const queryParams = new URLSearchParams();
+      
+      if (params.search && params.search.trim()) {
+        queryParams.append('search', params.search.trim());
+      }
+      if (params.specialization && params.specialization.trim()) {
+        queryParams.append('specialization', params.specialization.trim());
+      }
+      if (params.min_experience && params.min_experience > 0) {
+        queryParams.append('min_experience', params.min_experience);
+      }
+      
+      const queryString = queryParams.toString();
+      const url = `/buildhub/backend/api/homeowner/get_architects.php${queryString ? `?${queryString}` : ''}`;
+      
+      console.log('Fetching architects from:', url); // Debug log
+      
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
+      
+      console.log('Response status:', res.status); // Debug log
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const json = await res.json();
-      if (json.success) setArchitects(json.architects || []); else setArchError(json.message || 'Failed to load architects');
-    } catch (e) { setArchError('Error loading architects'); }
-    finally { setArchLoading(false); }
+      console.log('Architects response:', json); // Debug log
+      
+      if (json.success) {
+        setArchitects(json.architects || []);
+      } else {
+        setArchError(json.message || 'Failed to load architects');
+      }
+    } catch (e) { 
+      console.error('Error fetching architects:', e); // Debug log
+      setArchError('Error loading architects: ' + e.message);
+    }
+    finally { 
+      setArchLoading(false); 
+    }
   };
 
   // Auto-load architects when entering the Architect step
   useEffect(() => {
-    if (step === 8) fetchArchitects({ search: archSearch, specialization: archSpec, min_experience: archMinExp });
+    if (step === 5) fetchArchitects({ search: archSearch, specialization: archSpec, min_experience: archMinExp });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+  // Debounced search effect
+  useEffect(() => {
+    if (step === 5) {
+      const timeoutId = setTimeout(() => {
+        fetchArchitects({ search: archSearch, specialization: archSpec, min_experience: archMinExp });
+      }, 500); // 500ms delay
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [archSearch, archSpec, archMinExp, step]);
 
   async function submit() {
     setLoading(true);
@@ -194,6 +624,7 @@ export default function HomeownerRequestWizard() {
       // 1) Create the layout request
       const submitData = {
         plot_size: data.plot_size,
+        building_size: data.building_size,
         budget_range: data.budget_range === 'Custom' ? data.custom_budget : data.budget_range,
         requirements: data.requirements,
         location: data.location,
@@ -204,60 +635,112 @@ export default function HomeownerRequestWizard() {
         plot_shape: data.plot_shape, 
         topography: data.topography, 
         development_laws: data.development_laws,
-        family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(', ') : data.family_needs, 
-        rooms: Array.isArray(data.rooms) ? data.rooms.join(', ') : data.rooms, 
+        family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(',') : data.family_needs,
+        rooms: Array.isArray(data.rooms) ? data.rooms.join(',') : data.rooms,
         aesthetic: data.aesthetic,
-        floor_rooms: JSON.stringify(data.floor_rooms), // Send floor-wise room planning as JSON
-        // New fields
-        orientation: data.orientation,
-        site_considerations: data.site_considerations,
-        material_preferences: Array.isArray(data.material_preferences) ? data.material_preferences.join(', ') : data.material_preferences,
-        budget_allocation: data.budget_allocation,
         num_floors: data.num_floors,
         preferred_style: data.aesthetic, // Use aesthetic as preferred_style
         reference_images: data.reference_images || [],
         site_images: data.site_images || [], // Site images
-        room_images: data.room_images || {} // Room-specific images
+        room_images: data.room_images || {}, // Room-specific images
+        timeline_data: timelineData, // Timeline prediction data
+        selected_style_data: selectedStyle // Selected style data
       };
       
       console.log('Submitting data:', submitData); // Debug log
       
+      // Validate required fields
+      if (!submitData.plot_size || !submitData.building_size) {
+        toast.error('Please fill in plot size and building size');
+        return;
+      }
+      
+      // Validate numeric fields
+      if (isNaN(parseFloat(submitData.plot_size)) || isNaN(parseFloat(submitData.building_size))) {
+        toast.error('Plot size and building size must be valid numbers');
+        return;
+      }
+      
+      console.log('🚀 Submitting request to:', '/buildhub/backend/api/homeowner/submit_request.php');
       const res = await fetch('/buildhub/backend/api/homeowner/submit_request.php', {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
-        credentials: 'include',
-        body: JSON.stringify(submitData)
+        body: JSON.stringify(submitData),
+        credentials: 'include'
       });
+      
+      console.log('📡 Response status:', res.status);
+      console.log('📡 Response ok:', res.ok);
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('❌ HTTP error response:', errorText);
+        throw new Error(`HTTP error! status: ${res.status} - ${errorText}`);
+      }
+      
       const json = await res.json();
-      if (!json.success) { alert(json.message || 'Failed to submit'); return; }
+      console.log('📊 Submit response:', json);
+      
+      if (!json.success) { 
+        console.error('❌ Submit failed:', json.message);
+        toast.error(json.message || 'Failed to submit');
+        return; 
+      }
 
       const requestId = json.request_id;
 
       // 2) If user selected architect(s), send assignment(s)
       if (Array.isArray(data.selected_architect_ids) && data.selected_architect_ids.length > 0) {
+        console.log('📤 Assigning architects:', data.selected_architect_ids);
         try {
+          console.log('🚀 Submitting architect assignment to:', '/buildhub/backend/api/homeowner/assign_architect.php');
           const ares = await fetch('/buildhub/backend/api/homeowner/assign_architect.php', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({
               layout_request_id: requestId,
-              architect_ids: data.selected_architect_ids,
-              message: 'Custom design request from wizard'
-            })
+              architect_ids: data.selected_architect_ids
+            }),
+            credentials: 'include'
           });
+          
+          console.log('📡 Architect assignment response status:', ares.status);
+          console.log('📡 Architect assignment response ok:', ares.ok);
+          
+          if (!ares.ok) {
+            const errorText = await ares.text();
+            console.error('❌ Architect assignment HTTP error:', errorText);
+            throw new Error(`HTTP error! status: ${ares.status} - ${errorText}`);
+          }
+          
           const aj = await ares.json();
-          if (!aj.success) console.warn('Architect assignment warning:', aj.message);
-        } catch (e) { console.warn('Architect assignment failed'); }
+          console.log('📊 Architect assignment response:', aj);
+          
+          if (aj.success) {
+            console.log('✅ Architects assigned successfully');
+          } else {
+            console.warn('⚠️ Architect assignment warning:', aj.message);
+            // Don't fail the entire submission for architect assignment issues
+          }
+        } catch (e) { 
+          console.warn('⚠️ Architect assignment failed:', e.message);
+          // Don't fail the entire submission for architect assignment issues
+        }
+      } else {
+        console.log('ℹ️ No architects selected');
       }
 
       // Show success message
-      window.dispatchEvent && window.dispatchEvent(new CustomEvent('toast', { 
-        detail: { 
-          type: 'success', 
-          message: 'Request submitted successfully! Your custom design request has been created and sent to the selected architects.' 
-        } 
-      }));
-      window.history.back();
-    } catch (e) { alert('Network error'); }
-    finally { setLoading(false); }
+      toast.success('Request submitted successfully! Your custom design request has been created and sent to the selected architects.');
+      
+      // Redirect to homeowner dashboard using React Router
+      navigate('/homeowner-dashboard');
+    } catch (e) { 
+      console.error('Submit error:', e);
+      toast.error('Network error. Please try again.');
+    } finally { 
+      setLoading(false); 
+    }
   }
 
   const header = useMemo(() => ({ title: 'File your Request', subtitle: 'Approx 5–7 minutes' }), []);
@@ -271,6 +754,117 @@ export default function HomeownerRequestWizard() {
     });
   };
 
+  const renderSuggestions = () => {
+    // Removed suggestions banner as requested
+    return null;
+  };
+  
+  const renderFieldErrors = () => {
+    if (Object.keys(fieldErrors).length === 0) return null;
+    
+    return (
+      <div className="validation-errors" style={{
+        backgroundColor: '#f8d7da',
+        border: '1px solid #f5c6cb',
+        borderRadius: '5px',
+        padding: '15px',
+        margin: '15px 0',
+        color: '#721c24'
+      }}>
+        <strong>❌ Errors:</strong>
+        <ul style={{ margin: '10px 0 0 20px' }}>
+          {Object.entries(fieldErrors).map(([field, error]) => (
+            <li key={field}>{error}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+  
+  const renderFieldWarnings = () => {
+    if (Object.keys(fieldWarnings).length === 0) return null;
+    
+    return (
+      <div className="validation-warnings" style={{
+        backgroundColor: '#fff3cd',
+        border: '1px solid #ffeaa7',
+        borderRadius: '5px',
+        padding: '15px',
+        margin: '15px 0',
+        color: '#856404'
+      }}>
+        <h4 style={{ marginTop: 0, marginBottom: '10px' }}>Suggestions</h4>
+        <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
+          {Object.entries(fieldWarnings).map(([field, warning]) => (
+            <li key={field}>{warning}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  // Real-time feedback component
+  const RealTimeFeedback = ({ fieldName, recommendations, errors, warnings }) => {
+    if (!recommendations && !errors && !warnings) return null;
+
+  return (
+      <div className="real-time-feedback" style={{ marginTop: '8px' }}>
+        {/* Real-time recommendations */}
+        {recommendations && recommendations.length > 0 && (
+          <div style={{ marginBottom: '8px' }}>
+            {recommendations.map((rec, index) => (
+              <div 
+                key={index}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  backgroundColor: rec.type === 'warning' ? '#fef3c7' : '#d1fae5',
+                  border: `1px solid ${rec.type === 'warning' ? '#f59e0b' : '#10b981'}`,
+                  color: rec.type === 'warning' ? '#92400e' : '#065f46',
+                  marginBottom: '4px'
+                }}
+              >
+                {rec.type === 'warning' ? '⚠️' : '💡'} {rec.message}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {/* Field errors */}
+        {errors && (
+          <div style={{
+            padding: '6px 12px',
+            borderRadius: '6px',
+            fontSize: '12px',
+            backgroundColor: '#fee2e2',
+            border: '1px solid #f87171',
+            color: '#dc2626',
+            marginBottom: '4px'
+          }}>
+            ❌ {errors}
+          </div>
+        )}
+        
+        {/* Field warnings */}
+        {warnings && (
+          <div style={{
+            padding: '6px 12px',
+            borderRadius: '6px',
+            fontSize: '12px',
+            backgroundColor: '#fef3c7',
+            border: '1px solid #f59e0b',
+            color: '#92400e',
+            marginBottom: '4px'
+          }}>
+            ⚠️ {warnings}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
   return (
     <WizardLayout
       title={header.title}
@@ -283,16 +877,266 @@ export default function HomeownerRequestWizard() {
       {step === 0 && (
         <div className="section">
           <div className="section-header">Preliminary</div>
-          <div className="section-body grid-2">
-            <div className="field">
-              <label>Plot Size (sq ft)</label>
-              <input type="number" value={data.plot_size} onChange={e=>setData({...data, plot_size:e.target.value})} min={100} />
+          
+          {/* Project Analysis Results - Only show with meaningful data AND valid results */}
+          {((data.plot_size && parseFloat(data.plot_size) > 0) || 
+            (data.building_size && parseFloat(data.building_size) > 0) || 
+            (data.budget_range && data.budget_range !== '')) && 
+            (estimatedCost > 0 || (timelineData && timelineData.months > 0) || (plotCategory && plotCategory !== 'unknown')) && (
+            <div style={{
+              backgroundColor: '#f8fafc',
+              border: '2px solid #e2e8f0',
+              borderRadius: '16px',
+              padding: '24px',
+              marginBottom: '24px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+            }}>
+              <h3 style={{ 
+                margin: '0 0 20px 0', 
+                color: '#1e293b', 
+                fontSize: '20px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                📊 Project Analysis
+              </h3>
+              
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                {/* Estimated Budget */}
+                {estimatedCost && estimatedCost > 0 && (
+                  <div style={{
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '14px', color: '#166534', marginBottom: '4px' }}>
+                      💰 Estimated Budget
+                    </div>
+                    <div style={{ fontSize: '24px', fontWeight: '700', color: '#15803d' }}>
+                      ₹{Math.round(estimatedCost).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#16a34a', marginTop: '4px' }}>
+                      Based on your inputs
+                    </div>
+                  </div>
+                )}
+                
+                {/* Timeline Prediction */}
+                {timelineData && timelineData.months && timelineData.months > 0 && (
+                  <div style={{
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #93c5fd',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '14px', color: '#1e40af', marginBottom: '4px' }}>
+                      ⏱️ Estimated Timeline
+                    </div>
+                    <div style={{ fontSize: '24px', fontWeight: '700', color: '#1d4ed8' }}>
+                      {timelineData.months} months
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px' }}>
+                      Project completion
+                    </div>
+                  </div>
+                )}
+                
+                {/* Plot Analysis */}
+                {plotCategory && plotCategory !== 'unknown' && (
+                  <div style={{
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '14px', color: '#92400e', marginBottom: '4px' }}>
+                      📏 Plot Category
+                    </div>
+                    <div style={{ fontSize: '18px', fontWeight: '600', color: '#d97706' }}>
+                      {plotCategory}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#b45309', marginTop: '4px' }}>
+                      Size classification
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* AI Recommendations */}
+              {(estimatedCost > 0 || plotCategory || budgetCategory) && (
+                <div style={{
+                  backgroundColor: '#f0f9ff',
+                  border: '1px solid #0ea5e9',
+                  borderRadius: '12px',
+                  padding: '16px'
+                }}>
+                  <h4 style={{ 
+                    margin: '0 0 12px 0', 
+                    color: '#0c4a6e', 
+                    fontSize: '16px',
+                    fontWeight: '600'
+                  }}>
+                    🤖 AI Recommendations
+                  </h4>
+                  <div style={{ fontSize: '14px', color: '#0c4a6e' }}>
+                    {plotCategory && plotCategory !== 'unknown' && (
+                      <div style={{ 
+                        marginBottom: '8px', 
+                        padding: '8px 12px', 
+                        backgroundColor: '#e0f2fe', 
+                        border: '1px solid #0ea5e9', 
+                        borderRadius: '6px' 
+                      }}>
+                        💡 For {plotCategory} plot size, consider {plotCategory === 'small' ? '[1, 2]' : plotCategory === 'medium' ? '[1, 2, 3]' : plotCategory === 'large' ? '[2, 3, 4]' : plotCategory === 'xlarge' ? '[3, 4, 5, 6]' : '[4, 5, 6]'} floors
+                      </div>
+                    )}
+                    {estimatedCost && estimatedCost > 0 && (
+                      <div style={{ 
+                        marginBottom: '8px', 
+                        padding: '8px 12px', 
+                        backgroundColor: '#e0f2fe', 
+                        border: '1px solid #0ea5e9', 
+                        borderRadius: '6px' 
+                      }}>
+                        💡 Estimated cost: ₹{Math.round(estimatedCost).toLocaleString()} (₹{Math.round(estimatedCost / (data.building_size || 1000))}/sq ft)
+                      </div>
+                    )}
+                    {budgetCategory && budgetCategory !== 'unknown' && (
+                      <div style={{ 
+                        marginBottom: '8px', 
+                        padding: '8px 12px', 
+                        backgroundColor: '#e0f2fe', 
+                        border: '1px solid #0ea5e9', 
+                        borderRadius: '6px' 
+                      }}>
+                        💡 Recommended materials for {budgetCategory} budget
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="field">
-              <label>Budget Range (₹)</label>
+          )}
+          
+          <div className="section-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '8px', display: 'block' }}>
+                📏 Plot Size
+              </label>
+              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
+                Enter your plot size to get accurate budget and timeline estimates
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: '#f9fafb', padding: '20px', borderRadius: '12px', border: '2px solid #e5e7eb' }}>
+              <input 
+                type="number" 
+                value={data.plot_size} 
+                  onChange={e => {
+                    const newValue = e.target.value;
+                    setData(prev => ({...prev, plot_size: newValue}));
+                  }} 
+                  min={1} 
+                  placeholder="Enter plot size (e.g., 10 for 10 cents)"
+                  style={{ 
+                    flex: 1,
+                    padding: '18px 24px', 
+                    fontSize: '20px', 
+                    fontWeight: '600',
+                    border: fieldErrors.plot_size ? '2px solid #dc2626' : '2px solid #d1d5db', 
+                    borderRadius: '8px',
+                    backgroundColor: 'white',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <select
+                  value={data.plot_unit || 'cents'}
+                  onChange={e => setData(prev => ({...prev, plot_unit: e.target.value}))}
+                  style={{ 
+                    padding: '12px 8px', 
+                    fontSize: '14px', 
+                    fontWeight: '500',
+                    border: '2px solid #e5e7eb', 
+                    borderRadius: '8px',
+                    minWidth: '80px',
+                    maxWidth: '90px',
+                    backgroundColor: 'white'
+                  }}
+                >
+                  <option value="cents">Cents</option>
+                  <option value="acres">Acres</option>
+                  <option value="sqft">Sq Ft</option>
+                </select>
+            </div>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
+                {data.plot_size && data.plot_unit && (
+                  <span>
+                    {data.plot_unit === 'cents' && `${data.plot_size} cents = ${(data.plot_size * 435.6).toFixed(0)} sq ft`}
+                    {data.plot_unit === 'acres' && `${data.plot_size} acres = ${(data.plot_size * 43560).toFixed(0)} sq ft`}
+                    {data.plot_unit === 'sqft' && `${data.plot_size} sq ft`}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '8px', display: 'block' }}>
+                🏠 Building Size
+              </label>
+              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
+                Enter your desired building size in square feet
+              </div>
+              <div style={{ backgroundColor: '#f9fafb', padding: '20px', borderRadius: '12px', border: '2px solid #e5e7eb' }}>
+              <input 
+                type="number" 
+                value={data.building_size} 
+                  onChange={e => {
+                    const newValue = e.target.value;
+                    setData(prev => ({...prev, building_size: newValue}));
+                  }} 
+                min={100} 
+                  placeholder="Enter building size in square feet (e.g., 2000)"
+                  style={{ 
+                    width: '100%', 
+                    padding: '16px 20px', 
+                    fontSize: '18px', 
+                    fontWeight: '500',
+                    border: '2px solid #d1d5db', 
+                    borderRadius: '8px',
+                    backgroundColor: 'white',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+              </div>
+            </div>
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '8px', display: 'block' }}>
+                💰 Budget Range
+              </label>
+              <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
+                Select your budget range for the project
+              </div>
               <select
                 value={data.budget_range}
-                onChange={e=>setData({...data, budget_range:e.target.value})}
+                onChange={e => setData({...data, budget_range: e.target.value})}
+                style={{ 
+                  width: '100%', 
+                  padding: '16px 20px', 
+                  fontSize: '18px', 
+                  fontWeight: '500',
+                  border: fieldErrors.budget_range ? '2px solid #dc2626' : '2px solid #e5e7eb', 
+                  borderRadius: '8px',
+                  backgroundColor: 'white',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                }}
               >
                 <option value="">Select budget range</option>
                 <option value="5-10 Lakhs">₹5-10 Lakhs</option>
@@ -306,19 +1150,57 @@ export default function HomeownerRequestWizard() {
                 <option value="5+ Crores">₹5+ Crores</option>
                 <option value="Custom">Custom Amount</option>
               </select>
+              
               {data.budget_range === 'Custom' && (
-                <input
-                  type="number"
-                  placeholder="Enter custom budget amount in rupees"
-                  value={data.custom_budget || ''}
-                  onChange={e=>setData({...data, custom_budget:e.target.value})}
-                  min="0"
-                  step="10000"
-                  style={{marginTop: '8px'}}
-                />
-              )}
+                <div style={{ marginTop: '16px' }}>
+              <input 
+                type="number" 
+                value={data.custom_budget} 
+                    onChange={e => setData({...data, custom_budget: e.target.value})} 
+                    placeholder="Enter custom budget amount in rupees"
+                    style={{ 
+                      width: '100%', 
+                      padding: '16px 20px', 
+                      fontSize: '18px', 
+                      fontWeight: '500',
+                      border: '2px solid #e5e7eb', 
+                      borderRadius: '8px',
+                      backgroundColor: 'white',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+        </div>
+      )}
             </div>
-          </div>
+            <div className="field">
+              <label>Location</label>
+              <SearchableDropdown
+                options={indianCities}
+                value={data.location}
+                onChange={(value) => setData({...data, location: value})}
+                placeholder="Select or type your city"
+                style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px' }}
+              />
+            </div>
+            <div className="field">
+              <label>Timeline</label>
+              <select
+                value={data.timeline}
+                onChange={e=>setData({...data, timeline:e.target.value})}
+                style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px' }}
+              >
+                <option value="">Select timeline</option>
+                <option value="1-3 months">1-3 months</option>
+                <option value="3-6 months">3-6 months</option>
+                <option value="6-12 months">6-12 months</option>
+                <option value="1-2 years">1-2 years</option>
+                <option value="2+ years">2+ years</option>
+                <option value="Flexible">Flexible</option>
+              </select>
+            </div>
+            
+            </div>
+          
           <div className="wizard-footer">
             <button className="btn btn-primary" onClick={next}>Next</button>
           </div>
@@ -328,30 +1210,59 @@ export default function HomeownerRequestWizard() {
       {step === 1 && (
         <div className="section">
           <div className="section-header">Site Details</div>
-          <div className="section-body grid-2">
+          <div className="section-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
             <div className="field">
               <label>Plot Shape</label>
               <select
                 value={data.plot_shape}
                 onChange={e=>setData({...data, plot_shape:e.target.value})}
+                style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px' }}
               >
                 <option value="">Select plot shape</option>
                 <option value="Rectangular">Rectangular</option>
                 <option value="Square">Square</option>
                 <option value="L-shaped">L-shaped</option>
-                <option value="U-shaped">U-shaped</option>
-                <option value="Triangular">Triangular</option>
                 <option value="Irregular">Irregular</option>
-                <option value="Corner Plot">Corner Plot</option>
-                <option value="Trapezoidal">Trapezoidal</option>
-                <option value="Other">Other</option>
+                <option value="Corner">Corner</option>
+              </select>
+                </div>
+            <div className="field">
+              <label>Topography</label>
+              <select
+                value={data.topography}
+                onChange={e=>setData({...data, topography:e.target.value})}
+                style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px' }}
+              >
+                <option value="">Select topography</option>
+                <option value="Flat">Flat</option>
+                <option value="Sloping">Sloping</option>
+                <option value="Hilly">Hilly</option>
+                <option value="Waterfront">Waterfront</option>
               </select>
             </div>
             <div className="field">
               <label>Number of Floors</label>
               <select
                 value={data.num_floors}
-                onChange={e=>setData({...data, num_floors:e.target.value})}
+                onChange={e => {
+                  const newNumFloors = e.target.value;
+                  // Reassign rooms to floors when number of floors changes
+                  const currentRooms = Array.isArray(data.rooms) ? data.rooms : [];
+                  const newFloorAssignments = autoAssignRoomsToFloors(currentRooms);
+                  
+                  setData({
+                    ...data, 
+                    num_floors: newNumFloors,
+                    floor_rooms: newFloorAssignments
+                  });
+                }}
+                style={{ 
+                  width: '100%', 
+                  padding: '12px 16px', 
+                  fontSize: '16px', 
+                  border: fieldErrors.num_floors ? '2px solid #dc2626' : '2px solid #e5e7eb', 
+                  borderRadius: '8px' 
+                }}
               >
                 <option value="">Select number of floors</option>
                 <option value="1">1 Floor (Ground Floor Only)</option>
@@ -361,122 +1272,110 @@ export default function HomeownerRequestWizard() {
                 <option value="5">5 Floors (G+4)</option>
                 <option value="6+">6+ Floors</option>
               </select>
-            </div>
-          </div>
-          <div className="section-body grid-2">
-            <div className="field">
-              <label>Topography</label>
-              <select
-                value={data.topography}
-                onChange={e=>setData({...data, topography:e.target.value})}
-              >
-                <option value="">Select topography</option>
-                <option value="Flat">Flat</option>
-                <option value="Slightly Sloped">Slightly Sloped</option>
-                <option value="Moderately Sloped">Moderately Sloped</option>
-                <option value="Steeply Sloped">Steeply Sloped</option>
-                <option value="Rocky">Rocky</option>
-                <option value="Sandy">Sandy</option>
-                <option value="Clayey">Clayey</option>
-                <option value="Mixed Terrain">Mixed Terrain</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="field">
-              <label>Local Development Laws / Restrictions</label>
-              <input value={data.development_laws} onChange={e=>setData({...data, development_laws:e.target.value})} placeholder="Setbacks, FSI/FAR, height limits" />
-            </div>
-          </div>
-          
-          {/* Site Images Section */}
-          <div className="field" style={{ marginTop: '24px' }}>
-            <label>Site Images</label>
-            <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '16px'}}>
-              Upload photos of your site, plot, or any relevant images that show the current condition, 
-              surroundings, or specific features of your property. This helps architects understand your site better.
-            </p>
-            <div className="image-upload-area">
-              <input
-                type="file"
-                id="site-images"
-                multiple
-                accept="image/*"
-                onChange={async (e) => {
-                  const files = Array.from(e.target.files);
-                  if (files.length === 0) return;
-                  
-                  // Upload files to server
-                  const formData = new FormData();
-                  files.forEach(file => {
-                    formData.append('site_images[]', file);
-                  });
-                  
-                  try {
-                    const response = await fetch('/buildhub/backend/api/upload_site_images.php', {
-                      method: 'POST',
-                      body: formData,
-                      credentials: 'include'
-                    });
-                    
-                    const result = await response.json();
-                    if (result.success) {
-                      const newImages = result.images.map(img => ({
-                        id: img.id,
-                        file: null, // Don't store file object for uploaded images
-                        name: img.name,
-                        size: img.size,
-                        url: img.url
-                      }));
-                      
-                      setData(prev => ({
-                        ...prev,
-                        site_images: [...(prev.site_images || []), ...newImages]
-                      }));
-                    } else {
-                      alert('Failed to upload images: ' + result.message);
-                    }
-                  } catch (error) {
-                    console.error('Upload error:', error);
-                    alert('Failed to upload images. Please try again.');
-                  }
-                }}
-                style={{display: 'none'}}
-              />
-              <label htmlFor="site-images" className="upload-button">
-                <span className="upload-icon">📷</span>
-                <span>Choose Site Images</span>
-              </label>
-            </div>
-            
-            {data.site_images && data.site_images.length > 0 && (
-              <div className="uploaded-images">
-                <h4 style={{margin: '16px 0 8px 0', fontSize: '14px', fontWeight: '600'}}>Uploaded Site Images:</h4>
-                <div className="image-grid">
-                  {data.site_images.map((image, index) => (
-                    <div key={image.id} className="image-item">
-                      <img src={image.url} alt={image.name} />
-                      <div className="image-info">
-                        <span className="image-name">{image.name}</span>
-                        <span className="image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="remove-image-btn"
-                        onClick={() => {
-                          setData(prev => ({
-                            ...prev,
-                            site_images: prev.site_images.filter(img => img.id !== image.id)
-                          }));
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+              {fieldErrors.num_floors && (
+                <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>
+                  {fieldErrors.num_floors}
                 </div>
+              )}
+              {fieldWarnings.num_floors && (
+                <div style={{ color: '#856404', fontSize: '14px', marginTop: '5px' }}>
+                  {fieldWarnings.num_floors}
+                </div>
+              )}
+              {suggestions.num_floors && (
+                <div style={{ color: '#007bff', fontSize: '14px', marginTop: '5px' }}>
+                  💡 {suggestions.num_floors}
+                </div>
+              )}
+              {data.budget_range && (
+                <div style={{ 
+                  color: '#059669', 
+                  fontSize: '12px', 
+                  marginTop: '5px',
+                  backgroundColor: '#f0fdf4',
+                  padding: '6px 8px',
+                  borderRadius: '4px',
+                  border: '1px solid #bbf7d0'
+                }}>
+                  💰 <strong>Budget-based Floor Limit:</strong> Your {data.budget_range} budget allows up to {budgetCategory === 'low' ? '1' : budgetCategory === 'medium' ? '2' : budgetCategory === 'high' ? '3' : budgetCategory === 'premium' ? '4' : budgetCategory === 'luxury' ? '6' : '3'} floor{budgetCategory === 'low' ? '' : 's'}
+            </div>
+              )}
+          </div>
+            <div className="field">
+              <label>Development Laws</label>
+              <select
+                value={data.development_laws}
+                onChange={e=>setData({...data, development_laws:e.target.value})}
+                style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px' }}
+              >
+                <option value="">Select development laws</option>
+                <option value="Standard">Standard</option>
+                <option value="Restricted">Restricted</option>
+                <option value="Heritage">Heritage</option>
+                <option value="Coastal">Coastal</option>
+                <option value="Hill Station">Hill Station</option>
+              </select>
+                </div>
+            </div>
+          
+          {/* ML Suggestions for Site Details Page */}
+          {(estimatedCost > 0 || plotCategory || budgetCategory) && (
+            <div style={{
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ margin: '0 0 16px 0', color: '#166534', fontSize: '18px' }}>
+                🤖 AI Suggestions
+              </h3>
+              <div style={{ fontSize: '14px', color: '#166534' }}>
+                {plotCategory && plotCategory !== 'unknown' && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 For {plotCategory} plot size, consider {plotCategory === 'small' ? '[1, 2]' : plotCategory === 'medium' ? '[1, 2, 3]' : plotCategory === 'large' ? '[2, 3, 4]' : plotCategory === 'xlarge' ? '[3, 4, 5, 6]' : '[4, 5, 6]'} floors
+                </div>
+              )}
+                {estimatedCost && estimatedCost > 0 && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 Estimated cost: ₹{Math.round(estimatedCost).toLocaleString()} (₹{Math.round(estimatedCost / (data.building_size || 1000))}/sq ft)
+            </div>
+                )}
+                {budgetCategory && budgetCategory !== 'unknown' && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 Recommended materials for {budgetCategory} budget
+            </div>
+                )}
+          </div>
+            </div>
+          )}
+          
+          {/* Validation Summary for Site Details Page */}
+          {(fieldErrors.num_floors || fieldWarnings.num_floors) && (
+            <div style={{
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ margin: '0 0 16px 0', color: '#1e293b', fontSize: '18px' }}>
+                🏗️ Site Details Validation
+              </h3>
+              
+              {fieldErrors.num_floors && (
+                <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', color: '#dc2626' }}>
+                  ❌ Number of Floors: {fieldErrors.num_floors}
+            </div>
+              )}
+              {fieldWarnings.num_floors && (
+                <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#fffbeb', border: '1px solid #fed7aa', borderRadius: '4px', color: '#d97706' }}>
+                  ⚠️ Number of Floors: {fieldWarnings.num_floors}
               </div>
             )}
           </div>
+          )}
+          
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
             <button className="btn btn-primary" onClick={next}>Next</button>
@@ -486,303 +1385,870 @@ export default function HomeownerRequestWizard() {
 
       {step === 2 && (
         <div className="section">
-          <div className="section-header">Family</div>
-          <div className="section-body grid-2">
+          <div className="section-header">Family Needs</div>
+          <div className="section-body">
             <div className="field">
-              <label>Family Needs</label>
-              <div className="interactive-options">
+              <label style={{ 
+                fontSize: '20px', 
+                fontWeight: '700', 
+                color: '#1f2937', 
+                marginBottom: '24px',
+                display: 'block',
+                textAlign: 'center'
+              }}>
+                🏠 Select Room Requirements
+              </label>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '16px',
+                padding: '20px',
+                backgroundColor: '#f8fafc',
+                borderRadius: '16px',
+                border: '2px solid #e2e8f0',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+              }}>
                 {[
-                  { key: 'Elder-friendly', label: 'Elder-friendly', icon: '👴' },
-                  { key: 'Work-from-home', label: 'Work-from-home', icon: '💻' },
-                  { key: 'Kids play area', label: 'Kids play area', icon: '🧸' },
-                  { key: 'Pet-friendly', label: 'Pet-friendly', icon: '🐕' },
-                  { key: 'Wheelchair accessible', label: 'Wheelchair accessible', icon: '♿' },
-                  { key: 'Home office', label: 'Home office', icon: '🏢' },
-                  { key: 'Guest accommodation', label: 'Guest accommodation', icon: '🛏️' },
-                  { key: 'Storage space', label: 'Storage space', icon: '📦' },
-                  { key: 'Garden/Outdoor space', label: 'Garden/Outdoor space', icon: '🌿' },
-                  { key: 'Security features', label: 'Security features', icon: '🔒' },
-                  { key: 'Energy efficient', label: 'Energy efficient', icon: '⚡' },
-                  { key: 'Low maintenance', label: 'Low maintenance', icon: '🔧' }
-                ].map(option => (
+                  { key: 'master_bedroom', label: 'Master Bedroom', icon: '👑', category: 'Essential' },
+                  { key: 'bedrooms', label: 'Bedrooms', icon: '🛏️', category: 'Essential' },
+                  { key: 'bathrooms', label: 'Bathrooms', icon: '🚿', category: 'Essential' },
+                  { key: 'attached_bathroom', label: 'Attached Bathroom', icon: '🚿', category: 'Luxury' },
+                  { key: 'kitchen', label: 'Kitchen', icon: '🍳', category: 'Essential' },
+                  { key: 'living_room', label: 'Living Room', icon: '🛋️', category: 'Essential' },
+                  { key: 'dining_room', label: 'Dining Room', icon: '🍽️', category: 'Essential' },
+                  { key: 'study_room', label: 'Study Room', icon: '📚', category: 'Optional' },
+                  { key: 'prayer_room', label: 'Prayer Room', icon: '🕉️', category: 'Optional' },
+                  { key: 'guest_room', label: 'Guest Room', icon: '🏠', category: 'Optional' },
+                  { key: 'store_room', label: 'Store Room', icon: '📦', category: 'Utility' },
+                  { key: 'balcony', label: 'Balcony', icon: '🌅', category: 'Luxury' },
+                  { key: 'terrace', label: 'Terrace', icon: '🏞️', category: 'Luxury' },
+                  { key: 'garage', label: 'Garage', icon: '🚗', category: 'Utility' }
+                ].map(option => {
+                  const isSelected = Array.isArray(data.rooms) && data.rooms.includes(option.key);
+                  
+                  return (
                   <button
                     key={option.key}
                     type="button"
-                    className={`interactive-option ${Array.isArray(data.family_needs) && data.family_needs.includes(option.key) ? 'selected' : ''}`}
                     onClick={() => {
-                      const currentNeeds = Array.isArray(data.family_needs) ? data.family_needs : [];
-                      const newNeeds = currentNeeds.includes(option.key)
-                        ? currentNeeds.filter(item => item !== option.key)
-                        : [...currentNeeds, option.key];
-                      setData({...data, family_needs: newNeeds});
-                    }}
-                  >
-                    <span className="option-icon">{option.icon}</span>
-                    <span className="option-label">{option.label}</span>
-                    {Array.isArray(data.family_needs) && data.family_needs.includes(option.key) && (
-                      <span className="option-check">✓</span>
+                        const currentRooms = Array.isArray(data.rooms) ? data.rooms : [];
+                        const newRooms = currentRooms.includes(option.key)
+                          ? currentRooms.filter(item => item !== option.key)
+                          : [...currentRooms, option.key];
+                        
+                        // Auto-assign rooms to floors based on logical constraints
+                        const newFloorAssignments = autoAssignRoomsToFloors(newRooms);
+                        
+                        setData({
+                          ...data, 
+                          rooms: newRooms,
+                          floor_rooms: newFloorAssignments
+                        });
+                      }}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '20px 16px',
+                        backgroundColor: isSelected ? '#dbeafe' : 'white',
+                        border: isSelected ? '3px solid #3b82f6' : '2px solid #e5e7eb',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        position: 'relative',
+                        minHeight: '120px',
+                        boxShadow: isSelected ? '0 8px 25px -5px rgba(59, 130, 246, 0.3)' : '0 2px 4px rgba(0, 0, 0, 0.1)',
+                        transform: isSelected ? 'translateY(-2px)' : 'translateY(0)',
+                        fontSize: '16px',
+                        fontWeight: '600'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.target.style.backgroundColor = '#f1f5f9';
+                          e.target.style.borderColor = '#94a3b8';
+                          e.target.style.transform = 'translateY(-1px)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.target.style.backgroundColor = 'white';
+                          e.target.style.borderColor = '#e5e7eb';
+                          e.target.style.transform = 'translateY(0)';
+                        }
+                      }}
+                    >
+                      {/* Category Badge */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        backgroundColor: option.category === 'Essential' ? '#dcfce7' : 
+                                        option.category === 'Luxury' ? '#fef3c7' : 
+                                        option.category === 'Utility' ? '#e0e7ff' : '#f3f4f6',
+                        color: option.category === 'Essential' ? '#166534' : 
+                               option.category === 'Luxury' ? '#92400e' : 
+                               option.category === 'Utility' ? '#3730a3' : '#6b7280',
+                        border: '1px solid',
+                        borderColor: option.category === 'Essential' ? '#bbf7d0' : 
+                                     option.category === 'Luxury' ? '#fde68a' : 
+                                     option.category === 'Utility' ? '#c7d2fe' : '#d1d5db'
+                      }}>
+                        {option.category}
+                      </div>
+                      
+                      {/* Icon */}
+                      <div style={{
+                        fontSize: '32px',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        {option.icon}
+                      </div>
+                      
+                      {/* Label */}
+                      <div style={{
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: '#374151',
+                        textAlign: 'center',
+                        lineHeight: '1.3',
+                        marginBottom: '4px'
+                      }}>
+                        {option.label}
+                      </div>
+                      
+                      {/* Selection Indicator */}
+                      {isSelected && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '8px',
+                          left: '8px',
+                          width: '24px',
+                          height: '24px',
+                          backgroundColor: '#3b82f6',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontSize: '14px',
+                          fontWeight: '700',
+                          boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+                        }}>
+                          ✓
+                        </div>
                     )}
                   </button>
+                  );
+                })}
+              </div>
+              
+              {/* Selection Summary */}
+              {Array.isArray(data.rooms) && data.rooms.length > 0 && (
+                <div style={{
+                  marginTop: '20px',
+                  padding: '16px',
+                  backgroundColor: '#f0f9ff',
+                  border: '2px solid #0ea5e9',
+                  borderRadius: '12px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: '#0c4a6e',
+                    marginBottom: '8px'
+                  }}>
+                    ✅ {data.rooms.length} Room{data.rooms.length !== 1 ? 's' : ''} Selected
+                  </div>
+                  <div style={{
+                    fontSize: '14px',
+                    color: '#0369a1',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    justifyContent: 'center'
+                  }}>
+                    {data.rooms.map(room => (
+                      <span key={room} style={{
+                        backgroundColor: '#bae6fd',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500'
+                      }}>
+                        {room.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </span>
                 ))}
               </div>
             </div>
-            <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <label>Room Planning by Floor</label>
-              <div className="compact-floor-planning">
-                {(() => {
-                  const numFloors = parseInt(data.num_floors) || 1;
-                  const floors = Array.from({ length: numFloors }, (_, i) => i + 1);
+              )}
+            </div>
 
-                  return floors.map(floorNum => {
-                    const floorKey = `floor${floorNum}`;
-                    const isExpanded = data.expandedFloors?.[floorNum] ?? (floorNum === 1); // Expand first floor by default
-                    
-                    return (
-                      <div key={floorNum} className="compact-floor-section">
+            {/* Floor-wise Room Planning - Show when floors are selected */}
+            {data.num_floors && parseInt(data.num_floors) >= 1 && (
+              <div style={{ 
+                marginTop: '32px',
+                padding: '24px',
+                backgroundColor: '#ffffff',
+                border: '2px solid #e2e8f0',
+                borderRadius: '16px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '24px',
+                  paddingBottom: '16px',
+                  borderBottom: '2px solid #f1f5f9'
+                }}>
+                  <h4 style={{ 
+                    margin: 0, 
+                    fontSize: '20px', 
+                    fontWeight: '700', 
+                    color: '#1f2937',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    🏗️ Floor-wise Room Planning
+                  </h4>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span style={{ 
+                      fontSize: '14px', 
+                      color: '#059669',
+                      backgroundColor: '#f0fdf4',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontWeight: '600',
+                      border: '1px solid #bbf7d0'
+                    }}>
+                      📊 {data.num_floors} Floor{data.num_floors !== '1' ? 's' : ''} Total
+                    </span>
+              {(() => {
+                      const totalImages = Array.from({ length: parseInt(data.num_floors) || 0 }, (_, index) => {
+                        const floorKey = `floor${index + 1}`;
+                        const floorImages = data.room_images?.[floorKey] || {};
+                        return Object.values(floorImages).reduce((sum, roomImages) => sum + (roomImages?.length || 0), 0);
+                      }).reduce((sum, count) => sum + count, 0);
+                      
+                      return totalImages > 0 ? (
+                        <span style={{ 
+                          fontSize: '12px', 
+                          color: '#059669',
+                          backgroundColor: '#f0fdf4',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #bbf7d0'
+                        }}>
+                          📷 {totalImages} Images
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', 
+                  gap: '20px' 
+                }}>
+                  {Array.from({ length: parseInt(data.num_floors) || 0 }, (_, index) => {
+                    const floorNumber = index + 1;
+                    const floorKey = `floor${floorNumber}`;
+                    const isExpanded = data.expandedFloors?.[floorNumber] || (floorNumber === 1);
+
+                return (
+                      <div key={floorKey} style={{
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '12px',
+                        padding: '20px',
+                        backgroundColor: isExpanded ? '#f8fafc' : '#ffffff',
+                        boxShadow: isExpanded ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : '0 1px 3px rgba(0, 0, 0, 0.1)',
+                        transition: 'all 0.3s ease'
+                      }}>
                         <div 
-                          className="floor-header"
-                          onClick={() => {
-                            setData(prev => ({
-                              ...prev,
-                              expandedFloors: {
-                                ...prev.expandedFloors,
-                                [floorNum]: !isExpanded
-                              }
-                            }));
+                          style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            marginBottom: isExpanded ? '20px' : '0',
+                            padding: '12px',
+                            backgroundColor: floorNumber === 1 ? '#dbeafe' : '#f0fdf4',
+                            borderRadius: '8px',
+                            border: `2px solid ${floorNumber === 1 ? '#3b82f6' : '#10b981'}`
                           }}
+                          onClick={() => setData(prev => ({
+                            ...prev,
+                            expandedFloors: {
+                              ...prev.expandedFloors,
+                              [floorNumber]: !isExpanded
+                            }
+                          }))}
                         >
-                          <div className="floor-title">
-                            <span className="floor-icon">🏢</span>
-                            <span>{floorNum === 1 ? 'Ground Floor' : `Floor ${floorNum}`}</span>
-                          </div>
-                          <div className="floor-summary">
-                            {(() => {
-                              const floorData = data.floor_rooms[floorKey] || {};
-                              const totalRooms = Object.values(floorData).reduce((sum, count) => sum + count, 0);
-                              const roomSummary = Object.entries(floorData)
-                                .filter(([_, count]) => count > 0)
-                                .map(([roomType, count]) => {
-                                  const room = roomTypes.find(r => r.key === roomType);
-                                  // Only include rooms that are available for this floor
-                                  if (floorNum === 1 && room?.excludeFromGroundFloor) {
-                                    return null;
-                                  }
-                                  return `${room?.short || roomType}: ${count}`;
-                                })
-                                .filter(Boolean)
-                                .join(', ');
-                              return totalRooms > 0 ? roomSummary : 'No rooms specified';
-                            })()}
-                          </div>
-                          <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
-                        </div>
-                        
+                          <h5 style={{ 
+                            margin: 0, 
+                            fontSize: '16px', 
+                            fontWeight: '700',
+                            color: floorNumber === 1 ? '#1e40af' : '#047857',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            {floorNumber === 1 ? '🏠 Ground Floor' : `🏢 Floor ${floorNumber}`}
+                          </h5>
+                          <span style={{ 
+                            fontSize: '18px',
+                            color: floorNumber === 1 ? '#1e40af' : '#047857',
+                            fontWeight: '700'
+                          }}>
+                            {isExpanded ? '▼' : '▶'}
+                          </span>
+                    </div>
+
                         {isExpanded && (
-                          <div className="room-planning-grid">
-                            <div className="room-planning-header">
-                              <span className="room-type-label">Room Type</span>
-                              <span className="quantity-label">Quantity</span>
-                            </div>
-                            {roomTypes
-                              .filter(roomType => {
-                                // Exclude balcony and terrace from ground floor
-                                if (floorNum === 1 && roomType.excludeFromGroundFloor) {
-                                  return false;
-                                }
-                                return true;
-                              })
-                              .map(roomType => {
-                                const currentValue = data.floor_rooms[floorKey]?.[roomType.key] || 0;
-                              
-                              return (
-                                <div key={roomType.key} className="room-planning-item">
-                                  <div className="room-info">
-                                    <span className="room-icon">{roomType.icon}</span>
-                                    <div className="room-details">
-                                      <span className="room-name">{roomType.label}</span>
-                                      <span className="room-limit">(Max: {roomType.max})</span>
-                                    </div>
-                                  </div>
-                        <div className="quantity-selector">
-                          <button
-                            type="button"
-                            className="quantity-btn decrease"
-                            onClick={() => {
-                              const newValue = Math.max(0, currentValue - 1);
-                              setData(prev => ({
-                                ...prev,
-                                floor_rooms: {
-                                  ...prev.floor_rooms,
-                                  [floorKey]: {
-                                    ...prev.floor_rooms[floorKey],
-                                    [roomType.key]: newValue
-                                  }
-                                }
-                              }));
-                            }}
-                            disabled={currentValue === 0}
-                            title="Decrease quantity"
-                          >
-                            Remove
-                          </button>
-                          <div className="quantity-display">
-                            <span className="quantity-number">{currentValue}</span>
-                            <span className="quantity-text">rooms</span>
-                          </div>
-                          <button
-                            type="button"
-                            className="quantity-btn increase"
-                            onClick={() => {
-                              const newValue = Math.min(roomType.max, currentValue + 1);
-                              setData(prev => ({
-                                ...prev,
-                                floor_rooms: {
-                                  ...prev.floor_rooms,
-                                  [floorKey]: {
-                                    ...prev.floor_rooms[floorKey],
-                                    [roomType.key]: newValue
-                                  }
-                                }
-                              }));
-                            }}
-                            disabled={currentValue >= roomType.max}
-                            title="Add more rooms"
-                          >
-                            Add
-                          </button>
-                        </div>
-                        
-                        {/* Room-specific image upload */}
-                        <div className="room-image-upload">
-                          <input
-                            type="file"
-                            id={`room-images-${roomType.key}-${floorNum}`}
-                            multiple
-                            accept="image/*"
-                            onChange={async (e) => {
-                              const files = Array.from(e.target.files);
-                              if (files.length === 0) return;
-                              
-                              // Upload files to server
-                              const formData = new FormData();
-                              files.forEach(file => {
-                                formData.append('room_images[]', file);
-                              });
-                              
-                              try {
-                                const response = await fetch('/buildhub/backend/api/upload_room_images.php', {
-                                  method: 'POST',
-                                  body: formData,
-                                  credentials: 'include'
-                                });
+                          <div style={{ display: 'grid', gap: '12px' }}>
+                            {/* Room Count Inputs with Individual Image Uploads */}
+                            {data.rooms && data.rooms.length > 0 ? (
+                              data.rooms.map(roomType => {
+                                const roomKey = roomType;
+                                const currentCount = data.floor_rooms?.[floorKey]?.[roomKey] || 0;
+                                const roomImages = data.room_images?.[floorKey]?.[roomKey] || [];
+                                const isRoomExpanded = data.expandedRoomImages?.[floorKey]?.[roomKey] || false;
                                 
-                                const result = await response.json();
-                                if (result.success) {
-                                  const newImages = result.images.map(img => ({
-                                    ...img,
-                                    floor: floorNum // Add floor information
-                                  }));
-                                  
-                                  setData(prev => ({
-                                    ...prev,
-                                    room_images: {
-                                      ...prev.room_images,
-                                      [`floor${floorNum}`]: {
-                                        ...prev.room_images[`floor${floorNum}`],
-                                        [roomType.key]: [...(prev.room_images[`floor${floorNum}`]?.[roomType.key] || []), ...newImages]
-                                      }
-                                    }
-                                  }));
-                                } else {
-                                  alert('Failed to upload room images: ' + result.message);
-                                }
-                              } catch (error) {
-                                console.error('Error uploading room images:', error);
-                                alert('Failed to upload room images. Please try again.');
-                              }
-                            }}
-                            style={{display: 'none'}}
-                          />
-                          <label 
-                            htmlFor={`room-images-${roomType.key}-${floorNum}`} 
-                            className="room-image-btn"
-                            title={`Upload reference images for ${roomType.label} on Floor ${floorNum}`}
-                          >
-                            <span className="room-image-icon">📷</span>
-                            <span className="room-image-text">Add Images</span>
-                          </label>
-                          
-                          {/* Show uploaded images count and manage button */}
-                          {data.room_images[`floor${floorNum}`]?.[roomType.key] && data.room_images[`floor${floorNum}`][roomType.key].length > 0 && (
-                            <div className="room-images-count">
-                              <span>{data.room_images[`floor${floorNum}`][roomType.key].length} image(s)</span>
-                              <button
-                                type="button"
-                                className="manage-images-btn"
-                                onClick={() => {
-                                  // Toggle expanded state for this room type on this floor
-                                  setData(prev => ({
-                                    ...prev,
-                                    expandedRoomImages: {
-                                      ...prev.expandedRoomImages,
-                                      [`floor${floorNum}`]: {
-                                        ...prev.expandedRoomImages[`floor${floorNum}`],
-                                        [roomType.key]: !prev.expandedRoomImages?.[`floor${floorNum}`]?.[roomType.key]
-                                      }
-                                    }
-                                  }));
-                                }}
-                              >
-                                {data.expandedRoomImages?.[`floor${floorNum}`]?.[roomType.key] ? 'Hide' : 'Manage'}
-                              </button>
-                            </div>
-                          )}
-                          
-                          {/* Expanded room images management */}
-                          {data.expandedRoomImages?.[`floor${floorNum}`]?.[roomType.key] && data.room_images[`floor${floorNum}`]?.[roomType.key] && (
-                            <div className="room-images-preview">
-                              {data.room_images[`floor${floorNum}`][roomType.key].map((image, index) => (
-                                <div key={image.id} className="room-image-preview">
-                                  <img src={image.url} alt={image.name} />
-                                  <div className="room-image-preview-info">
-                                    <span className="image-name">{image.name}</span>
-                                    <span className="floor-indicator">Floor {floorNum}</span>
-                                    <button
-                                      type="button"
-                                      className="remove-image-btn"
-                                      onClick={() => {
+                            return (
+                                  <div key={roomType} style={{
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '6px',
+                                    padding: '8px',
+                                    backgroundColor: '#ffffff',
+                                    marginBottom: '8px'
+                                  }}>
+                                    {/* Room Header with Count Controls */}
+                                    <div style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      marginBottom: '8px'
+                                    }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '16px' }}>
+                                          {[
+                                            { key: 'master_bedroom', icon: '👑' },
+                                            { key: 'bedrooms', icon: '🛏️' },
+                                            { key: 'bathrooms', icon: '🚿' },
+                                            { key: 'attached_bathroom', icon: '🚿' },
+                                            { key: 'kitchen', icon: '🍳' },
+                                            { key: 'living_room', icon: '🛋️' },
+                                            { key: 'dining_room', icon: '🍽️' },
+                                            { key: 'study_room', icon: '📚' },
+                                            { key: 'prayer_room', icon: '🕉️' },
+                                            { key: 'guest_room', icon: '🏠' },
+                                            { key: 'store_room', icon: '📦' },
+                                            { key: 'balcony', icon: '🌅' },
+                                            { key: 'terrace', icon: '🏞️' },
+                                            { key: 'garage', icon: '🚗' }
+                                          ].find(r => r.key === roomType)?.icon || '🏠'}
+                                        </span>
+                                        <span style={{ fontSize: '12px', fontWeight: '500' }}>
+                                          {roomType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                        </span>
+                                        {roomImages.length > 0 && (
+                                          <span style={{ 
+                                            fontSize: '10px', 
+                                            color: '#059669',
+                                            backgroundColor: '#f0fdf4',
+                                            padding: '2px 4px',
+                                            borderRadius: '2px'
+                                          }}>
+                                            📷 {roomImages.length}
+                                          </span>
+                                        )}
+                                  </div>
+                                      
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '16px' }}>
+                                          {[
+                                            { key: 'master_bedroom', icon: '👑' },
+                                            { key: 'bedrooms', icon: '🛏️' },
+                                            { key: 'bathrooms', icon: '🚿' },
+                                            { key: 'attached_bathroom', icon: '🚿' },
+                                            { key: 'kitchen', icon: '🍳' },
+                                            { key: 'living_room', icon: '🛋️' },
+                                            { key: 'dining_room', icon: '🍽️' },
+                                            { key: 'study_room', icon: '📚' },
+                                            { key: 'prayer_room', icon: '🕉️' },
+                                            { key: 'guest_room', icon: '🏠' },
+                                            { key: 'store_room', icon: '📦' },
+                                            { key: 'balcony', icon: '🌅' },
+                                            { key: 'terrace', icon: '🏞️' },
+                                            { key: 'garage', icon: '🚗' }
+                                          ].find(r => r.key === roomType)?.icon || '🏠'}
+                                        </span>
+                                        <span style={{ fontSize: '12px', fontWeight: '500' }}>
+                                          {roomType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                        </span>
+                                        {/* Auto-assignment indicator */}
+                                        <span style={{ 
+                                          fontSize: '10px', 
+                                          color: '#059669',
+                                          backgroundColor: '#f0fdf4',
+                                          padding: '2px 4px',
+                                          borderRadius: '2px',
+                                          border: '1px solid #bbf7d0'
+                                        }}>
+                                          🤖 Auto
+                                        </span>
+                                        {roomImages.length > 0 && (
+                                          <span style={{ 
+                                            fontSize: '10px', 
+                                            color: '#059669',
+                                            backgroundColor: '#f0fdf4',
+                                            padding: '2px 4px',
+                                            borderRadius: '2px'
+                                          }}>
+                                            📷 {roomImages.length}
+                                          </span>
+                                        )}
+                                </div>
+                                      
+                                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                        {/* Manual Change Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                            // Move room to different floor
+                                            const currentFloorRooms = data.floor_rooms?.[floorKey] || {};
+                                            const otherFloors = Object.keys(data.floor_rooms || {}).filter(f => f !== floorKey);
+                                            
+                                            if (otherFloors.length > 0) {
+                                              const targetFloor = otherFloors[0]; // Move to first available floor
+                                      setData(prev => ({
+                                        ...prev,
+                                        floor_rooms: {
+                                          ...prev.floor_rooms,
+                                          [floorKey]: {
+                                                    ...prev.floor_rooms?.[floorKey],
+                                                    [roomKey]: 0 // Remove from current floor
+                                                  },
+                                                  [targetFloor]: {
+                                                    ...prev.floor_rooms?.[targetFloor],
+                                                    [roomKey]: 1 // Add to target floor
+                                          }
+                                        }
+                                      }));
+                                            }
+                                          }}
+                                          style={{
+                                            fontSize: '10px',
+                                            padding: '2px 6px',
+                                            backgroundColor: '#fef3c7',
+                                            border: '1px solid #f59e0b',
+                                            borderRadius: '4px',
+                                            color: '#92400e',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          🔄 Move
+                                  </button>
+                                  <button
+                                    type="button"
+                                          onClick={() => setData(prev => ({
+                                        ...prev,
+                                        floor_rooms: {
+                                          ...prev.floor_rooms,
+                                          [floorKey]: {
+                                                ...prev.floor_rooms?.[floorKey],
+                                                [roomKey]: Math.max(0, currentCount - 1)
+                                              }
+                                            }
+                                          }))}
+                                          style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            border: '1px solid #d1d5db',
+                                            borderRadius: '4px',
+                                            backgroundColor: '#ffffff',
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}
+                                        >
+                                          -
+                                  </button>
+                                        <span style={{ 
+                                          minWidth: '20px', 
+                                          textAlign: 'center', 
+                                          fontSize: '12px',
+                                          fontWeight: '600'
+                                        }}>
+                                          {currentCount}
+                                        </span>
+                                  <button
+                                    type="button"
+                                          onClick={() => setData(prev => ({
+                                        ...prev,
+                                        floor_rooms: {
+                                          ...prev.floor_rooms,
+                                          [floorKey]: {
+                                                ...prev.floor_rooms?.[floorKey],
+                                                [roomKey]: currentCount + 1
+                                              }
+                                            }
+                                          }))}
+                                          style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            border: '1px solid #d1d5db',
+                                            borderRadius: '4px',
+                                            backgroundColor: '#ffffff',
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}
+                                        >
+                                          +
+                                  </button>
+            </div>
+            </div>
+
+                              {/* Reference Image Field */}
+                              {currentCount > 0 && (
+                                <div style={{
+                                  borderTop: '1px solid #f3f4f6',
+                                  paddingTop: '8px',
+                                  marginTop: '8px'
+                                }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    marginBottom: '8px'
+                                  }}>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      fontWeight: '500',
+                                      color: '#6b7280',
+                                      minWidth: '80px'
+                                    }}>
+                                      🖼️ Reference:
+                                    </span>
+              <input 
+                                      type="file"
+                                      accept="image/*"
+                                      multiple
+                                      onChange={(e) => {
+                                        const files = Array.from(e.target.files);
+                                        const newImages = [...roomImages, ...files];
                                         setData(prev => ({
                                           ...prev,
                                           room_images: {
                                             ...prev.room_images,
-                                            [`floor${floorNum}`]: {
-                                              ...prev.room_images[`floor${floorNum}`],
-                                              [roomType.key]: prev.room_images[`floor${floorNum}`][roomType.key].filter(img => img.id !== image.id)
+                                            [floorKey]: {
+                                              ...prev.room_images?.[floorKey],
+                                              [roomKey]: newImages
                                             }
                                           }
                                         }));
                                       }}
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
+                                      style={{
+                                        fontSize: '10px',
+                                        padding: '4px 8px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#ffffff',
+                                        flex: 1
+                                      }}
+              />
+            </div>
+                                  
+                                  {/* Show uploaded images */}
+                                  {roomImages.length > 0 && (
+                                    <div style={{
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      gap: '4px',
+                                      marginTop: '8px'
+                                    }}>
+                                      {roomImages.map((image, index) => (
+                                        <div key={index} style={{
+                                          position: 'relative',
+                                          width: '40px',
+                                          height: '40px',
+                                          borderRadius: '4px',
+                                          overflow: 'hidden',
+                                          border: '1px solid #d1d5db'
+                                        }}>
+                                          <img
+                                            src={typeof image === 'string' ? image : URL.createObjectURL(image)}
+                                            alt={`Reference ${index + 1}`}
+                                            style={{
+                                              width: '100%',
+                                              height: '100%',
+                                              objectFit: 'cover'
+                                            }}
+                                          />
+                      <button
+                        type="button"
+                                            onClick={() => {
+                                              const newImages = roomImages.filter((_, i) => i !== index);
+                                              setData(prev => ({
+                                                ...prev,
+                                                room_images: {
+                                                  ...prev.room_images,
+                                                  [floorKey]: {
+                                                    ...prev.room_images?.[floorKey],
+                                                    [roomKey]: newImages
+                                                  }
+                                                }
+                                              }));
+                                            }}
+                                            style={{
+                                              position: 'absolute',
+                                              top: '-2px',
+                                              right: '-2px',
+                                              width: '16px',
+                                              height: '16px',
+                                              borderRadius: '50%',
+                                              backgroundColor: '#dc2626',
+                                              color: 'white',
+                                              border: 'none',
+                                              fontSize: '10px',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center'
+                                            }}
+                                          >
+                                            ×
+                      </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                                    {/* Individual Room Image Upload Section */}
+                                    {currentCount > 0 && (
+                                      <div style={{
+                                        borderTop: '1px solid #f3f4f6',
+                                        paddingTop: '8px'
+                                      }}>
+                                        <div style={{
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center',
+                                          marginBottom: '8px'
+                                        }}>
+                                          <span style={{
+                                            fontSize: '11px',
+                                            fontWeight: '500',
+                                            color: '#6b7280'
+                                          }}>
+                                            📷 Reference Images for {roomType.replace('_', ' ')}
+                                          </span>
+                                  <button
+                                    type="button"
+                                            onClick={() => setData(prev => ({
+                                        ...prev,
+                                              expandedRoomImages: {
+                                                ...prev.expandedRoomImages,
+                                          [floorKey]: {
+                                                  ...prev.expandedRoomImages?.[floorKey],
+                                                  [roomKey]: !isRoomExpanded
+                                                }
+                                              }
+                                            }))}
+                                            style={{
+                                              fontSize: '12px',
+                                              color: '#6b7280',
+                                              background: 'none',
+                                              border: 'none',
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            {isRoomExpanded ? '▼ Hide' : '▶ Show'}
+                                  </button>
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                                </div>
-                              );
-                            })}
+
+                                        {isRoomExpanded && (
+                                          <div>
+                                  <input
+                                    type="file"
+                                    multiple
+                                    accept="image/*"
+                                              onChange={e => {
+                                      const files = Array.from(e.target.files);
+                                          setData(prev => ({
+                                            ...prev,
+                                            room_images: {
+                                              ...prev.room_images,
+                                                    [floorKey]: {
+                                                      ...prev.room_images?.[floorKey],
+                                                      [roomKey]: [...(prev.room_images?.[floorKey]?.[roomKey] || []), ...files]
+                                              }
+                                            }
+                                          }));
+                                              }}
+                                              style={{ display: 'none' }}
+                                              id={`${floorKey}-${roomKey}-images`}
+                                            />
+                                            
+                                  <label 
+                                              htmlFor={`${floorKey}-${roomKey}-images`}
+                                              style={{
+                                                display: 'inline-block',
+                                                padding: '4px 8px',
+                                                backgroundColor: '#3b82f6',
+                                                color: 'white',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                fontSize: '10px',
+                                                fontWeight: '500',
+                                                marginBottom: '8px'
+                                              }}
+                                            >
+                                              Add Images
+                                  </label>
+
+                                            {roomImages.length > 0 && (
+                                              <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))',
+                                                gap: '4px'
+                                              }}>
+                                                {roomImages.map((file, imgIndex) => (
+                                                  <div key={imgIndex} style={{
+                                                    position: 'relative',
+                                                    border: '1px solid #d1d5db',
+                                                    borderRadius: '2px',
+                                                    overflow: 'hidden'
+                                                  }}>
+                                                    <img
+                                                      src={URL.createObjectURL(file)}
+                                                      alt={`${roomType} ${imgIndex + 1}`}
+                style={{ 
+                                                        width: '100%',
+                                                        height: '35px',
+                                                        objectFit: 'cover'
+                                                      }}
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setData(prev => ({
+                                                        ...prev,
+                                                        room_images: {
+                                                          ...prev.room_images,
+                                                          [floorKey]: {
+                                                            ...prev.room_images?.[floorKey],
+                                                            [roomKey]: prev.room_images[floorKey][roomKey].filter((_, i) => i !== imgIndex)
+                                                          }
+                                                        }
+                                                      }))}
+                                                      style={{
+                                                        position: 'absolute',
+                                                        top: '1px',
+                                                        right: '1px',
+                                                        background: 'rgba(0,0,0,0.7)',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '50%',
+                                                        width: '14px',
+                                                        height: '14px',
+                                                        fontSize: '8px',
+                                                        cursor: 'pointer'
+                                                      }}
+                                                    >
+                                                      ×
+                                                    </button>
+                                                  </div>
+                                                ))}
+                </div>
+              )}
+                                          </div>
+              )}
+            </div>
+                                    )}
+            </div>
+                                );
+                              })
+                            ) : (
+                              <div style={{ 
+                                textAlign: 'center', 
+                                color: '#6b7280', 
+                                fontSize: '12px',
+                                padding: '20px'
+                              }}>
+                                Select room types above to plan floor-wise
+          </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    );
-                  });
-                })()}
-              </div>
+                );
+              })}
+          </div>
+          
+                <div style={{ 
+                  marginTop: '12px', 
+                  padding: '8px 12px', 
+                  backgroundColor: '#f0fdf4', 
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  color: '#166534'
+                }}>
+                  💡 <strong>Smart Planning:</strong> Plan room distribution across floors. Each room type can have its own reference images for better visualization and planning.
+          </div>
+            </div>
+          )}
+          </div>
+          
+          {/* ML Suggestions for Family Needs Page */}
+          {(estimatedCost > 0 || plotCategory || budgetCategory) && (
+            <div style={{
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ margin: '0 0 16px 0', color: '#166534', fontSize: '18px' }}>
+                🤖 AI Suggestions
+              </h3>
+              <div style={{ fontSize: '14px', color: '#166534' }}>
+                {plotCategory && plotCategory !== 'unknown' && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 For {plotCategory} plot size, consider {plotCategory === 'small' ? '[1, 2]' : plotCategory === 'medium' ? '[1, 2, 3]' : plotCategory === 'large' ? '[2, 3, 4]' : plotCategory === 'xlarge' ? '[3, 4, 5, 6]' : '[4, 5, 6]'} floors
+          </div>
+                )}
+                {estimatedCost && estimatedCost > 0 && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 Estimated cost: ₹{Math.round(estimatedCost).toLocaleString()} (₹{Math.round(estimatedCost / (data.building_size || 1000))}/sq ft)
+        </div>
+      )}
+                {budgetCategory && budgetCategory !== 'unknown' && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 Recommended materials for {budgetCategory} budget
+            </div>
+                )}
             </div>
           </div>
+          )}
+          
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
             <button className="btn btn-primary" onClick={next}>Next</button>
@@ -792,27 +2258,284 @@ export default function HomeownerRequestWizard() {
 
       {step === 3 && (
         <div className="section">
-          <div className="section-header">Budget & Timeline</div>
-          <div className="section-body grid-2">
+          <div className="section-header">Preferences</div>
+           <div className="section-body">
+             
+             {/* Option 1: Manual Selection */}
+             <div style={{
+               backgroundColor: '#ffffff',
+               border: '2px solid #e5e7eb',
+               borderRadius: '16px',
+               padding: '24px',
+               marginBottom: '24px',
+               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+             }}>
+               <div style={{
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '12px',
+                 marginBottom: '20px',
+                 paddingBottom: '16px',
+                 borderBottom: '2px solid #f1f5f9'
+               }}>
+                 <span style={{ fontSize: '24px' }}>🎨</span>
+                 <h3 style={{ 
+                   margin: 0, 
+                   fontSize: '20px', 
+                   fontWeight: '700', 
+                   color: '#1f2937' 
+                 }}>
+                   Option 1: Manual Style Selection
+                 </h3>
+                 <span style={{
+                   fontSize: '12px',
+                   backgroundColor: '#dbeafe',
+                   color: '#1e40af',
+                   padding: '4px 8px',
+                   borderRadius: '6px',
+                   fontWeight: '600'
+                 }}>
+                   Your Choice
+                 </span>
+               </div>
+               
             <div className="field">
-              <label>Location</label>
-              <SearchableDropdown
-                options={indianCities}
-                value={data.location}
-                onChange={(value) => setData({...data, location: value})}
-                placeholder="Search for a city..."
-              />
-            </div>
-            <div className="field">
-              <label>Timeline</label>
-              <select value={data.timeline} onChange={e=>setData({...data, timeline:e.target.value})}>                <option value="">Select</option>
-                <option value="0-6 months">0-6 months</option>
-                <option value="6-12 months">6-12 months</option>
-                <option value="12-18 months">12-18 months</option>
-                <option value="18-24 months">18-24 months</option>
+                 <label style={{
+                   fontSize: '16px',
+                   fontWeight: '600',
+                   color: '#374151',
+                   marginBottom: '12px',
+                   display: 'block'
+                 }}>
+                   Select Your Preferred House Style
+                 </label>
+              <select
+                   value={data.aesthetic || ''}
+                   onChange={e => {
+                     const newValue = e.target.value;
+                     console.log('🎨 User manually selected aesthetic:', newValue);
+                     setData(prev => ({...prev, aesthetic: newValue}));
+                     // Clear any AI suggestions when user manually selects
+                     setSelectedStyle(null);
+                   }}
+                style={{ 
+                     width: '100%', 
+                     padding: '16px 20px', 
+                     fontSize: '18px', 
+                     fontWeight: '500',
+                     border: fieldErrors.aesthetic ? '3px solid #dc2626' : '2px solid #e5e7eb', 
+                     borderRadius: '12px',
+                     backgroundColor: '#ffffff',
+                     boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                     cursor: 'pointer',
+                     transition: 'all 0.2s ease'
+                   }}
+                   onFocus={(e) => {
+                     e.target.style.borderColor = '#3b82f6';
+                     e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+                   }}
+                   onBlur={(e) => {
+                     e.target.style.borderColor = '#e5e7eb';
+                     e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                   }}
+                 >
+                   <option value="">Choose your preferred house style...</option>
+                   <option value="Modern">🏢 Modern</option>
+                   <option value="Traditional">🏛️ Traditional</option>
+                   <option value="Contemporary">🏗️ Contemporary</option>
+                   <option value="Minimalist">📐 Minimalist</option>
+                   <option value="Classical">🏛️ Classical</option>
+                   <option value="Mediterranean">🌊 Mediterranean</option>
+                   <option value="Scandinavian">❄️ Scandinavian</option>
+                   <option value="Industrial">🏭 Industrial</option>
+                   <option value="Colonial">🏛️ Colonial</option>
+                   <option value="Victorian">🏰 Victorian</option>
+                   <option value="Art Deco">🎭 Art Deco</option>
+                   <option value="Rustic">🌲 Rustic</option>
+                   <option value="Farmhouse">🚜 Farmhouse</option>
+                   <option value="Craftsman">🔨 Craftsman</option>
+                   <option value="Tudor">🏰 Tudor</option>
+                   <option value="Ranch">🤠 Ranch</option>
+                   <option value="Cape Cod">🏖️ Cape Cod</option>
+                   <option value="Spanish">🌞 Spanish</option>
+                   <option value="French Country">🇫🇷 French Country</option>
+                   <option value="Mid-Century Modern">🕰️ Mid-Century Modern</option>
+                   <option value="Prairie">🌾 Prairie</option>
+                   <option value="Gothic">🏰 Gothic</option>
+                   <option value="Neoclassical">🏛️ Neoclassical</option>
+                   <option value="Baroque">🎨 Baroque</option>
+                   <option value="Rococo">🌸 Rococo</option>
+                   <option value="Bauhaus">📐 Bauhaus</option>
+                   <option value="Brutalist">🏗️ Brutalist</option>
+                   <option value="Postmodern">🎭 Postmodern</option>
+                   <option value="Deconstructivist">🔧 Deconstructivist</option>
+                   <option value="High-Tech">🤖 High-Tech</option>
+                   <option value="Sustainable/Green">🌱 Sustainable/Green</option>
+                   <option value="Smart Home">🏠 Smart Home</option>
+                   <option value="Luxury">💎 Luxury</option>
+                   <option value="Affordable">💰 Affordable</option>
+                   <option value="Custom">🎨 Custom</option>
               </select>
+                 
+                 {/* Selection Status */}
+                 {data.aesthetic && (
+                   <div style={{
+                     marginTop: '16px',
+                     padding: '12px 16px',
+                     backgroundColor: '#f0f9ff',
+                     border: '2px solid #0ea5e9',
+                     borderRadius: '8px',
+                     display: 'flex',
+                     alignItems: 'center',
+                     gap: '8px'
+                   }}>
+                     <span style={{ fontSize: '16px' }}>✅</span>
+                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#0c4a6e' }}>
+                       Selected: <strong>{data.aesthetic}</strong>
+                     </span>
+                </div>
+              )}
+              
+                 {fieldErrors.aesthetic && (
+                   <div style={{ 
+                     color: '#dc2626', 
+                     fontSize: '14px', 
+                     marginTop: '8px',
+                     padding: '8px 12px',
+                     backgroundColor: '#fef2f2',
+                     border: '1px solid #fecaca',
+                     borderRadius: '6px'
+                   }}>
+                     ⚠️ {fieldErrors.aesthetic}
+                   </div>
+              )}
+            </div>
+            </div>
+             
+             {/* Option 2: AI-Powered Suggestions */}
+             <div style={{
+               backgroundColor: '#f8fafc',
+               border: '2px solid #e2e8f0',
+               borderRadius: '16px',
+               padding: '24px',
+               marginBottom: '24px',
+               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+             }}>
+               <div style={{
+                 display: 'flex',
+                 alignItems: 'center',
+                 gap: '12px',
+                 marginBottom: '20px',
+                 paddingBottom: '16px',
+                 borderBottom: '2px solid #f1f5f9'
+               }}>
+                 <span style={{ fontSize: '24px' }}>🤖</span>
+                 <h3 style={{ 
+                   margin: 0, 
+                   fontSize: '20px', 
+                   fontWeight: '700', 
+                   color: '#1f2937' 
+                 }}>
+                   Option 2: AI-Powered Style Recommendations
+                 </h3>
+                 <span style={{
+                   fontSize: '12px',
+                   backgroundColor: '#fef3c7',
+                   color: '#92400e',
+                   padding: '4px 8px',
+                   borderRadius: '6px',
+                   fontWeight: '600'
+                 }}>
+                   Smart Suggestions
+                 </span>
+          </div>
+               
+               <div style={{
+                 fontSize: '14px',
+                 color: '#6b7280',
+                 marginBottom: '20px',
+                 padding: '12px 16px',
+                 backgroundColor: '#f1f5f9',
+                 borderRadius: '8px',
+                 border: '1px solid #e2e8f0'
+               }}>
+                 💡 <strong>Based on your project details:</strong> Plot size, budget range, building size, and room requirements
+               </div>
+               
+               <HouseStyleSuggestions 
+                 formData={data} 
+                 onStyleChange={(style) => {
+                   console.log('🤖 User selected AI suggestion:', style.name);
+                   setSelectedStyle(style);
+                   setData(prev => ({ ...prev, aesthetic: style.name }));
+                 }}
+                 showSuggestions={true}
+                 autoSelect={false}
+               />
             </div>
           </div>
+          
+          {/* Show suggestions */}
+          {renderSuggestions()}
+          
+          {/* ML Suggestions for Preferences Page */}
+          {(estimatedCost > 0 || plotCategory || budgetCategory) && (
+            <div style={{
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ margin: '0 0 16px 0', color: '#166534', fontSize: '18px' }}>
+                🤖 AI Suggestions
+              </h3>
+              <div style={{ fontSize: '14px', color: '#166534' }}>
+                {plotCategory && plotCategory !== 'unknown' && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 For {plotCategory} plot size, consider {plotCategory === 'small' ? '[1, 2]' : plotCategory === 'medium' ? '[1, 2, 3]' : plotCategory === 'large' ? '[2, 3, 4]' : plotCategory === 'xlarge' ? '[3, 4, 5, 6]' : '[4, 5, 6]'} floors
+            </div>
+          )}
+                {estimatedCost && estimatedCost > 0 && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 Estimated cost: ₹{Math.round(estimatedCost).toLocaleString()} (₹{Math.round(estimatedCost / (data.building_size || 1000))}/sq ft)
+          </div>
+                )}
+                {budgetCategory && budgetCategory !== 'unknown' && (
+                  <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px' }}>
+                    💡 Recommended materials for {budgetCategory} budget
+        </div>
+      )}
+            </div>
+            </div>
+          )}
+
+          {/* Validation Summary for Preferences Page */}
+          {(fieldErrors.aesthetic || fieldWarnings.aesthetic) && (
+            <div style={{
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ margin: '0 0 16px 0', color: '#1e293b', fontSize: '18px' }}>
+                🎨 Preferences Validation
+              </h3>
+              
+              {fieldErrors.aesthetic && (
+                <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', color: '#dc2626' }}>
+                  ❌ House Style: {fieldErrors.aesthetic}
+            </div>
+              )}
+              {fieldWarnings.aesthetic && (
+                <div style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#fffbeb', border: '1px solid #fed7aa', borderRadius: '4px', color: '#d97706' }}>
+                  ⚠️ House Style: {fieldWarnings.aesthetic}
+            </div>
+              )}
+            </div>
+          )}
+          
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
             <button className="btn btn-primary" onClick={next}>Next</button>
@@ -822,36 +2545,191 @@ export default function HomeownerRequestWizard() {
 
       {step === 4 && (
         <div className="section">
-          <div className="section-header">Orientation & Site Considerations</div>
-          <div className="section-body grid-2">
-            <div className="field">
-              <label>Preferred Orientation</label>
-              <select
-                value={data.orientation}
-                onChange={e=>setData({...data, orientation:e.target.value})}
-              >
-                <option value="">Select preferred orientation</option>
-                <option value="North-facing">North-facing (Best for natural light)</option>
-                <option value="South-facing">South-facing (Good for warmth)</option>
-                <option value="East-facing">East-facing (Morning sun)</option>
-                <option value="West-facing">West-facing (Evening sun)</option>
-                <option value="North-East">North-East (Balanced light)</option>
-                <option value="North-West">North-West (Balanced light)</option>
-                <option value="South-East">South-East (Morning & afternoon sun)</option>
-                <option value="South-West">South-West (Afternoon & evening sun)</option>
-                <option value="No preference">No specific preference</option>
-              </select>
+          <div className="section-header">Review</div>
+          
+          {/* Comprehensive Rules Summary */}
+          <div style={{
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '20px',
+            marginBottom: '20px'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#1e293b', fontSize: '18px' }}>
+              🤖 AI-Powered Design Summary
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+              <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '16px' }}>📊 Project Overview</h4>
+                <div style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+                  <div><strong>Plot Size:</strong> {data.plot_size} sq ft</div>
+                  <div><strong>Building Size:</strong> {data.building_size} sq ft</div>
+                  <div><strong>Floors:</strong> {data.num_floors}</div>
+                  <div><strong>Budget:</strong> {data.budget_range}</div>
+                  <div><strong>Style:</strong> {data.aesthetic}</div>
+              </div>
             </div>
-            <div className="field">
-              <label>Site Considerations</label>
-              <textarea 
-                rows={4} 
-                value={data.site_considerations} 
-                onChange={e=>setData({...data, site_considerations:e.target.value})} 
-                placeholder="Any specific site considerations: views, privacy, noise, access, etc."
-              />
+
+              <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '16px' }}>🏠 Room Requirements</h4>
+                <div style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+                  {data.rooms && data.rooms.length > 0 ? (
+                    <div>
+                      {/* Show selected room types */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong>Selected Room Types:</strong>
+                        <div style={{ marginTop: '4px' }}>
+                          {data.rooms.map(room => (
+                            <span key={room} style={{ 
+                              display: 'inline-block', 
+                              margin: '2px 4px 2px 0', 
+                              padding: '2px 6px', 
+                              backgroundColor: '#f3f4f6', 
+                              borderRadius: '4px',
+                              fontSize: '12px'
+                            }}>
+                              {room.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                  ))}
+                </div>
+              </div>
+                      
+                      {/* Show floor-wise room counts */}
+                      {data.num_floors && parseInt(data.num_floors) >= 2 && data.floor_rooms && Object.keys(data.floor_rooms).length > 0 && (
+                        <div>
+                          <strong>Floor-wise Room Distribution:</strong>
+                          <div style={{ marginTop: '8px' }}>
+                            {Array.from({ length: parseInt(data.num_floors) || 0 }, (_, index) => {
+                              const floorNumber = index + 1;
+                              const floorKey = `floor${floorNumber}`;
+                              const floorRooms = data.floor_rooms[floorKey] || {};
+                              const totalRooms = Object.values(floorRooms).reduce((sum, count) => sum + (count || 0), 0);
+                              
+                              if (totalRooms === 0) return null;
+                  
+                  return (
+                                <div key={floorKey} style={{ 
+                                  marginBottom: '8px', 
+                                  padding: '8px', 
+                                  backgroundColor: '#f9fafb', 
+                                  borderRadius: '6px',
+                                  border: '1px solid #e5e7eb'
+                                }}>
+                                  <div style={{ fontWeight: '600', marginBottom: '4px', color: '#374151' }}>
+                                    {floorNumber === 1 ? 'Ground Floor' : `Floor ${floorNumber}`}
+                      </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {Object.entries(floorRooms).map(([roomType, count]) => {
+                                      if (!count || count === 0) return null;
+                                      
+                                      const roomIcon = {
+                                        'master_bedroom': '👑',
+                                        'bedrooms': '🛏️',
+                                        'attached_bathrooms': '🚿',
+                                        'common_bathrooms': '🚽',
+                                        'living_room': '🛋️',
+                                        'dining_room': '🍽️',
+                                        'kitchen': '🍳',
+                                        'study_area': '📚',
+                                        'prayer_area': '🕉️',
+                                        'guest_room': '🏠',
+                                        'store_room': '📦',
+                                        'balcony': '🌅',
+                                        'terrace': '🏞️',
+                                        'garage': '🚗',
+                                        'utility_area': '🔧'
+                                      }[roomType] || '🏠';
+                        
+                        return (
+                                        <span key={roomType} style={{ 
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '2px 6px', 
+                                          backgroundColor: '#e0f2fe', 
+                                      borderRadius: '4px',
+                                          fontSize: '11px',
+                                          color: '#0c4a6e',
+                                          border: '1px solid #bae6fd'
+                                        }}>
+                                          <span>{roomIcon}</span>
+                                          <span>{roomType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                                          <span style={{ fontWeight: '600' }}>×{count}</span>
+                                        </span>
+                        );
+                      })}
+                                  </div>
+                    </div>
+                  );
+                })}
+                          </div>
+              </div>
+            )}
+
+                      {/* Show total room count */}
+                {(() => {
+                        const totalRooms = data.floor_rooms ? 
+                          Object.values(data.floor_rooms).reduce((total, floorRooms) => {
+                            return total + Object.values(floorRooms).reduce((sum, count) => sum + (count || 0), 0);
+                          }, 0) : 0;
+                        
+                        if (totalRooms > 0) {
+                    return (
+                            <div style={{ 
+                              marginTop: '12px', 
+                              padding: '8px', 
+                              backgroundColor: '#f0fdf4', 
+                              borderRadius: '6px',
+                              border: '1px solid #bbf7d0'
+                            }}>
+                              <strong style={{ color: '#166534' }}>Total Rooms: {totalRooms}</strong>
+                              </div>
+                            );
+                        }
+                        return null;
+                })()}
+                    </div>
+                  ) : (
+                    <div>No rooms selected</div>
+                )}
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '16px' }}>⏱️ Project Timeline</h4>
+                <div style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+                  {timelineData ? (
+                    <div>
+                      <div><strong>Estimated Duration:</strong> {timelineData.months} months</div>
+                      {timelineData.estimatedCompletion && (
+                        <div><strong>Completion Date:</strong> {timelineData.estimatedCompletion.toLocaleDateString()}</div>
+                      )}
+                      <div><strong>Phases:</strong> {timelineData.phases?.length || 0} phases planned</div>
+                </div>
+                  ) : (
+                    <div>Timeline not calculated</div>
+                  )}
             </div>
           </div>
+          
+              <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '16px' }}>🎨 Selected Style</h4>
+                <div style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+                  {selectedStyle ? (
+                    <div>
+                      <div><strong>Style:</strong> {selectedStyle.name}</div>
+                      <div><strong>Description:</strong> {selectedStyle.description}</div>
+                      <div><strong>Match:</strong> {selectedStyle.suitability}% suitability</div>
+                      </div>
+                  ) : (
+                    <div>No style selected</div>
+                            )}
+                          </div>
+                    </div>
+              </div>
+            </div>
+          
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
             <button className="btn btn-primary" onClick={next}>Next</button>
@@ -861,61 +2739,18 @@ export default function HomeownerRequestWizard() {
 
       {step === 5 && (
         <div className="section">
-          <div className="section-header">Budget & Material Preferences</div>
-          <div className="section-body grid-2">
-            <div className="field">
-              <label>Budget Allocation Preference</label>
-              <select
-                value={data.budget_allocation}
-                onChange={e=>setData({...data, budget_allocation:e.target.value})}
-              >
-                <option value="">Select budget allocation preference</option>
-                <option value="Quality over quantity">Quality over quantity (Premium materials)</option>
-                <option value="Balanced approach">Balanced approach (Good quality, reasonable cost)</option>
-                <option value="Cost-effective">Cost-effective (Budget-friendly materials)</option>
-                <option value="Eco-friendly focus">Eco-friendly focus (Sustainable materials)</option>
-                <option value="Luxury finish">Luxury finish (High-end materials throughout)</option>
-                <option value="Mixed approach">Mixed approach (Premium in key areas, standard elsewhere)</option>
-              </select>
-            </div>
-            <div className="field">
-              <label>Material Preferences</label>
-              <div className="interactive-options">
-                {[
-                  { key: 'Marble', label: 'Marble', icon: '🏛️' },
-                  { key: 'Granite', label: 'Granite', icon: '🪨' },
-                  { key: 'Wood', label: 'Wood', icon: '🪵' },
-                  { key: 'Ceramic Tiles', label: 'Ceramic Tiles', icon: '🔲' },
-                  { key: 'Vitrified Tiles', label: 'Vitrified Tiles', icon: '⬜' },
-                  { key: 'Natural Stone', label: 'Natural Stone', icon: '🗿' },
-                  { key: 'Glass', label: 'Glass', icon: '🪟' },
-                  { key: 'Steel', label: 'Steel', icon: '🔩' },
-                  { key: 'Concrete', label: 'Concrete', icon: '🏗️' },
-                  { key: 'Brick', label: 'Brick', icon: '🧱' },
-                  { key: 'Eco-friendly', label: 'Eco-friendly Materials', icon: '🌱' },
-                  { key: 'Smart Materials', label: 'Smart Materials', icon: '🤖' }
-                ].map(option => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    className={`interactive-option ${Array.isArray(data.material_preferences) && data.material_preferences.includes(option.key) ? 'selected' : ''}`}
-                    onClick={() => {
-                      const currentMaterials = Array.isArray(data.material_preferences) ? data.material_preferences : [];
-                      const newMaterials = currentMaterials.includes(option.key)
-                        ? currentMaterials.filter(item => item !== option.key)
-                        : [...currentMaterials, option.key];
-                      setData({...data, material_preferences: newMaterials});
-                    }}
-                  >
-                    <span className="option-icon">{option.icon}</span>
-                    <span className="option-label">{option.label}</span>
-                    {Array.isArray(data.material_preferences) && data.material_preferences.includes(option.key) && (
-                      <span className="option-check">✓</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="section-header">Select Architect</div>
+          <div className="section-body">
+            <ArchitectSelection
+              selectedArchitectIds={data.selected_architect_ids}
+              onSelectionChange={(selectedIds, selectedArchitectObjects) => {
+                setData(prev => ({ ...prev, selected_architect_ids: selectedIds }));
+                setSelectedArchitects(selectedArchitectObjects || []);
+              }}
+              layoutRequestId={null}
+              showAIRecommendations={true}
+              stylePreferences={data.aesthetic ? { aesthetic: data.aesthetic } : {}}
+            />
           </div>
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
@@ -923,575 +2758,111 @@ export default function HomeownerRequestWizard() {
           </div>
         </div>
       )}
-
 
       {step === 6 && (
         <div className="section">
-          <div className="section-header">Preferences</div>
-          <div className="section-body grid-2">
-            <div className="field">
-              <label>House Aesthetic / Style</label>
-              <select
-                value={data.aesthetic}
-                onChange={e=>setData({...data, aesthetic:e.target.value})}
-              >
-                <option value="">Select house style</option>
-                <option value="Modern">Modern</option>
-                <option value="Contemporary">Contemporary</option>
-                <option value="Traditional">Traditional</option>
-                <option value="Minimalist">Minimalist</option>
-                <option value="Luxury">Luxury</option>
-                <option value="Mediterranean">Mediterranean</option>
-                <option value="Colonial">Colonial</option>
-                <option value="Victorian">Victorian</option>
-                <option value="Art Deco">Art Deco</option>
-                <option value="Scandinavian">Scandinavian</option>
-                <option value="Industrial">Industrial</option>
-                <option value="Rustic">Rustic</option>
-                <option value="Farmhouse">Farmhouse</option>
-                <option value="Craftsman">Craftsman</option>
-                <option value="Tudor">Tudor</option>
-                <option value="Ranch">Ranch</option>
-                <option value="Cape Cod">Cape Cod</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="field">
-              <label>Additional Notes</label>
-              <textarea rows={4} value={data.requirements} onChange={e=>setData({...data, requirements:e.target.value})} placeholder="Other preferences or constraints" />
-            </div>
-          </div>
-          <div className="wizard-footer">
-            <button className="btn btn-secondary" onClick={prev}>Back</button>
-            <button className="btn btn-primary" onClick={next}>Next</button>
-          </div>
-        </div>
-      )}
-
-      {step === 7 && (
-        <div className="section">
-          <div className="section-header">Review</div>
-          <div className="section-body">
-            <div 
-              className="review-grid"
-              style={{
-                display: 'grid',
-                gap: 12,
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))'
-              }}
-            >
-              {/* Overview */}
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Overview</div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Plot Size</span><strong>{data.plot_size || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Budget</span><strong>{data.budget_range === 'Custom' ? data.custom_budget : (data.budget_range || 'N/A')}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Location</span><strong>{data.location || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Timeline</span><strong>{data.timeline || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Number of Floors</span><strong>{data.num_floors || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Layout Type</span><strong style={{ textTransform:'capitalize' }}>{data.layout_type || 'custom'}</strong>
-                </div>
-              </div>
-
-              {/* Site Details */}
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Site Details</div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Plot Shape</span><strong>{data.plot_shape || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Topography</span><strong>{data.topography || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Development Laws</span><strong>{data.development_laws || 'N/A'}</strong>
-                </div>
-              </div>
-
-              {/* Family */}
-            <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-              <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Family</div>
-              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                <span>Family Needs</span><strong>{Array.isArray(data.family_needs) && data.family_needs.length > 0 ? data.family_needs.join(', ') : 'N/A'}</strong>
-              </div>
-              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                <span>Rooms</span><strong>{Array.isArray(data.rooms) && data.rooms.length > 0 ? data.rooms.join(', ') : 'N/A'}</strong>
-              </div>
-            </div>
-
-            <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-              <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Orientation & Site</div>
-              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                <span>Orientation</span><strong>{data.orientation || 'N/A'}</strong>
-              </div>
-              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                <span>Site Considerations</span><strong>{data.site_considerations || 'N/A'}</strong>
-              </div>
-            </div>
-
-            <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-              <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Materials & Budget</div>
-              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                <span>Budget Allocation</span><strong>{data.budget_allocation || 'N/A'}</strong>
-              </div>
-              <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                <span>Material Preferences</span><strong>{Array.isArray(data.material_preferences) && data.material_preferences.length > 0 ? data.material_preferences.join(', ') : 'N/A'}</strong>
-              </div>
-            </div>
-
-            {data.site_images && data.site_images.length > 0 && (
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Site Images</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
-                  {data.site_images.map((image, index) => (
-                    <div key={image.id} style={{ textAlign: 'center' }}>
-                      <img 
-                        src={image.url} 
-                        alt={image.name}
-                        style={{ 
-                          width: '100%', 
-                          height: '80px', 
-                          objectFit: 'cover', 
-                          borderRadius: '6px',
-                          border: '1px solid #e5e7eb'
-                        }}
-                      />
-                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                        {image.name.length > 15 ? image.name.substring(0, 15) + '...' : image.name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-
-            {/* Room-specific Images by Floor */}
-            {data.room_images && Object.keys(data.room_images).length > 0 && (
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Room-Specific Reference Images by Floor</div>
-                {Object.entries(data.room_images).map(([floorKey, floorRooms]) => {
-                  if (!floorRooms || Object.keys(floorRooms).length === 0) return null;
-                  
-                  const floorNumber = floorKey.replace('floor', '');
-                  
-                  return (
-                    <div key={floorKey} style={{ marginBottom: '20px' }}>
-                      <div style={{ fontWeight: '600', marginBottom: '12px', color: '#1e40af', fontSize: '15px', borderBottom: '1px solid #e5e7eb', paddingBottom: '4px' }}>
-                        🏢 Floor {floorNumber}
-                      </div>
-                      
-                      {Object.entries(floorRooms).map(([roomTypeKey, images]) => {
-                        if (!images || images.length === 0) return null;
-                        
-                        const roomType = roomTypes.find(r => r.key === roomTypeKey);
-                        
-                        return (
-                          <div key={`${floorKey}-${roomTypeKey}`} style={{ marginBottom: '12px', marginLeft: '16px' }}>
-                            <div style={{ fontWeight: '500', marginBottom: '6px', color: '#374151', fontSize: '13px' }}>
-                              {roomType?.icon} {roomType?.label} ({images.length} images)
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '6px' }}>
-                              {images.map((image, index) => (
-                                <div key={image.id} style={{ textAlign: 'center' }}>
-                                  <img 
-                                    src={image.url} 
-                                    alt={image.name}
-                                    style={{ 
-                                      width: '100%', 
-                                      height: '50px', 
-                                      objectFit: 'cover', 
-                                      borderRadius: '4px',
-                                      border: '1px solid #e5e7eb'
-                                    }}
-                                  />
-                                  <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '2px' }}>
-                                    {image.name.length > 10 ? image.name.substring(0, 10) + '...' : image.name}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-              {/* Floor-wise Room Planning */}
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Room Planning by Floor</div>
-                {(() => {
-                  const numFloors = parseInt(data.num_floors) || 1;
-                  const floors = Array.from({ length: numFloors }, (_, i) => i + 1);
-                  
-                  return floors.map(floorNum => {
-                    const floorKey = `floor${floorNum}`;
-                    const floorData = data.floor_rooms[floorKey] || {};
-                    const hasRooms = Object.values(floorData).some(count => count > 0);
-                    
-                    if (!hasRooms) return null;
-                    
-                    return (
-                      <div key={floorNum} style={{ marginBottom: '12px', padding: '8px', backgroundColor: '#f9fafb', borderRadius: '6px' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '6px', color: '#374151' }}>
-                          {floorNum === 1 ? 'Ground Floor' : `Floor ${floorNum}`}
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '4px' }}>
-                          {Object.entries(floorData).map(([roomType, count]) => {
-                            if (count === 0) return null;
-                            return (
-                              <div key={roomType} style={{ fontSize: '12px', color: '#6b7280' }}>
-                                {roomType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}: {count}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-                {Object.keys(data.floor_rooms).length === 0 && (
-                  <div style={{ color: '#6b7280', fontSize: '14px' }}>No room planning specified</div>
-                )}
-              </div>
-
-              {/* Preferences */}
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Preferences</div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Aesthetic / Style</span><strong>{data.aesthetic || 'N/A'}</strong>
-                </div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Additional Notes</span>
-                  <div style={{ maxWidth: '60%', textAlign:'right', color:'#374151' }}>
-                    {data.requirements || '—'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Architect Selection */}
-              <div className="review-card" style={{ background:'#ffffff', border:'1px solid #e5e7eb', borderRadius:12, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)'}}>
-                <div className="review-title" style={{ fontWeight:600, marginBottom:8 }}>Architects</div>
-                <div className="review-row" style={{ display:'flex', justifyContent:'space-between', padding:'6px 0' }}>
-                  <span>Selected</span>
-                  <strong>{Array.isArray(data.selected_architect_ids) ? data.selected_architect_ids.length : 0}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="wizard-footer">
-            <button className="btn btn-secondary" onClick={prev}>Back</button>
-            <div style={{display:'flex', gap:8}}>
-              {data.layout_type === 'library' && data.selected_layout_id ? (
-                <button className="btn" onClick={()=>{
-                  // Fast path: send to contractors (only for library layouts)
-                  setLoading(true);
-                  fetch('/buildhub/backend/api/homeowner/submit_request.php', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                      plot_size: data.plot_size,
-                      budget_range: data.budget_range === 'Custom' ? data.custom_budget : data.budget_range,
-                      requirements: data.requirements,
-                      location: data.location,
-                      timeline: data.timeline,
-                      selected_layout_id: data.selected_layout_id,
-                      layout_type: 'library',
-                      // packed fields
-                      plot_shape: data.plot_shape, topography: data.topography, development_laws: data.development_laws,
-                      family_needs: Array.isArray(data.family_needs) ? data.family_needs.join(', ') : data.family_needs, 
-                      rooms: Array.isArray(data.rooms) ? data.rooms.join(', ') : data.rooms, 
-                      aesthetic: data.aesthetic,
-                      floor_rooms: JSON.stringify(data.floor_rooms), // Send floor-wise room planning as JSON
-                      // activate for contractors
-                      activate_for_contractors: true
-                    })
-                  }).then(r=>r.json()).then(j=>{
-                    if (j.success) {
-                      window.dispatchEvent && window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'success', message: 'Sent to contractors' } }));
-                      window.history.back();
-                    } else {
-                      alert(j.message || 'Failed to send to contractors');
-                    }
-                  }).catch(()=>alert('Network error')).finally(()=>setLoading(false));
-                }}>Send to Contractors</button>
-              ) : null}
-              <button className="btn btn-primary" onClick={next}>Customize with Architect</button>
-            </div>
-          </div>
-          
-          {/* Room Images Management - Floor Specific */}
-          {data.room_images && Object.keys(data.room_images).length > 0 && (
-            <div className="field" style={{ marginTop: '24px' }}>
-              <label>Room-Specific Images by Floor</label>
-              <div className="room-images-management">
-                {Object.entries(data.room_images).map(([floorKey, floorRooms]) => {
-                  if (!floorRooms || Object.keys(floorRooms).length === 0) return null;
-                  
-                  const floorNumber = floorKey.replace('floor', '');
-                  
-                  return (
-                    <div key={floorKey} className="floor-images-section">
-                      <div className="floor-images-header">
-                        <h4>Floor {floorNumber} Images</h4>
-                      </div>
-                      
-                      {Object.entries(floorRooms).map(([roomTypeKey, images]) => {
-                        if (!images || images.length === 0) return null;
-                        
-                        const roomType = roomTypes.find(r => r.key === roomTypeKey);
-                        const isExpanded = data.expandedRoomImages?.[floorKey]?.[roomTypeKey];
-                        
-                        return (
-                          <div key={`${floorKey}-${roomTypeKey}`} className="room-images-section">
-                            <div className="room-images-header">
-                              <span className="room-images-title">
-                                {roomType?.icon} {roomType?.label} ({images.length} images)
-                              </span>
-                              <button
-                                type="button"
-                                className="toggle-images-btn"
-                                onClick={() => {
-                                  setData(prev => ({
-                                    ...prev,
-                                    expandedRoomImages: {
-                                      ...prev.expandedRoomImages,
-                                      [floorKey]: {
-                                        ...prev.expandedRoomImages[floorKey],
-                                        [roomTypeKey]: !prev.expandedRoomImages?.[floorKey]?.[roomTypeKey]
-                                      }
-                                    }
-                                  }));
-                                }}
-                              >
-                                {isExpanded ? '▼' : '▶'}
-                              </button>
-                            </div>
-                            
-                            {isExpanded && (
-                              <div className="room-images-grid">
-                                {images.map((image, index) => (
-                                  <div key={image.id} className="room-image-item">
-                                    <img src={image.url} alt={image.name} />
-                                    <div className="room-image-info">
-                                      <span className="room-image-name">{image.name}</span>
-                                      <span className="floor-indicator">Floor {floorNumber}</span>
-                                      <span className="room-image-size">{(image.size / 1024 / 1024).toFixed(1)} MB</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="remove-room-image-btn"
-                                      onClick={() => {
-                                        setData(prev => ({
-                                          ...prev,
-                                          room_images: {
-                                            ...prev.room_images,
-                                            [floorKey]: {
-                                              ...prev.room_images[floorKey],
-                                              [roomTypeKey]: prev.room_images[floorKey][roomTypeKey].filter(img => img.id !== image.id)
-                                            }
-                                          }
-                                        }));
-                                      }}
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          
-        </div>
-      )}
-
-      {step === 8 && (
-        <div className="section">
-          <div className="section-header">Choose Architect</div>
-          <div className="section-body">
-            <div style={{
-              background:'#f8fafc', border:'1px solid #e5e7eb', borderRadius:12, padding:12, marginBottom:12
-            }}>
-              <div className="grid-3" style={{gap:12}}>
-                <div className="field">
-                  <label>Search</label>
-                  <div style={{ position:'relative' }}>
-                    <span style={{ position:'absolute', left:10, top:9 }}>🔍</span>
-                    <input 
-                      style={{ paddingLeft:30 }}
-                      value={archSearch} 
-                      onChange={(e)=>setArchSearch(e.target.value)} 
-                      placeholder="Name, email, city" 
-                    />
-                  </div>
-                </div>
-                <div className="field">
-                  <label>Specialization</label>
-                  <input value={archSpec} onChange={(e)=>setArchSpec(e.target.value)} placeholder="Residential, Interiors, etc." />
-                </div>
-                <div className="field">
-                  <label>Min Experience (years)</label>
-                  <input type="number" min={0} value={archMinExp} onChange={(e)=>setArchMinExp(e.target.value)} />
-                </div>
-                <div className="field">
-                  <label>Sort by</label>
-                  <select value={sortKey} onChange={(e)=>setSortKey(e.target.value)}>
-                    <option value="best">Best match</option>
-                    <option value="experience">Experience</option>
-                    <option value="recent">Recently joined</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:12 }}>
-                <div className="muted" style={{ color:'#6b7280' }}>
-                  Selected: {(data.selected_architect_ids || []).length}
-                </div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button className="btn btn-secondary" onClick={()=>fetchArchitects({ search: archSearch, specialization: archSpec, min_experience: archMinExp })} disabled={archLoading}>
-                    {archLoading ? 'Searching…' : 'Search'}
-                  </button>
-                  <button className="btn" onClick={()=>{ setArchSearch(''); setArchSpec(''); setArchMinExp(''); fetchArchitects({}); }}>
-                    Reset
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {archError && <div className="error" style={{marginBottom:12}}>{archError}</div>}
-
-            <div className="item-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:12 }}>
-              {sortedArchitects.map(a => (
-                <div key={a.id} className="card" style={{ background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:14, display:'flex', flexDirection:'column', gap:10 }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:40, height:40, borderRadius:'50%', background:'#e0f2fe', color:'#0369a1', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>
-                        {getInitials(a.first_name, a.last_name)}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:16 }}>{`${a.first_name || ''} ${a.last_name || ''}`.trim() || `Architect #${a.id}`}</div>
-                        <div style={{ color:'#6b7280', fontSize:12 }}>{a.email || ''}</div>
-                      </div>
-                    </div>
-                    <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={(data.selected_architect_ids || []).includes(a.id)}
-                        onChange={()=>toggleArchitect(a.id)}
-                      />
-                      <span style={{ fontSize:12, color:'#374151' }}>Select</span>
-                    </label>
-                  </div>
-
-                  <div style={{ display:'flex', alignItems:'center', gap:8, color:'#374151' }}>
-                    <span style={{ color:'#f59e0b' }}>{renderStars(a.avg_rating)}</span>
-                    <span style={{ fontSize:12 }}>{typeof a.avg_rating === 'number' ? `${a.avg_rating} / 5` : 'No rating yet'}</span>
-                    <span style={{ fontSize:12, color:'#6b7280' }}>({a.review_count || 0})</span>
-                  </div>
-
-                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', fontSize:12, color:'#6b7280' }}>
-                    {a.specialization ? <span style={{ background:'#f3f4f6', padding:'4px 8px', borderRadius:999 }}>#{a.specialization}</span> : null}
-                    {typeof a.experience_years === 'number' ? <span style={{ background:'#f3f4f6', padding:'4px 8px', borderRadius:999 }}>{a.experience_years} yrs exp</span> : null}
-                    {a.already_assigned ? <span style={{ background:'#d1fae5', color:'#065f46', padding:'4px 8px', borderRadius:999 }}>Already assigned</span> : null}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleArchitectDetails(a.id)}
-                    className="btn"
-                    style={{ alignSelf:'flex-start' }}
-                    title="View details and reviews"
-                  >
-                    {expandedArchitectId === a.id ? 'Hide details' : 'View details'}
-                  </button>
-
-                  {expandedArchitectId === a.id && (
-                    <div style={{ marginTop:4, padding:12, border:'1px solid #e5e7eb', borderRadius:8, background:'#fafafa' }}>
-                      <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:8 }}>
-                        <div style={{ fontSize:20 }}>{renderStars(a.avg_rating)}</div>
-                        <div style={{ color:'#555' }}>{typeof a.avg_rating === 'number' ? `${a.avg_rating} / 5` : 'No rating yet'}</div>
-                        <div style={{ color:'#888' }}>({a.review_count || 0} reviews)</div>
-                      </div>
-
-                      {reviewsLoading && !reviewsCache[a.id] && <div className="muted">Loading reviews…</div>}
-
-                      {reviewsCache[a.id]?.reviews?.length > 0 ? (
-                        <div style={{ display:'grid', gap:10 }}>
-                          {reviewsCache[a.id].reviews.slice(0,3).map(rv => (
-                            <div key={rv.id} style={{ padding:10, background:'#fff', borderRadius:6, border:'1px solid #eee' }}>
-                              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                                <div style={{ fontWeight:600 }}>{rv.author || 'Homeowner'}</div>
-                                <div style={{ color:'#f59e0b' }}>{renderStars(rv.rating)}</div>
-                              </div>
-                              <div style={{ color:'#555', whiteSpace:'pre-wrap' }}>{rv.comment}</div>
-                              <div style={{ color:'#888', fontSize:12, marginTop:6 }}>{new Date(rv.created_at).toLocaleDateString()}</div>
-                            </div>
-                          ))}
-                          {reviewsCache[a.id].reviews.length > 3 && (
-                            <div className="muted" style={{ fontSize:12 }}>Showing recent 3 reviews</div>
-                          )}
-                        </div>
-                      ) : (
-                        !reviewsLoading && <div className="muted">No reviews yet</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {sortedArchitects.length === 0 && !archLoading && (
-                <div className="empty-state" style={{ gridColumn:'1/-1' }}>
-                  <div className="empty-icon">🧑‍🎨</div>
-                  <h3>No architects found</h3>
-                  <p>Try adjusting your search or filters.</p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="wizard-footer">
-            <button className="btn btn-secondary" onClick={prev}>Back</button>
-            <button className="btn btn-primary" onClick={next}>Next</button>
-          </div>
-        </div>
-      )}
-
-      {step === 9 && (
-        <div className="section">
           <div className="section-header">Submit</div>
           <div className="section-body">
-            <p className="muted">Your request will be created and sent to the selected architect(s): {
-              (() => {
-                const ids = data.selected_architect_ids || [];
-                if (!ids.length) return 'None selected';
-                const names = ids.map(id => {
-                  const a = architects.find(x => x.id === id);
-                  if (!a) return `Architect #${id}`;
-                  const name = `${a.first_name || ''} ${a.last_name || ''}`.trim();
-                  return name || `Architect #${id}`;
-                });
-                return names.join(', ');
-              })()
-            }</p>
+            <div className="submit-message">
+              <h3>Ready to Submit?</h3>
+              <p>Please review all your information before submitting your request.</p>
+            </div>
+            
+            {/* Project Summary */}
+            <div style={{ 
+              backgroundColor: '#f8fafc', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '8px', 
+              padding: '20px', 
+              marginBottom: '20px' 
+            }}>
+              <h4 style={{ margin: '0 0 16px 0', color: '#374151', fontSize: '18px' }}>
+                📋 Project Summary
+              </h4>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h5 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '16px' }}>🏠 Project Details</h5>
+                  <div style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+                    <div><strong>Plot Size:</strong> {data.plot_size} {data.plot_unit || 'sq ft'}</div>
+                    <div><strong>Building Size:</strong> {data.building_size} sq ft</div>
+                    <div><strong>Floors:</strong> {data.num_floors}</div>
+                    <div><strong>Budget:</strong> {data.budget_range}</div>
+                    <div><strong>Style:</strong> {data.aesthetic}</div>
+                    <div><strong>Timeline:</strong> {data.timeline}</div>
+                    {estimatedCost && (
+                      <div><strong>Estimated Cost:</strong> ₹{Math.round(estimatedCost).toLocaleString()}</div>
+                    )}
+                    {plotCategory && (
+                      <div><strong>Plot Category:</strong> {plotCategory}</div>
+                    )}
+                    {timelineData && (
+                      <div><strong>Predicted Duration:</strong> {timelineData.months} months</div>
+                    )}
+                  </div>
+                </div>
+                
+                <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h5 style={{ margin: '0 0 12px 0', color: '#374151', fontSize: '16px' }}>
+                    👥 Selected Architects ({selectedArchitects.length})
+                  </h5>
+                  <div style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+                    {selectedArchitects.length > 0 ? (
+                      <div>
+                        {selectedArchitects.map((architect, index) => (
+                          <div key={architect.id} style={{ 
+                            padding: '8px 12px', 
+                            backgroundColor: '#f0f9ff', 
+                            border: '1px solid #bae6fd', 
+                            borderRadius: '6px', 
+                            marginBottom: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            <div style={{ 
+                              width: '32px', 
+                              height: '32px', 
+                              backgroundColor: '#3b82f6', 
+                              borderRadius: '50%', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              color: 'white',
+                              fontSize: '12px',
+                              fontWeight: '600'
+                            }}>
+                              {architect.first_name?.charAt(0) || 'A'}{architect.last_name?.charAt(0) || ''}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: '600', color: '#1e40af' }}>
+                                {architect.first_name} {architect.last_name}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                                {architect.email}
+                              </div>
+                              {architect.specialization && (
+                                <div style={{ fontSize: '12px', color: '#059669' }}>
+                                  {architect.specialization}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+                        No architects selected
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="wizard-footer">
             <button className="btn btn-secondary" onClick={prev}>Back</button>
-            <button className="btn btn-primary" disabled={loading} onClick={submit}>{loading ? 'Submitting...' : 'Submit Request'}</button>
+            <button className="btn btn-primary" onClick={submit}>Submit Request</button>
           </div>
         </div>
       )}

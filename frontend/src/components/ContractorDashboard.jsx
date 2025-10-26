@@ -6,9 +6,14 @@ import '../styles/SoftSidebar.css';
 import './WidgetColors.css';
 import { badgeClass, formatStatus } from '../utils/status';
 import { useToast } from './ToastProvider.jsx';
+import ContractorProfileButton from './ContractorProfileButton';
+import BuildHubSeal from './BuildHubSeal';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const ContractorDashboard = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('overview');
   const [user, setUser] = useState(null);
   const [layoutRequests, setLayoutRequests] = useState([]);
@@ -17,13 +22,14 @@ const ContractorDashboard = () => {
   const [ackOpenById, setAckOpenById] = useState({});
   const [myProposals, setMyProposals] = useState([]);
   const [myEstimates, setMyEstimates] = useState([]);
+  const [constructionEstimates, setConstructionEstimates] = useState([]);
+  const [constructionDetails, setConstructionDetails] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [collapsed] = useState(false);
-  const [sidebarProfileOpen, setSidebarProfileOpen] = useState(false);
-  const sidebarProfileRef = useRef(null);
   const [showRequestDetails, setShowRequestDetails] = useState({});
+  const [expandedProject, setExpandedProject] = useState(null);
   // Live totals for inbox estimate form
   const estimateFormRef = useRef(null);
   const [materialsTotal, setMaterialsTotal] = useState(0);
@@ -39,111 +45,470 @@ const ContractorDashboard = () => {
     el.style.height = `${el.scrollHeight}px`;
   };
 
-  const buildEstimateReport = (formEl) => {
+  const buildEstimateReport = async (formEl) => {
     try {
       const data = new FormData(formEl);
       const get = (k) => data.get(k) || '';
-      const html = `<!doctype html><html><head><meta charset="utf-8"/>
-      <title>Cost Estimate Report</title>
+      const currentDate = new Date().toLocaleDateString('en-IN', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      const contractorName = user?.first_name && user?.last_name ? 
+        `${user.first_name} ${user.last_name}` : 
+        'Contractor Name';
+      
+      // Create a temporary div to render the HTML content
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '-9999px';
+      tempDiv.style.width = '210mm'; // A4 width in mm
+      tempDiv.style.padding = '20mm';
+      tempDiv.style.backgroundColor = 'white';
+      tempDiv.style.fontFamily = 'Times New Roman, serif';
+      tempDiv.style.fontSize = '12px';
+      tempDiv.style.lineHeight = '1.4';
+      tempDiv.style.color = '#1a1a1a';
+      
+      const html = `
       <style>
-        body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;margin:24px}
-        h1{margin:0 0 8px 0;font-size:20px}
-        h2{margin:18px 0 8px 0;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-        .row{display:flex;justify-content:space-between;gap:12px}
-        .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:12px 0}
-        .muted{color:#64748b}
-        .total{font-weight:700}
-        table{width:100%;border-collapse:collapse;margin-top:8px}
-        th,td{border-bottom:1px solid #eef2f7;padding:8px;text-align:left}
+        @page { 
+          margin: 20mm; 
+          size: A4;
+        }
+        body{
+          font-family: 'Times New Roman', serif;
+          color: #1a1a1a;
+          margin: 0;
+          padding: 0;
+          line-height: 1.4;
+          background: white;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 30px;
+          border-bottom: 3px solid #2c3e50;
+          padding-bottom: 20px;
+        }
+        .company-logo {
+          width: 120px;
+          height: 120px;
+          margin: 0 auto 15px;
+          border: 2px solid #2c3e50;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 48px;
+          font-weight: bold;
+          color: #2c3e50;
+          background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+        .company-name {
+          font-size: 28px;
+          font-weight: bold;
+          color: #2c3e50;
+          margin: 10px 0 5px 0;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+        }
+        .company-tagline {
+          font-size: 14px;
+          color: #6c757d;
+          font-style: italic;
+          margin-bottom: 10px;
+        }
+        .company-details {
+          font-size: 12px;
+          color: #495057;
+          line-height: 1.3;
+        }
+        .document-title {
+          text-align: center;
+          margin: 30px 0;
+          font-size: 24px;
+          font-weight: bold;
+          color: #2c3e50;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .estimate-info {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+          margin-bottom: 30px;
+          padding: 15px;
+          background: #f8f9fa;
+          border-left: 4px solid #2c3e50;
+        }
+        .info-section h3 {
+          margin: 0 0 10px 0;
+          font-size: 16px;
+          color: #2c3e50;
+          border-bottom: 1px solid #dee2e6;
+          padding-bottom: 5px;
+        }
+        .info-section p {
+          margin: 5px 0;
+          font-size: 14px;
+        }
+        .cost-breakdown {
+          margin: 30px 0;
+        }
+        .cost-breakdown h2 {
+          font-size: 20px;
+          color: #2c3e50;
+          border-bottom: 2px solid #2c3e50;
+          padding-bottom: 10px;
+          margin-bottom: 20px;
+        }
+        .cost-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .cost-table th {
+          background: #2c3e50;
+          color: white;
+          padding: 12px;
+          text-align: left;
+          font-weight: bold;
+          font-size: 14px;
+        }
+        .cost-table td {
+          padding: 10px 12px;
+          border-bottom: 1px solid #dee2e6;
+          font-size: 14px;
+        }
+        .cost-table tr:nth-child(even) {
+          background: #f8f9fa;
+        }
+        .cost-table tr:hover {
+          background: #e9ecef;
+        }
+        .total-section {
+          margin: 30px 0;
+          padding: 20px;
+          background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+          color: white;
+          border-radius: 8px;
+        }
+        .total-section h2 {
+          margin: 0 0 15px 0;
+          font-size: 18px;
+          text-align: center;
+        }
+        .total-row {
+          display: flex;
+          justify-content: space-between;
+          margin: 8px 0;
+          font-size: 16px;
+        }
+        .grand-total {
+          border-top: 2px solid white;
+          padding-top: 10px;
+          margin-top: 15px;
+          font-size: 18px;
+          font-weight: bold;
+        }
+        .terms-section {
+          margin: 30px 0;
+          padding: 20px;
+          background: #f8f9fa;
+          border-left: 4px solid #28a745;
+        }
+        .terms-section h3 {
+          margin: 0 0 15px 0;
+          color: #28a745;
+          font-size: 16px;
+        }
+        .terms-section p {
+          margin: 8px 0;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+        .signature-section {
+          margin-top: 50px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 40px;
+        }
+        .signature-box {
+          text-align: center;
+          padding: 20px;
+          border: 2px solid #2c3e50;
+          border-radius: 8px;
+          background: #f8f9fa;
+        }
+        .signature-line {
+          border-bottom: 2px solid #2c3e50;
+          margin: 40px 0 10px 0;
+          height: 2px;
+        }
+        .signature-label {
+          font-size: 14px;
+          font-weight: bold;
+          color: #2c3e50;
+          margin-top: 10px;
+        }
+        .contractor-seal {
+          width: 100px;
+          height: 100px;
+          border: 3px solid #dc3545;
+          border-radius: 50%;
+          margin: 0 auto 15px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: bold;
+          color: #dc3545;
+          background: white;
+          text-align: center;
+          line-height: 1.2;
+        }
+        .footer {
+          margin-top: 40px;
+          text-align: center;
+          font-size: 12px;
+          color: #6c757d;
+          border-top: 1px solid #dee2e6;
+          padding-top: 15px;
+        }
+        @media print {
+          body { margin: 0; }
+          .header { page-break-inside: avoid; }
+          .signature-section { page-break-inside: avoid; }
+        }
       </style>
       </head><body>
-        <h1>Cost Estimate</h1>
-        <div class="muted">Generated on ${new Date().toLocaleString()}</div>
-        <div class="card">
-          <h2>Project</h2>
-          <div class="grid">
-            <div><strong>Name:</strong> ${get('structured[project_name]')}</div>
-            <div><strong>Address:</strong> ${get('structured[project_address]')}</div>
-            <div><strong>Plot Size:</strong> ${get('structured[plot_size]')}</div>
-            <div><strong>Built-up Area:</strong> ${get('structured[built_up_area]')}</div>
-            <div><strong>Floors:</strong> ${get('structured[floors]')}</div>
-            <div><strong>Date:</strong> ${get('structured[estimation_date]')}</div>
+        <!-- Company Header -->
+        <div class="header">
+          <div class="company-logo">🏗️</div>
+          <div class="company-name">${contractorName} Construction</div>
+          <div class="company-tagline">Professional Construction Services</div>
+          <div class="company-details">
+            📧 Email: ${user?.email || 'contact@company.com'} | 
+            📱 Phone: ${user?.phone || '+91-XXXXX-XXXXX'} | 
+            🏢 License: ${user?.license_number || 'LIC-XXXXX'}
           </div>
         </div>
-        <div class="card">
-          <h2>Materials</h2>
-          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
-            ${['cement','sand','bricks','steel','aggregate','tiles','paint','doors','windows','others'].map(k=>{
-              const name=get(`structured[materials][${k}][name]`);
-              const qty=get(`structured[materials][${k}][qty]`);
-              const rate=get(`structured[materials][${k}][rate]`);
-              const amt=get(`structured[materials][${k}][amount]`);
-              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
-            }).join('')}
-          </tbody></table>
-          <div class="row"><div class="muted">Materials Total</div><div class="total">₹${get('structured[totals][materials]')}</div></div>
+
+        <!-- Document Title -->
+        <div class="document-title">Cost Estimate Report</div>
+
+        <!-- Estimate Information -->
+        <div class="estimate-info">
+          <div class="info-section">
+            <h3>Project Details</h3>
+            <p><strong>Project Name:</strong> ${get('project_name') || 'Construction Project'}</p>
+            <p><strong>Location:</strong> ${get('location') || 'Project Location'}</p>
+            <p><strong>Client:</strong> ${get('client_name') || 'Client Name'}</p>
+            <p><strong>Project Type:</strong> ${get('project_type') || 'Residential/Commercial'}</p>
         </div>
-        <div class="card">
-          <h2>Labor</h2>
-          <table><thead><tr><th>Task</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
-            ${['mason','plaster','painting','electrical','plumbing','flooring','roofing','others'].map(k=>{
-              const name=get(`structured[labor][${k}][name]`);
-              const qty=get(`structured[labor][${k}][qty]`);
-              const rate=get(`structured[labor][${k}][rate]`);
-              const amt=get(`structured[labor][${k}][amount]`);
-              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
-            }).join('')}
-          </tbody></table>
-          <div class="row"><div class="muted">Labor Total</div><div class="total">₹${get('structured[totals][labor]')}</div></div>
+          <div class="info-section">
+            <h3>Estimate Information</h3>
+            <p><strong>Estimate Date:</strong> ${currentDate}</p>
+            <p><strong>Estimate Valid Until:</strong> ${new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('en-IN')}</p>
+            <p><strong>Project Duration:</strong> ${get('timeline') || '90 days'}</p>
+            <p><strong>Estimate #:</strong> EST-${Date.now().toString().slice(-6)}</p>
         </div>
-        <div class="card">
-          <h2>Utilities & Fixtures</h2>
-          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
-            ${['sanitary','kitchen','electrical_fixtures','water_tank','hvac','gas_water'].map(k=>{
-              const name=get(`structured[utilities][${k}][name]`);
-              const qty=get(`structured[utilities][${k}][qty]`);
-              const rate=get(`structured[utilities][${k}][rate]`);
-              const amt=get(`structured[utilities][${k}][amount]`);
-              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
-            }).join('')}
-            ${['others1','others2','others3'].map(k=>{
-              const name=get(`structured[utilities][${k}][name]`);
-              const amt=get(`structured[utilities][${k}][amount]`);
-              return (name||amt)?`<tr><td>${name}</td><td class="muted"></td><td class="muted"></td><td>${amt}</td></tr>`:'';
-            }).join('')}
-          </tbody></table>
-          <div class="row"><div class="muted">Utilities Total</div><div class="total">₹${get('structured[totals][utilities]')}</div></div>
         </div>
-        <div class="card">
-          <h2>Miscellaneous</h2>
-          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead><tbody>
-            ${['transport','contingency','fees','cleaning','safety'].map(k=>{
-              const name=get(`structured[misc][${k}][name]`);
-              const qty=get(`structured[misc][${k}][qty]`);
-              const rate=get(`structured[misc][${k}][rate]`);
-              const amt=get(`structured[misc][${k}][amount]`);
-              return (name||amt)?`<tr><td>${name}</td><td class="muted">${qty}</td><td class="muted">${rate}</td><td>${amt}</td></tr>`:'';
-            }).join('')}
-            ${['others1','others2','others3'].map(k=>{
-              const name=get(`structured[misc][${k}][name]`);
-              const amt=get(`structured[misc][${k}][amount]`);
-              return (name||amt)?`<tr><td>${name}</td><td class="muted"></td><td class="muted"></td><td>${amt}</td></tr>`:'';
-            }).join('')}
-          </tbody></table>
-          <div class="row"><div class="muted">Misc Total</div><div class="total">₹${get('structured[totals][misc]')}</div></div>
+
+        <!-- Cost Breakdown -->
+        <div class="cost-breakdown">
+          <h2>Detailed Cost Breakdown</h2>
+          <table class="cost-table">
+            <thead>
+              <tr>
+                <th>Item Description</th>
+                <th>Quantity</th>
+                <th>Unit Rate (₹)</th>
+                <th>Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>MATERIALS</strong></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Cement (OPC 43 Grade)</td>
+                <td>${get('structured[materials][cement][qty]') || '50'} bags</td>
+                <td>${get('structured[materials][cement][rate]') || '400'}</td>
+                <td>₹${(parseFloat(get('structured[materials][cement][qty]') || '50') * parseFloat(get('structured[materials][cement][rate]') || '400')).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td>Sand (River Sand)</td>
+                <td>${get('structured[materials][sand][qty]') || '5'} m³</td>
+                <td>${get('structured[materials][sand][rate]') || '2000'}</td>
+                <td>₹${(parseFloat(get('structured[materials][sand][qty]') || '5') * parseFloat(get('structured[materials][sand][rate]') || '2000')).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td>Bricks (Red Clay)</td>
+                <td>${get('structured[materials][bricks][qty]') || '2000'} nos</td>
+                <td>${get('structured[materials][bricks][rate]') || '8'}</td>
+                <td>₹${(parseFloat(get('structured[materials][bricks][qty]') || '2000') * parseFloat(get('structured[materials][bricks][rate]') || '8')).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td><strong>LABOR</strong></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Masonry Work</td>
+                <td>${get('structured[labor][masonry][qty]') || '1'} unit</td>
+                <td>${get('structured[labor][masonry][rate]') || '15000'}</td>
+                <td>₹${(parseFloat(get('structured[labor][masonry][qty]') || '1') * parseFloat(get('structured[labor][masonry][rate]') || '15000')).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td>Plumbing Work</td>
+                <td>${get('structured[labor][plumbing][qty]') || '1'} unit</td>
+                <td>${get('structured[labor][plumbing][rate]') || '12000'}</td>
+                <td>₹${(parseFloat(get('structured[labor][plumbing][qty]') || '1') * parseFloat(get('structured[labor][plumbing][rate]') || '12000')).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr>
+                <td>Electrical Work</td>
+                <td>${get('structured[labor][electrical][qty]') || '1'} unit</td>
+                <td>${get('structured[labor][electrical][rate]') || '10000'}</td>
+                <td>₹${(parseFloat(get('structured[labor][electrical][qty]') || '1') * parseFloat(get('structured[labor][electrical][rate]') || '10000')).toLocaleString('en-IN')}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="card">
-          <h2>Grand Total</h2>
-          <div class="row"><div class="muted">Grand Total (All)</div><div class="total">₹${get('structured[totals][grand]')}</div></div>
+
+        <!-- Total Section -->
+        <div class="total-section">
+          <h2>Cost Summary</h2>
+          <div class="total-row">
+            <span>Materials Cost:</span>
+            <span>₹${get('structured[totals][materials_total]') || '50000'}</span>
         </div>
-        <script>window.onload=function(){window.print&&window.print();}</script>
+          <div class="total-row">
+            <span>Labor Cost:</span>
+            <span>₹${get('structured[totals][labor_total]') || '37000'}</span>
+          </div>
+          <div class="total-row">
+            <span>Transportation:</span>
+            <span>₹${get('structured[totals][transport_total]') || '5000'}</span>
+          </div>
+          <div class="total-row">
+            <span>Contingency (5%):</span>
+            <span>₹${get('structured[totals][contingency_total]') || '4600'}</span>
+          </div>
+          <div class="total-row grand-total">
+            <span>GRAND TOTAL:</span>
+            <span>₹${get('structured[totals][grand_total]') || '96600'}</span>
+          </div>
+        </div>
+
+        <!-- Terms and Conditions -->
+        <div class="terms-section">
+          <h3>Terms & Conditions</h3>
+          <p><strong>Payment Terms:</strong> 30% advance, 40% on completion of foundation, 30% on completion</p>
+          <p><strong>Validity:</strong> This estimate is valid for 30 days from the date of issue</p>
+          <p><strong>Materials:</strong> All materials will be of standard quality as per specifications</p>
+          <p><strong>Timeline:</strong> Project completion within ${get('timeline') || '90'} days from commencement</p>
+          <p><strong>Warranty:</strong> 1 year warranty on workmanship, 5 years on structural elements</p>
+          <p><strong>Notes:</strong> ${get('notes') || 'All work to be done as per approved drawings and specifications'}</p>
+        </div>
+
+        <!-- Signature Section -->
+        <div class="signature-section">
+          <div class="signature-box">
+            <div class="signature-line"></div>
+            <div class="signature-label">Client Signature</div>
+            <p style="margin-top: 10px; font-size: 12px; color: #6c757d;">Date: _______________</p>
+          </div>
+          <div class="signature-box">
+            <div class="contractor-seal">
+              <div>OFFICIAL<br/>SEAL</div>
+            </div>
+            <div class="signature-line"></div>
+            <div class="signature-label">${contractorName}</div>
+            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">Authorized Contractor</p>
+            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">Date: ${currentDate}</p>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+          <p>This is a computer-generated estimate. For any clarifications, please contact us.</p>
+          <p>© ${new Date().getFullYear()} ${contractorName} Construction. All rights reserved.</p>
+        </div>
       </body></html>`;
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      setRecentReportUrl(url);
-      window.open(url, '_blank');
-    } catch {}
+      
+      tempDiv.innerHTML = html;
+      document.body.appendChild(tempDiv);
+      
+      // Convert to canvas and then to PDF
+      console.log('Converting HTML to canvas...');
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+      
+      console.log('Canvas created:', canvas.width, 'x', canvas.height);
+      
+      // Remove the temporary div
+      document.body.removeChild(tempDiv);
+      
+      // Create PDF
+      console.log('Creating PDF...');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      
+      console.log('Image dimensions:', imgWidth, 'x', imgHeight);
+      
+      let position = 0;
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Download the PDF
+      const fileName = `Estimate_${contractorName.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}.pdf`;
+      console.log('Saving PDF as:', fileName);
+      
+      // Try alternative download method
+      try {
+        const pdfBlob = pdf.output('blob');
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log('PDF downloaded via blob method');
+      } catch (blobError) {
+        console.log('Blob method failed, trying direct save:', blobError);
+        pdf.save(fileName);
+      }
+      console.log('PDF save method called');
+    } catch (e) {
+      console.error('Error generating PDF report:', e);
+      toast.error('Error generating PDF report');
+    }
   };
 
   // Ensure legacy calls to window.__bhCalcSectionTotals work
@@ -228,6 +593,21 @@ const ContractorDashboard = () => {
       try {
         const me = JSON.parse(sessionStorage.getItem('user') || '{}');
         if (me?.id) {
+          const r4 = await fetch(`/buildhub/backend/api/contractor/get_construction_estimates.php?contractor_id=${me.id}`, { credentials: 'include' });
+          const j4 = await r4.json().catch(() => ({}));
+          if (mounted && j4?.success) setConstructionEstimates(Array.isArray(j4.estimates) ? j4.estimates : []);
+          
+          // Also fetch detailed construction information
+          const r5 = await fetch(`/buildhub/backend/api/contractor/get_construction_details.php?contractor_id=${me.id}`, { credentials: 'include' });
+          const j5 = await r5.json().catch(() => ({}));
+          if (mounted && j5?.success) {
+            setConstructionDetails(Array.isArray(j5.construction_projects) ? j5.construction_projects : []);
+          }
+        }
+      } catch {}
+      try {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (me?.id) {
           const r3 = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
           const j3 = await r3.json().catch(() => ({}));
           if (mounted && j3?.success) setInbox(Array.isArray(j3.items) ? j3.items : []);
@@ -286,21 +666,6 @@ const ContractorDashboard = () => {
     });
   }, []);
 
-  // Close sidebar profile dropdown on outside click or ESC
-  useEffect(() => {
-    const onClick = (e) => {
-      if (sidebarProfileRef.current && !sidebarProfileRef.current.contains(e.target)) {
-        setSidebarProfileOpen(false);
-      }
-    };
-    const onKey = (e) => { if (e.key === 'Escape') { setSidebarProfileOpen(false); } };
-    document.addEventListener('click', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('click', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, []);
 
   // Static sidebar – no auto-collapse
 
@@ -688,6 +1053,36 @@ const ContractorDashboard = () => {
     </div>
   );
 
+  const renderMyEstimates = () => (
+    <div>
+      <div className="main-header">
+        <h1>My Estimates</h1>
+        <p>Your submitted estimates with totals and timestamps</p>
+      </div>
+      <div className="section-card">
+        <div className="section-header">
+          <h2>Recent Estimates</h2>
+          <p>Download or reference previous submissions</p>
+        </div>
+        <div className="section-content">
+          {myEstimates.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📄</div>
+              <h3>No Estimates Yet</h3>
+              <p>Submit an estimate from your Inbox to see it here.</p>
+            </div>
+          ) : (
+            <div className="item-list">
+              {myEstimates.map(est => (
+                <EstimateListItem key={est.id} est={est} user={user} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderInbox = () => (
     <div>
       <div className="main-header">
@@ -767,6 +1162,191 @@ const ContractorDashboard = () => {
     const img = assetUrl(rawImg);
     const technical = fd?.technical_details || payload.technical_details || null;
     const floor = payload.floor_details || null;
+    
+    // Handle construction start notifications
+    if (item.type === 'construction_start') {
+      return (
+        <div className="card" key={item.id} style={{marginBottom: 12, borderLeft: '4px solid #10b981'}}>
+          <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <div className="card-title" style={{color: '#10b981', fontWeight: 'bold'}}>
+                🏗️ {item.title || 'Construction Started'}
+              </div>
+              <div className="muted" style={{fontSize:'0.85rem'}}>
+                From: {item.homeowner_name || 'Homeowner'}{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}
+              </div>
+              <div style={{marginTop: 8, padding: 12, backgroundColor: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0'}}>
+                <div style={{whiteSpace: 'pre-wrap', fontSize: '0.9rem', color: '#166534'}}>
+                  {item.message || 'The homeowner has approved your estimate and given permission to start construction work.'}
+                </div>
+              </div>
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:8}}>
+              <div className="muted" style={{fontSize:'0.85rem'}}>{new Date(item.created_at).toLocaleString()}</div>
+              <span className="status-badge success">Construction Approved</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // Handle estimate message notifications
+    if (item.type === 'estimate_message') {
+      const estimateDetails = payload.estimate_details || {};
+      const homeownerDetails = payload.homeowner_details || {};
+      const layoutDetails = payload.layout_details || {};
+      
+      return (
+        <div className="card" key={item.id} style={{marginBottom: 12, borderLeft: '4px solid #3b82f6'}}>
+          <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <div className="card-title" style={{color: '#3b82f6', fontWeight: 'bold'}}>
+                💬 {item.title || 'Estimate Approved with Message'}
+              </div>
+              <div className="muted" style={{fontSize:'0.85rem'}}>
+                From: {item.homeowner_name || 'Homeowner'}{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}
+              </div>
+            </div>
+            <div style={{display:'flex', alignItems:'center', gap:8}}>
+              <div className="muted" style={{fontSize:'0.85rem'}}>{new Date(item.created_at).toLocaleString()}</div>
+              <span className="status-badge success">Estimate Approved</span>
+            </div>
+          </div>
+          <div className="card-body" style={{padding: '16px'}}>
+            {/* Homeowner Message */}
+            <div style={{marginBottom: '16px', padding: '12px', backgroundColor: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe'}}>
+              <h4 style={{margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600', color: '#1e40af'}}>
+                Homeowner's Message:
+              </h4>
+              <div style={{whiteSpace: 'pre-wrap', fontSize: '0.9rem', color: '#1e3a8a'}}>
+                {item.message || 'I am satisfied with this estimate and would like to proceed with the project.'}
+              </div>
+            </div>
+
+            {/* Estimate Details */}
+            <div style={{marginBottom: '16px'}}>
+              <h4 style={{margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600', color: '#374151'}}>
+                📊 Estimate Details:
+              </h4>
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.9rem'}}>
+                <div>
+                  <strong>Total Cost:</strong> ₹{estimateDetails.total_cost || 'N/A'}
+                </div>
+                <div>
+                  <strong>Timeline:</strong> {estimateDetails.timeline || 'N/A'}
+                </div>
+                <div style={{gridColumn: '1 / -1'}}>
+                  <strong>Materials:</strong> {estimateDetails.materials || 'Not specified'}
+                </div>
+                <div style={{gridColumn: '1 / -1'}}>
+                  <strong>Cost Breakdown:</strong> {estimateDetails.cost_breakdown || 'Not specified'}
+                </div>
+                {estimateDetails.notes && (
+                  <div style={{gridColumn: '1 / -1'}}>
+                    <strong>Notes:</strong> {estimateDetails.notes}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Homeowner Contact Details */}
+            <div style={{marginBottom: '16px'}}>
+              <h4 style={{margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600', color: '#374151'}}>
+                👤 Homeowner Contact Details:
+              </h4>
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.9rem'}}>
+                <div>
+                  <strong>Name:</strong> {homeownerDetails.first_name} {homeownerDetails.last_name}
+                </div>
+                <div>
+                  <strong>Email:</strong> {homeownerDetails.email}
+                </div>
+                <div>
+                  <strong>Phone:</strong> {homeownerDetails.phone || 'Not provided'}
+                </div>
+                <div>
+                  <strong>City:</strong> {homeownerDetails.city || 'Not provided'}
+                </div>
+                <div style={{gridColumn: '1 / -1'}}>
+                  <strong>Address:</strong> {homeownerDetails.address || 'Not provided'}
+                </div>
+                {homeownerDetails.zip_code && (
+                  <div>
+                    <strong>Zip Code:</strong> {homeownerDetails.zip_code}
+                  </div>
+                )}
+                {homeownerDetails.state && (
+                  <div>
+                    <strong>State:</strong> {homeownerDetails.state}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Layout Details (if available) */}
+            {layoutDetails && layoutDetails.id && (
+              <div style={{marginBottom: '16px'}}>
+                <h4 style={{margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600', color: '#374151'}}>
+                  🏠 Layout Details:
+                </h4>
+                <div style={{fontSize: '0.9rem'}}>
+                  <div><strong>Layout Title:</strong> {layoutDetails.title}</div>
+                  {layoutDetails.description && (
+                    <div><strong>Description:</strong> {layoutDetails.description}</div>
+                  )}
+                  <div><strong>Created:</strong> {new Date(layoutDetails.created_at).toLocaleDateString()}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{display: 'flex', gap: '8px', justifyContent: 'flex-end'}}>
+              <button 
+                className="btn btn-primary"
+                onClick={async () => {
+                  try {
+                    const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+                    await fetch('/buildhub/backend/api/contractor/acknowledge_inbox_item.php', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ id: item.id, contractor_id: me.id, due_date: null })
+                    });
+                    // Refresh inbox
+                    const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+                    const j = await r.json().catch(() => ({}));
+                    if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+                  } catch {}
+                }}
+              >
+                ✓ Acknowledge
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={async () => {
+                  try {
+                    const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+                    await fetch('/buildhub/backend/api/contractor/delete_inbox_item.php', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ id: item.id, contractor_id: me.id })
+                    });
+                    // Refresh inbox
+                    const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+                    const j = await r.json().catch(() => ({}));
+                    if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+                  } catch {}
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="card" key={item.id} style={{marginBottom: 12}}>
         <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -794,13 +1374,25 @@ const ContractorDashboard = () => {
                     <button className="btn btn-primary" onClick={async ()=>{
                       const me = JSON.parse(sessionStorage.getItem('user') || '{}');
                       try {
-                        await fetch('/buildhub/backend/api/contractor/acknowledge_inbox_item.php', {
+                        const response = await fetch('/buildhub/backend/api/contractor/acknowledge_inbox_item.php', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           credentials: 'include',
                           body: JSON.stringify({ id: item.id, contractor_id: me.id, due_date: ackDateById[item.id] || null })
                         });
-                      } catch {}
+                        const result = await response.json();
+                        if (result.success) {
+                          // Show alert with acknowledgment time
+                          const ackTime = result.acknowledged_at || new Date().toLocaleString();
+                          const dueDate = ackDateById[item.id] ? new Date(ackDateById[item.id]).toLocaleDateString() : 'not specified';
+                          alert(`✅ Acknowledgement sent successfully!\n\nAcknowledged at: ${ackTime}\nDue date: ${dueDate}\n\nThe homeowner has been notified.`);
+                        } else {
+                          alert(`Failed to acknowledge: ${result.message || 'Unknown error'}`);
+                        }
+                      } catch (e) {
+                        alert('Network error. Please try again.');
+                        console.error(e);
+                      }
                       try {
                         const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
                         const j = await r.json().catch(() => ({}));
@@ -814,19 +1406,32 @@ const ContractorDashboard = () => {
               </div>
             )}
             <button className="btn btn-secondary" onClick={async ()=>{
+              // Confirm removal
+              const confirmed = window.confirm('Are you sure you want to remove this item from your inbox?');
+              if (!confirmed) return;
+              
               try {
                 const me = JSON.parse(sessionStorage.getItem('user') || '{}');
-                await fetch('/buildhub/backend/api/contractor/delete_inbox_item.php', {
+                const response = await fetch('/buildhub/backend/api/contractor/delete_inbox_item.php', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
                   body: JSON.stringify({ id: item.id, contractor_id: me.id })
                 });
-                // Refresh inbox
-                const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
-                const j = await r.json().catch(() => ({}));
-                if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
-              } catch {}
+                
+                const result = await response.json().catch(() => ({}));
+                if (result.success || response.ok) {
+                  // Refresh inbox
+                  const r = await fetch(`/buildhub/backend/api/contractor/get_inbox.php?contractor_id=${me.id}`, { credentials: 'include' });
+                  const j = await r.json().catch(() => ({}));
+                  if (j?.success) setInbox(Array.isArray(j.items) ? j.items : []);
+                } else {
+                  alert('Failed to remove item. Please try again.');
+                }
+              } catch (e) {
+                alert('Error removing item. Please try again.');
+                console.error(e);
+              }
             }}>Remove</button>
           </div>
         </div>
@@ -886,7 +1491,7 @@ const ContractorDashboard = () => {
                 const sid = String(item?.id || form.querySelector('input[name="send_id"]')?.value || '');
                 const cid = String(user?.id || me?.id || form.querySelector('input[name="contractor_id"]')?.value || '');
                 if (!sid || !cid) {
-                  alert('Missing identifiers. Please refresh and try again.');
+                  toast.error('Missing identifiers. Please refresh and try again.');
                   return;
                 }
                 // Build structured object from inputs named like structured[...]
@@ -929,15 +1534,20 @@ const ContractorDashboard = () => {
                   });
                   const json = await res.json();
                   if (json?.success) {
-                    alert('Estimate submitted');
+                    toast.success('Estimate submitted');
                     form.reset();
                   } else {
-                    alert(json?.message || 'Failed to submit');
+                    toast.error(json?.message || 'Failed to submit');
                   }
                 } catch {
-                  alert('Network error');
+                  toast.error('Network error');
                 }
               }}>
+                {/* BuildHub Estimation Seal */}
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', padding: '20px 0' }}>
+                  <BuildHubSeal size="medium" />
+                </div>
+                
                 {/* Hidden identifiers for backend (use defaultValue to avoid React controlled issues) */}
                 <input type="hidden" name="send_id" defaultValue={String(item?.id || '')} />
                 <input type="hidden" name="contractor_id" defaultValue={String(user?.id || (JSON.parse(sessionStorage.getItem('user')||'{}').id || ''))} />
@@ -1240,7 +1850,7 @@ const ContractorDashboard = () => {
                 </div>
                 <div className="actions">
                   <button className="btn btn-secondary" type="button" onClick={(e)=>{ const form = e.currentTarget.closest('form'); if (form) form.reset(); recalcTotalsFromForm(form); }}>Reset</button>
-                  <button className="btn btn-primary" type="button" onClick={(e)=>{ const form = e.currentTarget.closest('form'); buildEstimateReport(form); }}>Download Report</button>
+                  <button className="btn btn-primary" type="button" onClick={async (e)=>{ const form = e.currentTarget.closest('form'); await buildEstimateReport(form); }}>Download PDF Report</button>
                   <button className="btn btn-primary" type="submit">Submit Estimate</button>
                 </div>
 
@@ -1367,110 +1977,276 @@ const ContractorDashboard = () => {
     );
   };
 
-  const renderAvailableProjects = () => (
+  const renderAvailableProjects = () => {
+    return (
     <div>
       <div className="main-header">
-        <h1>Cost Requests</h1>
-        <p>Browse layout requests from homeowners and submit your cost estimates</p>
+          <h1>Construction Projects</h1>
+          <p>Approved estimates ready for construction with complete project details</p>
       </div>
-  const renderMyEstimates = () => (
-    <div>
-      <div className="main-header">
-        <h1>My Estimates</h1>
-        <p>Your submitted estimates with totals and timestamps</p>
-      </div>
-      <div className="section-card">
-        <div className="section-header">
-          <h2>Recent Estimates</h2>
-          <p>Download or reference previous submissions</p>
-        </div>
-        <div className="section-content">
-          {myEstimates.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">📄</div>
-              <h3>No Estimates Yet</h3>
-              <p>Submit an estimate from your Inbox to see it here.</p>
-            </div>
-          ) : (
-            <div className="item-list">
-              {myEstimates.map(est => (
-                <div key={est.id} className="list-item">
-                  <div className="item-content" style={{flex:1}}>
-                    <h4 className="item-title">Estimate #{est.id}</h4>
-                    <p className="item-subtitle">Send ID: {est.send_id} • Total: ₹{est.total_cost ?? '—'} • {new Date(est.created_at).toLocaleString()}</p>
-                  </div>
-                  <div className="item-actions">
-                    <button className="btn btn-secondary" onClick={()=>{
-                      try {
-                        const win = window.open('', '_blank');
-                        if (win) { win.document.write('<pre>'+ (est.structured || est.materials || '') +'</pre>'); win.document.close(); }
-                      } catch {}
-                    }}>View Raw</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 
       <div className="section-card">
         <div className="section-header">
-          <h2>Available Projects</h2>
-          <p>Submit cost estimates for approved layouts</p>
+            <h2>Active Construction Projects</h2>
+            <p>Detailed project information including layouts, estimates, and technical specifications</p>
+            <div className="section-actions" style={{display: 'flex', gap: '12px', marginTop: '12px'}}>
+              <button 
+                className="btn btn-primary" 
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+                    const r = await fetch(`/buildhub/backend/api/contractor/get_construction_details.php?contractor_id=${me.id}`, { credentials: 'include' });
+                    const j = await r.json().catch(() => ({}));
+                    if (j?.success) setConstructionDetails(Array.isArray(j.projects) ? j.projects : []);
+                  } catch {}
+                  setLoading(false);
+                }}
+                disabled={loading}
+              >
+                {loading ? '🔄 Refreshing...' : '🔄 Refresh Projects'}
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setActiveTab('proposals')}
+              >
+                📋 View All Estimates
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setActiveTab('inbox')}
+              >
+                📥 Check Inbox
+              </button>
+            </div>
         </div>
         <div className="section-content">
           {loading ? (
-            <div className="loading">Loading projects...</div>
-          ) : layoutRequests.length === 0 ? (
+              <div className="loading">Loading construction projects...</div>
+            ) : constructionDetails.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">📭</div>
-              <h3>No Projects Available</h3>
-              <p>Check back later for new project opportunities!</p>
+                <div className="empty-icon">🏗️</div>
+                <h3>No Construction Projects Yet</h3>
+                <p>When homeowners approve your estimates and start construction, they will appear here with complete project details!</p>
+                <div style={{marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center'}}>
+                  <div style={{display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center'}}>
+                    <button 
+                      className="btn btn-primary" 
+                      onClick={() => setActiveTab('projects')}
+                      style={{display: 'flex', alignItems: 'center', gap: '6px'}}
+                    >
+                      🔍 Browse Available Projects
+                    </button>
+                    <button 
+                      className="btn btn-secondary" 
+                      onClick={() => setActiveTab('proposals')}
+                      style={{display: 'flex', alignItems: 'center', gap: '6px'}}
+                    >
+                      📝 View My Estimates
+                    </button>
+                    <button 
+                      className="btn btn-secondary" 
+                      onClick={() => setActiveTab('inbox')}
+                      style={{display: 'flex', alignItems: 'center', gap: '6px'}}
+                    >
+                      📥 Check Messages
+                    </button>
+                  </div>
+                  <div style={{fontSize: '14px', color: '#6b7280', textAlign: 'center', maxWidth: '400px'}}>
+                    <strong>💡 Tip:</strong> Submit detailed estimates for available projects to increase your chances of getting approved for construction work!
+                  </div>
+                </div>
             </div>
           ) : (
-            <div className="item-list">
-              {layoutRequests.map(request => {
-                const summary = getForwardedSummary(request);
-                const thumb = getForwardedThumb(request);
-                return (
-                <div key={request.id} className="list-item">
-                  <div className="item-image">
-                    {thumb?.isImage ? (
-                      <img src={thumb.href} alt={thumb.name} style={{width:48, height:48, objectFit:'cover', borderRadius:6}} />
-                    ) : (
-                      '🏠'
-                    )}
-                  </div>
-                  <div className="item-content">
-                    <h4 className="item-title">{summary.title}</h4>
-                    {summary.hasDesc && (
-                      <p className="item-subtitle">{summary.short}</p>
-                    )}
-                    <p className="item-meta">By {request.homeowner_name} • {request.plot_size} • Budget: ₹{request.budget_range}</p>
-                    <button className="btn btn-secondary" style={{marginTop:6}} onClick={() => setShowRequestDetails(prev => ({...prev, [request.id]: !prev[request.id]}))}>
-                      {showRequestDetails[request.id] ? 'Hide Details' : 'View Details'}
-                    </button>
-                    {showRequestDetails[request.id] && (
-                      <div className="details-panel">
-                        {renderForwardedDesign(request)}
+            <div className="construction-projects">
+                {constructionDetails.map(project => (
+                  <div key={project.estimate_id} className="construction-project-card">
+                    <div className="project-header">
+                      <div className="project-icon">
+                        <div style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 8,
+                          background: 'linear-gradient(135deg, #10b981, #059669)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '20px',
+                          color: 'white'
+                        }}>
+                          🏗️
+                        </div>
+                      </div>
+                      <div className="project-title-section">
+                        <h3 className="project-title">
+                          {project.structured?.project_name || `Project #${project.estimate_id}`}
+                        </h3>
+                        <p className="project-subtitle">
+                          Construction approved for {project.homeowner.name}
+                        </p>
+                        <div className="project-meta">
+                          <span className="meta-item">Total: ₹{project.structured?.totals?.grand || project.total_cost || 'TBD'}</span>
+                          <span className="meta-item">Timeline: {project.timeline || 'TBD'}</span>
+                          <span className="meta-item">Status: {project.estimate_status}</span>
+                        </div>
+                      </div>
+                      <div className="project-actions" style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                        <button 
+                          className="btn btn-primary"
+                          onClick={() => setExpandedProject(expandedProject === project.estimate_id ? null : project.estimate_id)}
+                        >
+                          {expandedProject === project.estimate_id ? 'Hide Details' : 'View Details'}
+                        </button>
+                        <button 
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            const subject = `Construction Project Update - ${project.structured?.project_name || `Project #${project.estimate_id}`}`;
+                            const body = `Hi ${project.homeowner.name},\n\nI wanted to provide you with an update on your construction project.\n\nProject: ${project.structured?.project_name || `Project #${project.estimate_id}`}\nTotal Cost: ₹${project.structured?.totals?.grand || project.total_cost || 'TBD'}\nTimeline: ${project.timeline || 'TBD'}\n\nPlease let me know if you have any questions.\n\nBest regards,\n[Your Name]`;
+                            window.open(`mailto:${project.homeowner.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                          }}
+                          title="Send email to homeowner"
+                        >
+                          📧 Contact Homeowner
+                        </button>
+                        <button 
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            const message = `Project: ${project.structured?.project_name || `Project #${project.estimate_id}`}\nHomeowner: ${project.homeowner.name}\nEmail: ${project.homeowner.email}\nPhone: ${project.homeowner.phone || 'Not provided'}\nTotal Cost: ₹${project.structured?.totals?.grand || project.total_cost || 'TBD'}\nTimeline: ${project.timeline || 'TBD'}`;
+                            navigator.clipboard.writeText(message).then(() => {
+                              try { toast.success('Project details copied to clipboard!'); } catch {}
+                            }).catch(() => {
+                              try { toast.error('Failed to copy details'); } catch {}
+                            });
+                          }}
+                          title="Copy project details"
+                        >
+                          📋 Copy Details
+                        </button>
+                      </div>
+                    </div>
+
+                    {expandedProject === project.estimate_id && (
+                      <div className="project-details">
+                        <div className="details-grid">
+                          {/* Homeowner Information */}
+                          <div className="detail-section">
+                            <h4 className="section-title">👤 Homeowner Information</h4>
+                            <div className="detail-content">
+                              <p><strong>Name:</strong> {project.homeowner.name}</p>
+                              <p><strong>Email:</strong> {project.homeowner.email}</p>
+                              <p><strong>Phone:</strong> {project.homeowner.phone || 'Not provided'}</p>
+                              <p><strong>Address:</strong> {project.homeowner.address || 'Not provided'}</p>
+                              {project.homeowner.city && <p><strong>City:</strong> {project.homeowner.city}</p>}
+                              {project.homeowner.state && <p><strong>State:</strong> {project.homeowner.state}</p>}
+                            </div>
+                          </div>
+
+                          {/* Project Requirements */}
+                          <div className="detail-section">
+                            <h4 className="section-title">🏠 Project Requirements</h4>
+                            <div className="detail-content">
+                              {project.layout_request.plot_size && <p><strong>Plot Size:</strong> {project.layout_request.plot_size}</p>}
+                              {project.layout_request.budget_range && <p><strong>Budget Range:</strong> {project.layout_request.budget_range}</p>}
+                              {project.layout_request.location && <p><strong>Location:</strong> {project.layout_request.location}</p>}
+                              {project.layout_request.preferred_style && <p><strong>Preferred Style:</strong> {project.layout_request.preferred_style}</p>}
+                              {project.layout_request.requirements && <p><strong>Requirements:</strong> {project.layout_request.requirements}</p>}
+                              {project.layout_request.timeline && <p><strong>Timeline:</strong> {project.layout_request.timeline}</p>}
+                            </div>
+                          </div>
+
+
+                          {/* Accepted Estimate Details */}
+                          <div className="detail-section">
+                            <h4 className="section-title">💰 Accepted Estimate</h4>
+                            <div className="detail-content">
+                              <p><strong>Total Cost:</strong> ₹{project.structured?.totals?.grand || project.total_cost || 'TBD'}</p>
+                              <p><strong>Timeline:</strong> {project.timeline || 'TBD'}</p>
+                              <p><strong>Status:</strong> {project.estimate_status}</p>
+                              <p><strong>Approved Date:</strong> {new Date(project.estimate_created_at).toLocaleString()}</p>
+                              {project.materials && <p><strong>Materials:</strong> {project.materials}</p>}
+                              {project.notes && <p><strong>Notes:</strong> {project.notes}</p>}
+                            </div>
+                          </div>
+
+                          {/* Layout Information */}
+                          {project.architect_layout.layout_file && (
+                            <div className="detail-section">
+                              <h4 className="section-title">📐 Approved Layout</h4>
+                              <div className="detail-content">
+                                <p><strong>Layout File:</strong> {project.architect_layout.layout_file}</p>
+                                {project.architect_layout.description && <p><strong>Description:</strong> {project.architect_layout.description}</p>}
+                                {project.architect_layout.notes && <p><strong>Layout Notes:</strong> {project.architect_layout.notes}</p>}
+                                <p><strong>Created:</strong> {new Date(project.architect_layout.created_at).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Construction Start Information */}
+                          <div className="detail-section construction-start">
+                            <h4 className="section-title">🚀 Construction Start Details</h4>
+                            <div className="detail-content">
+                              <div className="construction-checklist">
+                                <h5>Pre-Construction Checklist:</h5>
+                                <ul>
+                                  <li>✅ Estimate approved by homeowner</li>
+                                  <li>✅ Layout/design approved</li>
+                                  <li>✅ Payment arrangements confirmed</li>
+                                  <li>✅ Site access granted</li>
+                                  <li>✅ Permits and approvals obtained</li>
+                                </ul>
+                              </div>
+                              <div className="next-steps">
+                                <h5>Next Steps:</h5>
+                                <ol>
+                                  <li>Contact homeowner to schedule site visit</li>
+                                  <li>Finalize construction timeline</li>
+                                  <li>Arrange material delivery</li>
+                                  <li>Set up construction site</li>
+                                  <li>Begin foundation work</li>
+                                </ol>
+                              </div>
+                              <div className="construction-actions" style={{marginTop: '20px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0'}}>
+                                <h5 style={{margin: '0 0 12px 0', color: '#374151'}}>🚀 Ready to Start Construction?</h5>
+                                <div style={{display: 'flex', gap: '12px', flexWrap: 'wrap'}}>
+                                  <button 
+                                    className="btn btn-success"
+                                    onClick={() => {
+                                      const subject = `Construction Start Confirmation - ${project.structured?.project_name || `Project #${project.estimate_id}`}`;
+                                      const body = `Hi ${project.homeowner.name},\n\nI'm excited to confirm that we're ready to begin construction on your project!\n\nProject: ${project.structured?.project_name || `Project #${project.estimate_id}`}\nTotal Cost: ₹${project.structured?.totals?.grand || project.total_cost || 'TBD'}\nTimeline: ${project.timeline || 'TBD'}\n\nI'll be in touch soon to schedule the site visit and discuss the next steps.\n\nBest regards,\n[Your Name]`;
+                                      window.open(`mailto:${project.homeowner.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                                    }}
+                                  >
+                                    📧 Confirm Start with Homeowner
+                                  </button>
+                                  <button 
+                                    className="btn btn-primary"
+                                    onClick={() => {
+                                      const message = `Construction Project Started\n\nProject: ${project.structured?.project_name || `Project #${project.estimate_id}`}\nHomeowner: ${project.homeowner.name}\nStart Date: ${new Date().toLocaleDateString()}\nTimeline: ${project.timeline || 'TBD'}\nTotal Cost: ₹${project.structured?.totals?.grand || project.total_cost || 'TBD'}`;
+                                      navigator.clipboard.writeText(message).then(() => {
+                                        try { toast.success('Construction start details copied!'); } catch {}
+                                      }).catch(() => {
+                                        try { toast.error('Failed to copy details'); } catch {}
+                                      });
+                                    }}
+                                  >
+                                    📋 Copy Start Details
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
-                  <div className="item-actions">
-                    <span className={`status-badge ${badgeClass(request.status)}`}>{formatStatus(request.status)}</span>
-                    <button className="btn btn-primary" onClick={() => navigate(`/contractor/estimate?layout_request_id=${request.id}`)}>Submit Estimate</button>
-                  </div>
-                </div>
-              );})}
+                ))}
             </div>
           )}
         </div>
       </div>
     </div>
   );
+  };
 
   const renderMyProposals = () => (
     <div>
@@ -1583,9 +2359,9 @@ const ContractorDashboard = () => {
             href="#" 
             className={`nav-item sb-item ${activeTab === 'projects' ? 'active' : ''}`}
             onClick={(e) => { e.preventDefault(); setActiveTab('projects'); }}
-            title="Cost Requests"
+            title="Construction"
           >
-            <span className="nav-label sb-label">Cost Requests</span>
+            <span className="nav-label sb-label">Construction</span>
             {requestsCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{requestsCount}</span>)}
           </a>
           <a 
@@ -1595,7 +2371,7 @@ const ContractorDashboard = () => {
             title="My Estimates"
           >
             <span className="nav-label sb-label">My Estimates</span>
-            {proposalsCount > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{proposalsCount}</span>)}
+            {myEstimates.length > 0 && (<span className="nav-badge pulse" style={{ marginLeft:'auto' }}>{myEstimates.length}</span>)}
           </a>
           <a 
             href="#" 
@@ -1609,67 +2385,29 @@ const ContractorDashboard = () => {
         
         </nav>
 
-        <div className="sidebar-footer sb-footer" style={{ padding:'12px', borderTop:'1px solid #e5e7eb', marginTop:'auto' }} ref={sidebarProfileRef}>
-          <button
-            type="button"
-            onClick={() => setSidebarProfileOpen(v => !v)}
-            aria-haspopup="menu"
-            aria-expanded={sidebarProfileOpen ? 'true' : 'false'}
-            style={{ width:'100%', background:'transparent', border:'none', padding:0, textAlign:'left', cursor:'pointer' }}
-            title="Profile"
-          >
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{ width:36, height:36, borderRadius:'50%', background:'#fff', border:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
-                {user?.avatar_url ? (
-                  <img src={user.avatar_url} alt="Avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                ) : (
-                  <span style={{ fontWeight:700, fontSize:12, color:'#374151' }}>{(user?.first_name?.[0]||'C').toUpperCase()}{(user?.last_name?.[0]||'').toUpperCase()}</span>
-                )}
               </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontWeight:600, fontSize:13, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                  {user?.first_name || 'Contractor'} {user?.last_name || ''}
-                </div>
-                <div style={{ fontSize:12, color:'#6b7280', display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ display:'inline-flex', width:6, height:6, borderRadius:6, background:'#10b981' }}></span>
-                  Contractor
-                </div>
-              </div>
-              <span style={{ fontSize:12, color:'#6b7280', transition:'transform 160ms ease', transform: sidebarProfileOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-            </div>
-          </button>
-
-          {sidebarProfileOpen && (
-            <div role="menu" style={{ marginTop:8, background:'#fff', border:'1px solid #e5e7eb', borderRadius:10, boxShadow:'0 10px 28px rgba(2,6,23,0.12)', overflow:'hidden' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#f9fafb', borderBottom:'1px solid #f1f5f9' }}>
-                <div style={{ width:32, height:32, borderRadius:'50%', background:'#fff', border:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
-                  {user?.avatar_url ? (
-                    <img src={user.avatar_url} alt="Avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                  ) : (
-                    <span style={{ fontWeight:700, fontSize:12, color:'#374151' }}>{(user?.first_name?.[0]||'C').toUpperCase()}{(user?.last_name?.[0]||'').toUpperCase()}</span>
-                  )}
-                </div>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontWeight:600, fontSize:13, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{user?.first_name || 'Contractor'} {user?.last_name || ''}</div>
-                  <div style={{ fontSize:12, color:'#6b7280' }}>{user?.email || ''}</div>
-                </div>
-              </div>
-              <button type="button" onClick={() => { setSidebarProfileOpen(false); setActiveTab('profile'); }} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, background:'transparent', border:'none', textAlign:'left', padding:'10px 12px', cursor:'pointer' }} onMouseOver={(e)=>{ e.currentTarget.style.background='#f9fafb'; }} onMouseOut={(e)=>{ e.currentTarget.style.background='transparent'; }}>
-                <span aria-hidden style={{ width:18, textAlign:'center' }}>👤</span>
-                <span style={{ fontSize:14, color:'#111827' }}>Profile Setup</span>
-              </button>
-              <div style={{ height:1, background:'#f1f5f9' }}></div>
-              <button type="button" onClick={handleLogout} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, background:'transparent', border:'none', textAlign:'left', padding:'10px 12px', cursor:'pointer', color:'#b91c1c' }} onMouseOver={(e)=>{ e.currentTarget.style.background='#fff1f2'; }} onMouseOut={(e)=>{ e.currentTarget.style.background='transparent'; }}>
-                <span aria-hidden style={{ width:18, textAlign:'center' }}>🚪</span>
-                <span style={{ fontSize:14 }}>Logout</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Main Content */}
       <div className="dashboard-main blue-glass soft-main shifted">
+        {/* Top Glass Header */}
+        <div className="top-glassbar">
+          <div className="left">
+            <div className="search">
+              <span className="icon">🔎</span>
+              <input type="text" placeholder="Search projects, estimates, requests..." aria-label="Search" />
+                </div>
+                </div>
+          <div className="right">
+            <button className="icon-btn" title="Help">❓</button>
+            <ContractorProfileButton 
+              user={user}
+              position="bottom-right"
+              onProfileClick={() => setActiveTab('profile')}
+              onLogout={handleLogout}
+            />
+        </div>
+      </div>
+
         {error && (
           <div className="alert alert-error">
             {error}
@@ -1684,7 +2422,7 @@ const ContractorDashboard = () => {
 
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'projects' && renderAvailableProjects()}
-        {activeTab === 'proposals' && renderMyProposals()}
+        {activeTab === 'proposals' && renderMyEstimates()}
         {activeTab === 'inbox' && renderInbox()}
         {activeTab === 'profile' && renderProfile()}
       </div>
@@ -1775,6 +2513,10 @@ const ProjectItem = ({ request, onProposalSubmit }) => {
             <div className="form-header">
               <h3>Submit Cost Estimate</h3>
               <p>Provide detailed cost breakdown for {request.homeowner_name}'s project</p>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', padding: '20px 0' }}>
+              <BuildHubSeal size="medium" />
             </div>
             
             <form onSubmit={handleSubmitProposal}>
@@ -1873,5 +2615,580 @@ const ProposalItem = ({ proposal }) => (
     </div>
   </div>
 );
+
+const EstimateListItem = ({ est, user }) => {
+  let structured = null;
+  try { structured = est?.structured ? JSON.parse(est.structured) : null; } catch {}
+  const s = structured || {};
+  const money = (v) => {
+    const n = parseFloat(v);
+    if (Number.isFinite(n)) return `₹${n.toLocaleString()}`;
+    const m = String(v || '').match(/[-+]?(?:\d+\.?\d*|\d*\.?\d+)/);
+    const x = m ? parseFloat(m[0]) : null;
+    return Number.isFinite(x) ? `₹${x.toLocaleString()}` : '—';
+  };
+  const Section = ({ title, rows }) => (
+    <div className="card" style={{ marginTop: 8 }}>
+      <h4 style={{ margin: '0 0 6px 0' }}>{title}</h4>
+      <table style={{ width:'100%', borderCollapse:'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign:'left', borderBottom:'1px solid #eef2f7', padding:'6px 4px' }}>Item</th>
+            <th style={{ textAlign:'left', borderBottom:'1px solid #eef2f7', padding:'6px 4px' }} className="muted">Qty</th>
+            <th style={{ textAlign:'left', borderBottom:'1px solid #eef2f7', padding:'6px 4px' }} className="muted">Rate</th>
+            <th style={{ textAlign:'left', borderBottom:'1px solid #eef2f7', padding:'6px 4px' }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.filter(r => r && (r.name || r.amount)).map((r, i) => (
+            <tr key={i}>
+              <td style={{ padding:'6px 4px' }}>{r.name || '—'}</td>
+              <td style={{ padding:'6px 4px' }} className="muted">{r.qty || ''}</td>
+              <td style={{ padding:'6px 4px' }} className="muted">{r.rate || ''}</td>
+              <td style={{ padding:'6px 4px' }}>{money(r.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const rowsFrom = (obj, keys) => {
+    if (!obj || typeof obj !== 'object') return [];
+    return keys.map(k => ({
+      name: obj?.[k]?.name || '',
+      qty: obj?.[k]?.qty || '',
+      rate: obj?.[k]?.rate || '',
+      amount: obj?.[k]?.amount || ''
+    }));
+  };
+
+  const materialsRows = rowsFrom(s.materials, ['cement','sand','bricks','steel','aggregate','tiles','paint','doors','windows','others']);
+  const laborRows = rowsFrom(s.labor, ['mason','plaster','painting','electrical','plumbing','flooring','roofing','others']);
+  const utilitiesRows = rowsFrom(s.utilities, ['sanitary','kitchen','electrical_fixtures','water_tank','hvac','gas_water','others1','others2','others3']);
+  const miscRows = rowsFrom(s.misc, ['transport','contingency','fees','cleaning','safety','others1','others2','others3']);
+
+  const buildReportHtml = (userData = user) => {
+    const contractorName = userData?.first_name && userData?.last_name ? 
+      `${userData.first_name} ${userData.last_name}` : 
+      'Contractor Name';
+    const currentDate = new Date().toLocaleDateString('en-IN', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    
+    return `<!doctype html><html><head><meta charset="utf-8"/>
+    <title>Professional Cost Estimate Report</title>
+    <style>
+      @page { 
+        margin: 20mm; 
+        size: A4;
+      }
+      body{
+        font-family: 'Times New Roman', serif;
+        color: #1a1a1a;
+        margin: 0;
+        padding: 0;
+        line-height: 1.4;
+        background: white;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        border-bottom: 3px solid #2c3e50;
+        padding-bottom: 20px;
+      }
+      .company-logo {
+        width: 120px;
+        height: 120px;
+        margin: 0 auto 15px;
+        border: 2px solid #2c3e50;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 48px;
+        font-weight: bold;
+        color: #2c3e50;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      }
+      .company-name {
+        font-size: 28px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin: 10px 0 5px 0;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+      .company-tagline {
+        font-size: 14px;
+        color: #6c757d;
+        font-style: italic;
+        margin-bottom: 10px;
+      }
+      .company-details {
+        font-size: 12px;
+        color: #495057;
+        line-height: 1.3;
+      }
+      .document-title {
+        text-align: center;
+        margin: 30px 0;
+        font-size: 24px;
+        font-weight: bold;
+        color: #2c3e50;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .estimate-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 30px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-left: 4px solid #2c3e50;
+      }
+      .info-section h3 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+        color: #2c3e50;
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: 5px;
+      }
+      .info-section p {
+        margin: 5px 0;
+        font-size: 14px;
+      }
+      .cost-breakdown {
+        margin: 30px 0;
+      }
+      .cost-breakdown h2 {
+        font-size: 20px;
+        color: #2c3e50;
+        border-bottom: 2px solid #2c3e50;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+      }
+      .cost-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .cost-table th {
+        background: #2c3e50;
+        color: white;
+        padding: 12px;
+        text-align: left;
+        font-weight: bold;
+        font-size: 14px;
+      }
+      .cost-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #dee2e6;
+        font-size: 14px;
+      }
+      .cost-table tr:nth-child(even) {
+        background: #f8f9fa;
+      }
+      .cost-table tr:hover {
+        background: #e9ecef;
+      }
+      .total-section {
+        margin: 30px 0;
+        padding: 20px;
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        border-radius: 8px;
+      }
+      .total-section h2 {
+        margin: 0 0 15px 0;
+        font-size: 18px;
+        text-align: center;
+      }
+      .total-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 8px 0;
+        font-size: 16px;
+      }
+      .grand-total {
+        border-top: 2px solid white;
+        padding-top: 10px;
+        margin-top: 15px;
+        font-size: 18px;
+        font-weight: bold;
+      }
+      .terms-section {
+        margin: 30px 0;
+        padding: 20px;
+        background: #f8f9fa;
+        border-left: 4px solid #28a745;
+      }
+      .terms-section h3 {
+        margin: 0 0 15px 0;
+        color: #28a745;
+        font-size: 16px;
+      }
+      .terms-section p {
+        margin: 8px 0;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .signature-section {
+        margin-top: 50px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+      }
+      .signature-box {
+        text-align: center;
+        padding: 20px;
+        border: 2px solid #2c3e50;
+        border-radius: 8px;
+        background: #f8f9fa;
+      }
+      .signature-line {
+        border-bottom: 2px solid #2c3e50;
+        margin: 40px 0 10px 0;
+        height: 2px;
+      }
+      .signature-label {
+        font-size: 14px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-top: 10px;
+      }
+      .contractor-seal {
+        width: 100px;
+        height: 100px;
+        border: 3px solid #dc3545;
+        border-radius: 50%;
+        margin: 0 auto 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        color: #dc3545;
+        background: white;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .footer {
+        margin-top: 40px;
+        text-align: center;
+        font-size: 12px;
+        color: #6c757d;
+        border-top: 1px solid #dee2e6;
+        padding-top: 15px;
+      }
+      @media print {
+        body { margin: 0; }
+        .header { page-break-inside: avoid; }
+        .signature-section { page-break-inside: avoid; }
+      }
+    </style>
+    </head><body>
+    <!-- Company Header -->
+    <div class="header">
+      <div class="company-logo">🏗️</div>
+      <div class="company-name">${contractorName} Construction</div>
+      <div class="company-tagline">Professional Construction Services</div>
+      <div class="company-details">
+        📧 Email: ${user?.email || 'contact@company.com'} | 
+        📱 Phone: ${user?.phone || '+91-XXXXX-XXXXX'} | 
+        🏢 License: ${user?.license_number || 'LIC-XXXXX'}
+      </div>
+    </div>
+
+    <!-- Document Title -->
+    <div class="document-title">Cost Estimate Report</div>
+
+    <!-- Estimate Information -->
+    <div class="estimate-info">
+      <div class="info-section">
+        <h3>Project Details</h3>
+        <p><strong>Project Name:</strong> ${s?.project_name||'Construction Project'}</p>
+        <p><strong>Location:</strong> ${s?.project_address||'Project Location'}</p>
+        <p><strong>Client:</strong> ${est.client_name||'Client Name'}</p>
+        <p><strong>Plot Size:</strong> ${s?.plot_size||'—'}</p>
+        <p><strong>Built-up Area:</strong> ${s?.built_up_area||'—'}</p>
+        <p><strong>Floors:</strong> ${s?.floors||'—'}</p>
+      </div>
+      <div class="info-section">
+        <h3>Estimate Information</h3>
+        <p><strong>Estimate Date:</strong> ${currentDate}</p>
+        <p><strong>Estimate Valid Until:</strong> ${new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('en-IN')}</p>
+        <p><strong>Project Duration:</strong> ${est.timeline||'90 days'}</p>
+        <p><strong>Estimate #:</strong> EST-${est.id}</p>
+      </div>
+    </div>
+
+    <!-- Cost Breakdown -->
+    <div class="cost-breakdown">
+      <h2>Detailed Cost Breakdown</h2>
+      <table class="cost-table">
+        <thead>
+          <tr>
+            <th>Item Description</th>
+            <th>Quantity</th>
+            <th>Unit Rate (₹)</th>
+            <th>Amount (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${materialsRows.filter(r=>r&&(r.name||r.amount)).map(r => `
+      <tr>
+        <td>${(r.name||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.qty||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.rate||'').toString().replace(/</g,'&lt;')}</td>
+        <td>${money(r.amount)}</td>
+      </tr>
+          `).join('')}
+          ${laborRows.filter(r=>r&&(r.name||r.amount)).map(r => `
+            <tr>
+              <td>${(r.name||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.qty||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.rate||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${money(r.amount)}</td>
+            </tr>
+          `).join('')}
+          ${utilitiesRows.filter(r=>r&&(r.name||r.amount)).map(r => `
+            <tr>
+              <td>${(r.name||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.qty||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.rate||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${money(r.amount)}</td>
+            </tr>
+          `).join('')}
+          ${miscRows.filter(r=>r&&(r.name||r.amount)).map(r => `
+            <tr>
+              <td>${(r.name||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.qty||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${(r.rate||'').toString().replace(/</g,'&lt;')}</td>
+              <td>${money(r.amount)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      </div>
+
+    <!-- Total Section -->
+    <div class="total-section">
+      <h2>Cost Summary</h2>
+      <div class="total-row">
+        <span>Materials Cost:</span>
+        <span>${money(s?.totals?.materials||0)}</span>
+    </div>
+      <div class="total-row">
+        <span>Labor Cost:</span>
+        <span>${money(s?.totals?.labor||0)}</span>
+    </div>
+      <div class="total-row">
+        <span>Utilities:</span>
+        <span>${money(s?.totals?.utilities||0)}</span>
+    </div>
+      <div class="total-row">
+        <span>Miscellaneous:</span>
+        <span>${money(s?.totals?.misc||0)}</span>
+    </div>
+      <div class="total-row">
+        <span>Transportation:</span>
+        <span>${money(s?.totals?.transport||0)}</span>
+    </div>
+      <div class="total-row">
+        <span>Contingency (5%):</span>
+        <span>${money(s?.totals?.contingency||0)}</span>
+    </div>
+      <div class="total-row grand-total">
+        <span>GRAND TOTAL:</span>
+        <span>${money(s?.totals?.grand || est.total_cost)}</span>
+      </div>
+    </div>
+
+    <!-- Terms and Conditions -->
+    <div class="terms-section">
+      <h3>Terms & Conditions</h3>
+      <p><strong>Payment Terms:</strong> 30% advance, 40% on completion of foundation, 30% on completion</p>
+      <p><strong>Validity:</strong> This estimate is valid for 30 days from the date of issue</p>
+      <p><strong>Materials:</strong> All materials will be of standard quality as per specifications</p>
+      <p><strong>Timeline:</strong> Project completion within ${est.timeline||'90'} days from commencement</p>
+      <p><strong>Warranty:</strong> 1 year warranty on workmanship, 5 years on structural elements</p>
+      <p><strong>Notes:</strong> ${est.notes ? est.notes.replace(/\n/g,'<br/>') : 'All work to be done as per approved drawings and specifications'}</p>
+    </div>
+
+    <!-- Signature Section -->
+    <div class="signature-section">
+      <div class="signature-box">
+        <div class="signature-line"></div>
+        <div class="signature-label">Client Signature</div>
+        <p style="margin-top: 10px; font-size: 12px; color: #6c757d;">Date: _______________</p>
+      </div>
+      <div class="signature-box">
+        <div class="contractor-seal">
+          <div>OFFICIAL<br/>SEAL</div>
+        </div>
+        <div class="signature-line"></div>
+        <div class="signature-label">${contractorName}</div>
+        <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">Authorized Contractor</p>
+        <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">Date: ${currentDate}</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>This is a computer-generated estimate. For any clarifications, please contact us.</p>
+      <p>© ${new Date().getFullYear()} ${contractorName} Construction. All rights reserved.</p>
+    </div>
+    </body></html>`;
+  };
+
+  return (
+    <div className="list-item">
+      <div className="item-content" style={{flex:1}}>
+        <h4 className="item-title" style={{margin:0}}>Estimate #{est.id}</h4>
+        <p className="item-subtitle" style={{margin:'2px 0 0 0'}}>Total: {money(est.total_cost ?? s?.totals?.grand)} • {new Date(est.created_at).toLocaleString()}</p>
+        {est.timeline && <p className="item-meta">Timeline: {est.timeline}</p>}
+
+        <details style={{ marginTop: 6 }}>
+          <summary style={{ cursor:'pointer' }}>View breakdown</summary>
+          <div className="card" style={{ marginTop: 8 }}>
+            <div className="grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <div><strong>Project:</strong> {s?.project_name || '—'}</div>
+              <div><strong>Address:</strong> {s?.project_address || '—'}</div>
+              <div><strong>Plot Size:</strong> {s?.plot_size || '—'}</div>
+              <div><strong>Built-up Area:</strong> {s?.built_up_area || '—'}</div>
+              <div><strong>Floors:</strong> {s?.floors || '—'}</div>
+              <div><strong>Date:</strong> {s?.estimation_date || '—'}</div>
+            </div>
+          </div>
+          {materialsRows.length > 0 && <Section title="Materials" rows={materialsRows} />}
+          {laborRows.length > 0 && <Section title="Labor" rows={laborRows} />}
+          {utilitiesRows.length > 0 && <Section title="Utilities & Fixtures" rows={utilitiesRows} />}
+          {miscRows.length > 0 && <Section title="Miscellaneous" rows={miscRows} />}
+          <div className="card" style={{ marginTop: 8 }}>
+            <div className="row" style={{ display:'flex', justifyContent:'space-between' }}>
+              <div className="muted">Materials Total</div>
+              <div><strong>{money(s?.totals?.materials)}</strong></div>
+            </div>
+            <div className="row" style={{ display:'flex', justifyContent:'space-between' }}>
+              <div className="muted">Labor Total</div>
+              <div><strong>{money(s?.totals?.labor)}</strong></div>
+            </div>
+            <div className="row" style={{ display:'flex', justifyContent:'space-between' }}>
+              <div className="muted">Utilities Total</div>
+              <div><strong>{money(s?.totals?.utilities)}</strong></div>
+            </div>
+            <div className="row" style={{ display:'flex', justifyContent:'space-between' }}>
+              <div className="muted">Misc Total</div>
+              <div><strong>{money(s?.totals?.misc)}</strong></div>
+            </div>
+            <div className="row" style={{ display:'flex', justifyContent:'space-between', marginTop:6 }}>
+              <div className="muted">Grand Total</div>
+              <div className="total"><strong>{money(s?.totals?.grand || est.total_cost)}</strong></div>
+            </div>
+          </div>
+          {est.notes && (
+            <div className="card" style={{ marginTop: 8 }}>
+              <h4 style={{ margin:'0 0 6px 0' }}>Notes</h4>
+              <div style={{ whiteSpace:'pre-wrap' }}>{est.notes}</div>
+            </div>
+          )}
+        </details>
+      </div>
+      <div className="item-actions" style={{display:'flex', gap:6}}>
+        <button className="btn btn-primary" onClick={async ()=>{
+          try {
+            const html = buildReportHtml(user);
+            const contractorName = user?.first_name && user?.last_name ? 
+              `${user.first_name} ${user.last_name}` : 
+              'Contractor';
+            
+            // Create a temporary div to render the HTML content
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.style.top = '-9999px';
+            tempDiv.style.width = '210mm';
+            tempDiv.style.padding = '20mm';
+            tempDiv.style.backgroundColor = 'white';
+            tempDiv.style.fontFamily = 'Times New Roman, serif';
+            tempDiv.style.fontSize = '12px';
+            tempDiv.style.lineHeight = '1.4';
+            tempDiv.style.color = '#1a1a1a';
+            
+            tempDiv.innerHTML = html;
+            document.body.appendChild(tempDiv);
+            
+            // Convert to canvas and then to PDF
+            console.log('Converting HTML to canvas...');
+            const canvas = await html2canvas(tempDiv, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff'
+            });
+            
+            console.log('Canvas created:', canvas.width, 'x', canvas.height);
+            
+            // Remove the temporary div
+            document.body.removeChild(tempDiv);
+            
+            // Create PDF
+            console.log('Creating PDF...');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = 210; // A4 width in mm
+            const pageHeight = 295; // A4 height in mm
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            
+            console.log('Image dimensions:', imgWidth, 'x', imgHeight);
+            
+            let position = 0;
+            
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+            
+            while (heightLeft >= 0) {
+              position = heightLeft - imgHeight;
+              pdf.addPage();
+              pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+              heightLeft -= pageHeight;
+            }
+            
+            // Download the PDF
+            const fileName = `Estimate_${contractorName.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}.pdf`;
+            console.log('Saving PDF as:', fileName);
+            
+            // Try alternative download method
+            try {
+              const pdfBlob = pdf.output('blob');
+              const url = URL.createObjectURL(pdfBlob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = fileName;
+              a.style.display = 'none';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              console.log('PDF downloaded via blob method');
+            } catch (blobError) {
+              console.log('Blob method failed, trying direct save:', blobError);
+              pdf.save(fileName);
+            }
+            console.log('PDF save method called');
+          } catch (error) {
+            console.error('Download failed:', error);
+          }
+        }}>Download PDF Report</button>
+      </div>
+    </div>
+  );
+};
 
 export default ContractorDashboard;

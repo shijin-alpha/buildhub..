@@ -412,3 +412,199 @@
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .section-header h2 { font-size: 1.25rem; }
 }
+
+/* Construction Project Cards */
+.construction-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.construction-project-card {
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--slate-200);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  transition: var(--transition);
+}
+
+.construction-project-card:hover {
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  padding: 1.5rem;
+  gap: 1rem;
+  border-bottom: 1px solid var(--slate-200);
+}
+
+.project-icon {
+  flex-shrink: 0;
+}
+
+.project-title-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--slate-700);
+  margin: 0 0 0.5rem 0;
+}
+
+.project-subtitle {
+  font-size: 0.875rem;
+  color: var(--slate-500);
+  margin: 0 0 0.75rem 0;
+}
+
+.project-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.meta-item {
+  font-size: 0.75rem;
+  color: var(--slate-600);
+  background: var(--slate-100);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.project-actions {
+  flex-shrink: 0;
+}
+
+.project-details {
+  padding: 1.5rem;
+  background: var(--slate-50);
+  border-top: 1px solid var(--slate-200);
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.detail-section {
+  background: white;
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  border: 1px solid var(--slate-200);
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--slate-700);
+  margin: 0 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.detail-content {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.detail-content p {
+  margin: 0 0 0.5rem 0;
+  color: var(--slate-600);
+}
+
+.detail-content p:last-child {
+  margin-bottom: 0;
+}
+
+.detail-content strong {
+  color: var(--slate-700);
+  font-weight: 600;
+}
+
+.construction-start {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #0ea5e9;
+}
+
+.construction-checklist,
+.next-steps {
+  margin-bottom: 1rem;
+}
+
+.construction-checklist:last-child,
+.next-steps:last-child {
+  margin-bottom: 0;
+}
+
+.construction-checklist h5,
+.next-steps h5 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--slate-700);
+  margin: 0 0 0.5rem 0;
+}
+
+.construction-checklist ul,
+.next-steps ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.construction-checklist li,
+.next-steps li {
+  font-size: 0.875rem;
+  color: var(--slate-600);
+  margin-bottom: 0.25rem;
+}
+
+.construction-checklist li:last-child,
+.next-steps li:last-child {
+  margin-bottom: 0;
+}
+
+/* Responsive adjustments for construction projects */
+@media (max-width: 1024px) {
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .project-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .project-actions {
+    width: 100%;
+  }
+  
+  .project-actions .btn {
+    width: 100%;
+  }
+  
+  .project-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .details-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .detail-section {
+    padding: 1rem;
+  }
+}

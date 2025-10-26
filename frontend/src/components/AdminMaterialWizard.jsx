@@ -15,8 +15,8 @@ export default function AdminMaterialWizard() {
     try {
       const res = await fetch('/buildhub/backend/api/admin/add_material.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       const json = await res.json();
-      if (json.success) window.history.back(); else alert(json.message || 'Failed');
-    } catch { alert('Network error'); } finally { setLoading(false); }
+      if (json.success) window.history.back(); else toast.error(json.message || 'Failed');
+    } catch { toast.error('Network error'); } finally { setLoading(false); }
   }
 
   return (

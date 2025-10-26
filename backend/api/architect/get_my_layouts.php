@@ -31,6 +31,7 @@ try {
         design_file_url VARCHAR(500),
         technical_details TEXT,
         price_range VARCHAR(100),
+        view_price DECIMAL(10,2) DEFAULT 0,
         architect_id INT,
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +40,7 @@ try {
     )");
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS design_file_url VARCHAR(500) NULL AFTER image_url"); } catch (Exception $__) {}
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS technical_details TEXT NULL AFTER design_file_url"); } catch (Exception $__) {}
+    try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS view_price DECIMAL(10,2) DEFAULT 0 AFTER price_range"); } catch (Exception $__) {}
 
     $stmt = $db->prepare("SELECT * FROM layout_library WHERE architect_id = :aid ORDER BY created_at DESC");
     $stmt->execute([':aid' => $architect_id]);
@@ -70,6 +72,7 @@ try {
             'design_file_url' => $row['design_file_url'],
             'technical_details' => $technical_details,
             'price_range' => $row['price_range'],
+            'view_price' => $row['view_price'] ?? 0,
             'architect_id' => $row['architect_id'],
             'status' => $row['status'],
             'created_at' => $row['created_at'],

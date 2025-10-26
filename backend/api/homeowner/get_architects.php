@@ -21,14 +21,14 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Optional filters
+    // Get parameters
     $search = $_GET['search'] ?? '';
     $specialization = $_GET['specialization'] ?? '';
     $minExp = isset($_GET['min_experience']) ? (int)$_GET['min_experience'] : null;
     $lrid = isset($_GET['layout_request_id']) ? (int)$_GET['layout_request_id'] : 0;
 
-    // Build query with optional join to mark already-assigned architects for a given request
-    $select = "SELECT 
+    // Build base query
+    $query = "SELECT 
                 u.id, u.first_name, u.last_name, u.email, u.role, u.is_verified,
                 u.phone AS phone, u.address AS address, u.company_name AS company_name,
                 u.experience_years AS experience_years, u.specialization AS specialization,
@@ -36,46 +36,67 @@ try {
                 u.created_at AS created_at, u.city AS city, u.state AS state, u.location AS location,
                 (SELECT ROUND(AVG(r.rating),2) FROM architect_reviews r WHERE r.architect_id = u.id) AS avg_rating,
                 (SELECT COUNT(*) FROM architect_reviews r2 WHERE r2.architect_id = u.id) AS review_count";
+
+    // Add layout request specific fields if needed
     if ($lrid > 0) {
-        $select .= ", (la.id IS NOT NULL) AS already_assigned, la.status AS assignment_status";
+        $query .= ", (la.id IS NOT NULL) AS already_assigned, la.status AS assignment_status";
     } else {
-        $select .= ", 0 AS already_assigned, NULL AS assignment_status";
+        $query .= ", 0 AS already_assigned, NULL AS assignment_status";
     }
 
-    $from = " FROM users u";
+    $query .= " FROM users u";
+
+    // Add JOIN if layout request ID is provided
     if ($lrid > 0) {
-        $from .= " LEFT JOIN layout_request_assignments la ON la.architect_id = u.id AND la.layout_request_id = :lrid";
+        $query .= " LEFT JOIN layout_request_assignments la ON la.architect_id = u.id AND la.layout_request_id = :lrid";
     }
 
-    $where = " WHERE u.role = 'architect' AND u.is_verified = 1";
+    $query .= " WHERE u.role = 'architect' AND u.status = 'approved'";
 
+    // Add search conditions
+    $conditions = [];
     $params = [];
 
     if (!empty($search)) {
-        $where .= " AND (u.first_name LIKE :search OR u.last_name LIKE :search OR u.email LIKE :search)";
-        $params[':search'] = '%' . $search . '%';
+        $conditions[] = "(u.first_name LIKE :search1 OR u.last_name LIKE :search2 OR u.email LIKE :search3)";
+        $params[':search1'] = '%' . $search . '%';
+        $params[':search2'] = '%' . $search . '%';
+        $params[':search3'] = '%' . $search . '%';
     }
 
-    // Optional specialization filter
     if (!empty($specialization)) {
-        $where .= " AND (u.specialization LIKE :spec)";
+        $conditions[] = "u.specialization LIKE :spec";
         $params[':spec'] = '%' . $specialization . '%';
     }
-    // Optional minimum experience filter
+
     if ($minExp !== null) {
-        $where .= " AND (u.experience_years IS NOT NULL AND u.experience_years >= :minexp)";
+        $conditions[] = "u.experience_years IS NOT NULL AND u.experience_years >= :minexp";
         $params[':minexp'] = $minExp;
     }
 
-    $order = " ORDER BY u.id DESC";
-
-    $query = $select . $from . $where . $order;
-
-    $stmt = $db->prepare($query);
-    foreach ($params as $k => $v) {
-        $stmt->bindValue($k, $v);
+    if ($lrid > 0) {
+        $params[':lrid'] = $lrid;
     }
-    if ($lrid > 0) { $stmt->bindValue(':lrid', $lrid, PDO::PARAM_INT); }
+
+    // Add conditions to query
+    if (!empty($conditions)) {
+        $query .= " AND " . implode(" AND ", $conditions);
+    }
+
+    $query .= " ORDER BY u.id DESC";
+
+    // Prepare and execute query
+    $stmt = $db->prepare($query);
+    
+    // Bind all parameters
+    foreach ($params as $key => $value) {
+        if ($key === ':lrid') {
+            $stmt->bindValue($key, $value, PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue($key, $value);
+        }
+    }
+    
     $stmt->execute();
 
     $architects = [];
@@ -114,3 +135,4 @@ try {
         'message' => 'Error fetching architects: ' . $e->getMessage()
     ]);
 }
+?>

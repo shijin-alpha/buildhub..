@@ -43,12 +43,15 @@ try {
         technical_details TEXT,
         status ENUM('proposed','shortlisted','finalized') DEFAULT 'proposed',
         batch_id VARCHAR(64) NULL,
+        view_price DECIMAL(10,2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )");
     
     // Add technical_details column if it doesn't exist (for existing tables)
     $db->exec("ALTER TABLE designs ADD COLUMN IF NOT EXISTS technical_details TEXT");
+    // Add view_price column if it doesn't exist (for existing tables)
+    $db->exec("ALTER TABLE designs ADD COLUMN IF NOT EXISTS view_price DECIMAL(10,2) DEFAULT 0.00");
 
     $sql = "SELECT d.*, 
                    a.first_name AS architect_first_name, 
@@ -109,6 +112,7 @@ try {
             'technical_details' => $technical_details,
             'status' => $row['status'],
             'batch_id' => $row['batch_id'],
+            'view_price' => isset($row['view_price']) ? (float)$row['view_price'] : 0.00,
             'architect' => [
                 'name' => trim(($row['architect_first_name'] ?? '') . ' ' . ($row['architect_last_name'] ?? '')),
                 'email' => $row['architect_email'] ?? null

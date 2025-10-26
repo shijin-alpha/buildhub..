@@ -26,7 +26,55 @@ try {
         exit;
     }
     
-    // Get all contractor requests by this homeowner and join contractor sends for acknowledgment/due date
+    // First, get direct sends from contractor_layout_sends with acknowledgment details
+    $directSendsQuery = "SELECT 
+                        cls.id,
+                        cls.created_at,
+                        cls.acknowledged_at,
+                        cls.due_date,
+                        cls.layout_id,
+                        cls.design_id,
+                        cls.message,
+                        cls.payload,
+                        u.id as contractor_id,
+                        u.first_name,
+                        u.last_name,
+                        u.email as contractor_email,
+                        ll.title as layout_title,
+                        ll.image_url as layout_image,
+                        ll.layout_type as layout_type
+                    FROM contractor_layout_sends cls
+                    LEFT JOIN users u ON cls.contractor_id = u.id
+                    LEFT JOIN layout_library ll ON cls.layout_id = ll.id
+                    WHERE cls.homeowner_id = :homeowner_id
+                    ORDER BY cls.created_at DESC";
+    
+    $directStmt = $db->prepare($directSendsQuery);
+    $directStmt->bindParam(':homeowner_id', $homeowner_id);
+    $directStmt->execute();
+    
+    $directSends = [];
+    while ($row = $directStmt->fetch(PDO::FETCH_ASSOC)) {
+        $directSends[] = [
+            'id' => 'send_' . $row['id'], // prefix to distinguish from layout requests
+            'type' => 'direct_send',
+            'layout_id' => $row['layout_id'],
+            'layout_title' => $row['layout_title'],
+            'layout_image' => $row['layout_image'],
+            'layout_type' => $row['layout_type'],
+            'contractor_id' => $row['contractor_id'],
+            'contractor_name' => trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')),
+            'contractor_email' => $row['contractor_email'],
+            'message' => $row['message'],
+            'payload' => json_decode($row['payload'] ?? '{}', true),
+            'created_at' => $row['created_at'],
+            'acknowledged_at' => $row['acknowledged_at'],
+            'due_date' => $row['due_date'],
+            'status' => 'sent_to_contractor'
+        ];
+    }
+    
+    // Also get layout_requests with contractor-direct timeline
     $query = "SELECT lr.*, 
                      ll.title as selected_layout_title,
                      ll.layout_type as selected_layout_type,
@@ -54,11 +102,13 @@ try {
     $stmt->bindParam(':homeowner_id', $homeowner_id);
     $stmt->execute();
     
-    $requests = [];
+    $layoutRequests = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $requests[] = [
+        $layoutRequests[] = [
             'id' => $row['id'],
+            'type' => 'layout_request',
             'plot_size' => $row['plot_size'],
+            'building_size' => $row['building_size'] ?? null,
             'budget_range' => $row['budget_range'],
             'requirements' => $row['requirements'],
             // decode structured requirements if JSON
@@ -89,9 +139,17 @@ try {
         ];
     }
     
+    // Merge direct sends and layout requests
+    $allRequests = array_merge($directSends, $layoutRequests);
+    
+    // Sort by created_at descending
+    usort($allRequests, function($a, $b) {
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+    
     echo json_encode([
         'success' => true,
-        'requests' => $requests
+        'requests' => $allRequests
     ]);
     
 } catch (Exception $e) {

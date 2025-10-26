@@ -23,6 +23,7 @@ try {
         design_file_url VARCHAR(500),
         technical_details TEXT,
         price_range VARCHAR(100),
+        view_price DECIMAL(10,2) DEFAULT 0,
         architect_id INT,
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -33,6 +34,7 @@ try {
     // Ensure new columns on old tables
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS design_file_url VARCHAR(500) NULL AFTER image_url"); } catch (Exception $__) {}
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS technical_details TEXT NULL AFTER design_file_url"); } catch (Exception $__) {}
+    try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS view_price DECIMAL(10,2) DEFAULT 0 AFTER price_range"); } catch (Exception $__) {}
     
     // Get all active layouts (with architect info)
     $query = "SELECT ll.*, u.first_name, u.last_name
@@ -68,6 +70,7 @@ try {
             'design_file_url' => $row['design_file_url'],
             'technical_details' => $technical_details,
             'price_range' => $row['price_range'],
+            'view_price' => $row['view_price'] ?? 0,
             'architect_id' => $row['architect_id'],
             'architect_name' => trim(($row['first_name'] ?? '').' '.($row['last_name'] ?? '')),
             'created_at' => $row['created_at']

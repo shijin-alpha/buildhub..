@@ -40,25 +40,78 @@ try {
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS design_file_url VARCHAR(500) NULL AFTER image_url"); } catch (Exception $__) {}
 
     // Accept multipart/form-data or JSON
-    $raw = file_get_contents('php://input');
-    $input = null;
-    if (isset($_SERVER['CONTENT_TYPE']) && stripos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
-        $input = json_decode($raw, true);
-    }
-
     $id = null;
     $fields = [];
-
-    if (is_array($input)) {
-        $id = isset($input['id']) ? (int)$input['id'] : null;
-        $fields = $input;
-    } else {
-        $id = isset($_POST['id']) ? (int)$_POST['id'] : null;
-        $fields = $_POST;
+    
+    // Read raw input once (can only be read once)
+    $rawInput = @file_get_contents('php://input');
+    
+    // Determine content type - check all possible locations
+    $contentType = '';
+    if (isset($_SERVER['CONTENT_TYPE'])) {
+        $contentType = $_SERVER['CONTENT_TYPE'];
+    } elseif (isset($_SERVER['HTTP_CONTENT_TYPE'])) {
+        $contentType = $_SERVER['HTTP_CONTENT_TYPE'];
+    }
+    $isJson = stripos($contentType, 'application/json') !== false;
+    $isMultipart = stripos($contentType, 'multipart/form-data') !== false;
+    
+    // Debug logging (comment out in production)
+    // error_log("Request received - Content-Type: $contentType");
+    // error_log("Is JSON: " . ($isJson ? 'true' : 'false'));
+    // error_log("Is Multipart: " . ($isMultipart ? 'true' : 'false'));
+    // error_log("Raw input: " . substr($rawInput, 0, 200));
+    
+    // If JSON, read from raw input
+    if ($isJson && !empty($rawInput)) {
+        $input = json_decode($rawInput, true);
+        // error_log("JSON decode result: " . print_r($input, true));
+        if (is_array($input) && isset($input['id'])) {
+            $id = (int)$input['id'];
+            $fields = $input;
+            // error_log("Parsed ID: $id");
+        }
+    }
+    // If FormData or multipart, read from $_POST
+    elseif ($isMultipart || !empty($_POST)) {
+        if (!empty($_POST) && isset($_POST['id'])) {
+            $id = (int)$_POST['id'];
+            $fields = $_POST;
+        }
+    }
+    // Try $_GET as fallback
+    elseif (!empty($_GET) && isset($_GET['id'])) {
+        $id = (int)$_GET['id'];
+        $fields = $_GET;
+    }
+    // Last resort: try reading php://input anyway (for JSON without proper headers)
+    if (empty($id) && !empty($rawInput)) {
+        $input = json_decode($rawInput, true);
+        if (is_array($input) && isset($input['id'])) {
+            $id = (int)$input['id'];
+            $fields = $input;
+        }
     }
 
-    if (!$id) {
-        echo json_encode(['success' => false, 'message' => 'Missing layout id']);
+    if (!$id || $id <= 0) {
+        // Enable debug logging
+        error_log("Layout update failed - ID: " . var_export($id, true));
+        error_log("Content-Type: " . ($contentType ?? 'not set'));
+        error_log("Is JSON: " . ($isJson ? 'true' : 'false'));
+        error_log("Is Multipart: " . ($isMultipart ? 'true' : 'false'));
+        error_log("Raw input: " . $rawInput);
+        error_log("POST: " . print_r($_POST, true));
+        
+        echo json_encode([
+            'success' => false, 
+            'message' => 'Missing or invalid layout id',
+            'debug' => [
+                'id' => $id,
+                'content_type' => $contentType,
+                'is_json' => $isJson,
+                'raw_input' => $rawInput
+            ]
+        ]);
         exit;
     }
 
@@ -82,6 +135,7 @@ try {
         'area' => 'area',
         'description' => 'description',
         'price_range' => 'price_range',
+        'view_price' => 'view_price',
         'status' => 'status'
     ];
 
@@ -91,6 +145,8 @@ try {
             // cast numbers
             if (in_array($key, ['bedrooms','bathrooms','area'])) {
                 $params[":$key"] = (int)$fields[$key];
+            } elseif ($key === 'view_price') {
+                $params[":$key"] = (float)$fields[$key];
             } else {
                 $params[":$key"] = $fields[$key];
             }

@@ -40,11 +40,11 @@ export default function ArchitectFullPageUpload() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.design_title) {
-      alert('Please provide a Design Title');
+      toast.error('Please provide a Design Title');
       return;
     }
     if (!form.preview_image || !form.layout_file) {
-      alert('Please attach both a Preview Image and a Layout File');
+      toast.error('Please attach both a Preview Image and a Layout File');
       return;
     }
 
@@ -70,13 +70,13 @@ export default function ArchitectFullPageUpload() {
       });
       const json = await res.json().catch(() => ({}));
       if (json?.success) {
-        alert('Design uploaded successfully');
+        toast.success('Design uploaded successfully');
         window.history.back();
       } else {
-        alert(json?.message || 'Upload failed');
+        toast.error(json?.message || 'Upload failed');
       }
     } catch (err) {
-      alert('Network error while uploading');
+      toast.error('Network error while uploading');
     } finally {
       setSubmitting(false);
     }

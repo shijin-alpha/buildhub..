@@ -526,7 +526,7 @@ const AdminDashboard = () => {
   };
 
   const viewUserDetails = (user) => {
-    alert(`User Details:\nName: ${user.name}\nEmail: ${user.email}\nStatus: ${user.status}\nRole: ${user.role}\nCreated: ${new Date(user.created_at).toLocaleDateString()}`);
+    toast.info(`User Details:\nName: ${user.name}\nEmail: ${user.email}\nStatus: ${user.status}\nRole: ${user.role}\nCreated: ${new Date(user.created_at).toLocaleDateString()}`);
   };
 
   const handleLogout = async () => {

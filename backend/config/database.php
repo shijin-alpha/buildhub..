@@ -4,8 +4,8 @@
 class Database {
     private $host = 'localhost';
     private $db_name = 'buildhub';
-    private $username = 'root';
-    private $password = '';
+    private $username = 'root'; // use your MySQL app user
+    private $password = ''; // use your MySQL password
     private $charset = 'utf8mb4';
     public $conn;
 
@@ -28,4 +28,8 @@ class Database {
         return $this->conn;
     }
 }
+
+// Create global $db variable for compatibility
+$database = new Database();
+$db = $database->getConnection();
 ?>

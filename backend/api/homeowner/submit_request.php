@@ -48,6 +48,7 @@ try {
     }
     
     $plot_size = $input['plot_size'];
+    $building_size = $input['building_size'] ?? null;
     $budget_range = $input['budget_range'];
     $requirements = $input['requirements'] ?? '';
     $location = $input['location'] ?? '';
@@ -83,6 +84,7 @@ try {
         user_id INT NOT NULL,
         homeowner_id INT NOT NULL,
         plot_size VARCHAR(100) NOT NULL,
+        building_size VARCHAR(100) NULL,
         budget_range VARCHAR(100) NOT NULL,
         requirements TEXT NULL,
         location VARCHAR(255),
@@ -135,11 +137,11 @@ try {
     if (!$requestId) {
         // Insert layout request with all detailed fields
         $query = "INSERT INTO layout_requests (
-                    user_id, homeowner_id, plot_size, budget_range, requirements, location, timeline, selected_layout_id, layout_type,
+                    user_id, homeowner_id, plot_size, building_size, budget_range, requirements, location, timeline, selected_layout_id, layout_type,
                     orientation, site_considerations, material_preferences, budget_allocation, num_floors, preferred_style, floor_rooms,
                     site_images, reference_images, room_images
                   ) VALUES (
-                    :user_id, :homeowner_id, :plot_size, :budget_range, :requirements, :location, :timeline, :selected_layout_id, :layout_type,
+                    :user_id, :homeowner_id, :plot_size, :building_size, :budget_range, :requirements, :location, :timeline, :selected_layout_id, :layout_type,
                     :orientation, :site_considerations, :material_preferences, :budget_allocation, :num_floors, :preferred_style, :floor_rooms,
                     :site_images, :reference_images, :room_images
                   )";
@@ -148,6 +150,7 @@ try {
         $stmt->bindParam(':user_id', $homeowner_id, PDO::PARAM_INT);
         $stmt->bindParam(':homeowner_id', $homeowner_id, PDO::PARAM_INT);
         $stmt->bindParam(':plot_size', $plot_size);
+        $stmt->bindParam(':building_size', $building_size);
         $stmt->bindParam(':budget_range', $budget_range);
         $stmt->bindParam(':requirements', $requirements_json);
         $stmt->bindParam(':location', $location);

@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useToast } from './ToastProvider.jsx';
 import ArchitectDetailsModal from './ArchitectDetailsModal.jsx';
-import ArchitectRecommendationEngine from './ArchitectRecommendationEngine.jsx';
+import TourGuide from './TourGuide.jsx';
+import HomeownerDashboardTour from './HomeownerDashboardTour.jsx';
+import ArchitectSelection from './ArchitectSelection.jsx';
 import { useNavigate } from 'react-router-dom';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import '../styles/HomeownerDashboard.css';
 import '../styles/BlueGlassTheme.css';
 import '../styles/SoftSidebar.css';
@@ -17,9 +23,11 @@ import NotificationSystem from './widgets/NotificationSystem';
 import DesignGallery from './widgets/DesignGallery';
 import NeatJsonCard from './NeatJsonCard';
 import TechnicalDetailsDisplay from './TechnicalDetailsDisplay';
+import HomeownerProfileButton from './HomeownerProfileButton';
 
 const HomeownerDashboard = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [requestsTab, setRequestsTab] = useState('all'); // 'all' or 'contractors'
   const [receivedDesigns, setReceivedDesigns] = useState([]);
@@ -28,6 +36,9 @@ const HomeownerDashboard = () => {
   const [commentRatings, setCommentRatings] = useState({}); // designId -> 1..5
   const [user, setUser] = useState(null);
   const [layoutRequests, setLayoutRequests] = useState([]);
+  const [showTourGuide, setShowTourGuide] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+  const [showDashboardTour, setShowDashboardTour] = useState(false);
   const [contractorRequests, setContractorRequests] = useState([]);
   const [myProjects, setMyProjects] = useState([]);
   const [layoutLibrary, setLayoutLibrary] = useState([]);
@@ -40,6 +51,7 @@ const HomeownerDashboard = () => {
   // Request form data state used for customization and submissions
   const [requestData, setRequestData] = useState({
     plot_size: '',
+    building_size: '',
     budget_range: '',
     plot_shape: '',
     num_floors: '',
@@ -61,7 +73,6 @@ const HomeownerDashboard = () => {
   const [showDesignDetails, setShowDesignDetails] = useState({}); // designId -> boolean
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [showArchitectModal, setShowArchitectModal] = useState(false);
-  const [sidebarProfileOpen, setSidebarProfileOpen] = useState(false);
   
   // Payment state (gates layout files until paid)
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -69,6 +80,63 @@ const HomeownerDashboard = () => {
   const [payingDesignId, setPayingDesignId] = useState(null);
   const [unlockedDesignIds, setUnlockedDesignIds] = useState({});
   const [homeownerEstimates, setHomeownerEstimates] = useState([]);
+  const [openChangeByEstimateId, setOpenChangeByEstimateId] = useState({});
+  const [changeTextByEstimateId, setChangeTextByEstimateId] = useState({});
+  const [showConstructionModal, setShowConstructionModal] = useState(false);
+  const [selectedEstimate, setSelectedEstimate] = useState(null);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageToContractor, setMessageToContractor] = useState('');
+  const [selectedEstimateForMessage, setSelectedEstimateForMessage] = useState(null);
+  const [messagesSentToContractors, setMessagesSentToContractors] = useState({}); // Track which estimates have messages sent
+
+  // Debug useEffect to monitor modal state changes
+  useEffect(() => {
+    console.log('Modal state changed to:', showConstructionModal);
+    console.log('Selected estimate changed to:', selectedEstimate);
+  }, [showConstructionModal, selectedEstimate]);
+
+  // Dashboard tour functions
+  const handleDashboardTourNext = () => {
+    if (tourStep < 9) { // 10 steps total (0-9)
+      setTourStep(tourStep + 1);
+    } else {
+      setShowDashboardTour(false);
+      setTourStep(0);
+    }
+  };
+
+  const handleDashboardTourPrev = () => {
+    if (tourStep > 0) {
+      setTourStep(tourStep - 1);
+    }
+  };
+
+  const handleDashboardTourSkip = () => {
+    setShowDashboardTour(false);
+    setTourStep(0);
+    // Mark dashboard tour as completed
+    localStorage.setItem('buildhub_dashboard_tour_completed', 'true');
+  };
+
+  const handleDashboardTourClose = () => {
+    setShowDashboardTour(false);
+    setTourStep(0);
+    // Mark dashboard tour as completed
+    localStorage.setItem('buildhub_dashboard_tour_completed', 'true');
+  };
+
+  // Check if this is the first time user visits dashboard and show tour
+  useEffect(() => {
+    const dashboardTourCompleted = localStorage.getItem('buildhub_dashboard_tour_completed');
+    if (!dashboardTourCompleted) {
+      // Show tour after a short delay to let the page load
+      const timer = setTimeout(() => {
+        setShowDashboardTour(true);
+        setTourStep(0);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Load locally remembered paid layouts so refresh doesn't re-lock
   useEffect(() => {
@@ -88,70 +156,563 @@ const HomeownerDashboard = () => {
     const fetchEstimates = async () => {
       try {
         const me = JSON.parse(sessionStorage.getItem('user') || '{}');
-        if (!me?.id) return;
+        if (!me?.id) {
+          console.log('No user ID found for fetching estimates');
+          return;
+        }
+        console.log('Fetching estimates for homeowner:', me.id);
         const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
         const j = await r.json().catch(() => ({}));
-        if (mounted && j?.success) setHomeownerEstimates(Array.isArray(j.estimates) ? j.estimates : []);
-      } catch {}
+        console.log('Estimates API response:', j);
+        if (mounted && j?.success) {
+          console.log('Setting estimates:', Array.isArray(j.estimates) ? j.estimates : []);
+          setHomeownerEstimates(Array.isArray(j.estimates) ? j.estimates : []);
+          // Check which estimates have messages sent (based on status)
+          const messagesSent = {};
+          if (Array.isArray(j.estimates)) {
+            j.estimates.forEach(est => {
+              if (est.status === 'approved_with_message' || est.homeowner_feedback) {
+                messagesSent[est.id] = true;
+              }
+            });
+          }
+          setMessagesSentToContractors(messagesSent);
+        } else {
+          console.log('Estimates fetch failed:', j.message);
+        }
+      } catch (error) {
+        console.error('Error fetching estimates:', error);
+      }
     };
     fetchEstimates();
     const id = setInterval(fetchEstimates, 60000);
     return () => { mounted = false; clearInterval(id); };
   }, []);
 
-  const downloadEstimateReport = (est) => {
+  const downloadEstimateReport = async (est) => {
     try {
-      const structured = (() => { try { return est.structured ? JSON.parse(est.structured) : null; } catch { return null; } })();
-      const fmt = (n) => (n === undefined || n === null || n === '') ? '' : `₹${Number(n).toLocaleString('en-IN')}`;
-      const makeSection = (title, section) => {
-        if (!section || typeof section !== 'object') return '';
-        const rows = [];
-        Object.entries(section).forEach(([key, val]) => {
-          if (!val || typeof val !== 'object') return;
-          const name = val.name || key;
-          const qty = val.qty || '';
-          const rate = val.rate || '';
-          const amount = val.amount || '';
-          if (name || qty || rate || amount) {
-            rows.push(`<tr><td>${name}</td><td>${qty}</td><td>${rate}</td><td>${fmt(amount)}</td></tr>`);
-          }
+      // Require payment: unlock only if paid
+      const isPaid = Number(est.is_paid || 0) > 0;
+      if (!isPaid) {
+        const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+        const initRes = await fetch('/buildhub/backend/api/homeowner/initiate_estimate_payment.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ homeowner_id: me.id, estimate_id: est.id })
         });
-        if (!rows.length) return '';
-        return `<div class="card"><h2>${title}</h2>
-          <table><thead><tr><th>Item</th><th class="muted">Qty</th><th class="muted">Rate</th><th>Amount</th></tr></thead>
-          <tbody>${rows.join('')}</tbody></table></div>`;
-      };
+        const init = await initRes.json();
+        if (!init?.success) { toast.error(init?.message || 'Failed to start payment'); return; }
 
-      const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Estimate #${est.id}</title>
-      <style>
-        @media print {@page { margin: 16mm } .card{page-break-inside: avoid}}
-        body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;margin:24px}
-        h1{margin:0 0 8px 0;font-size:22px}
-        h2{margin:16px 0 8px 0;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
-        table{width:100%;border-collapse:collapse;margin-top:8px}
-        th,td{border-bottom:1px solid #eef2f7;padding:8px;text-align:left}
-        .row{display:flex;justify-content:space-between;gap:12px;margin:6px 0}
-        .muted{color:#64748b}
-        .total{font-weight:700}
-        .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:12px 0}
-      </style>
-      </head><body>
-      <h1>Contractor Estimate #${est.id}</h1>
-      <div class="muted">Created: ${new Date(est.created_at).toLocaleString()}</div>
-      <div class="row"><div class="muted">Timeline</div><div>${est.timeline || '—'}</div></div>
-      <div class="row"><div class="muted">Grand Total</div><div class="total">${fmt(est.total_cost)}</div></div>
-      ${structured ? [
-        makeSection('Materials', structured.materials),
-        makeSection('Labor', structured.labor),
-        makeSection('Utilities & Fixtures', structured.utilities),
-        makeSection('Miscellaneous', structured.misc)
-      ].join('') : ''}
-      <script>window.onload=function(){window.print&&window.print();}</script>
-      </body></html>`;
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+        const options = {
+          key: init.razorpay_key_id,
+          amount: init.amount,
+          currency: init.currency || 'INR',
+          name: 'BuildHub',
+          description: `Unlock Contractor Estimate #${est.id}`,
+          order_id: init.razorpay_order_id,
+          handler: async function (rzpRes) {
+            try {
+              const verifyRes = await fetch('/buildhub/backend/api/homeowner/verify_estimate_payment.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  razorpay_payment_id: rzpRes.razorpay_payment_id,
+                  razorpay_order_id: rzpRes.razorpay_order_id,
+                  razorpay_signature: rzpRes.razorpay_signature,
+                  payment_id: init.payment_id
+                })
+              });
+              const ver = await verifyRes.json();
+              if (ver?.success) {
+                // Refresh estimates to get paid flag
+                try {
+                  const me2 = JSON.parse(sessionStorage.getItem('user') || '{}');
+                  const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me2.id}`, { credentials: 'include' });
+                  const j = await r.json().catch(() => ({}));
+                  if (j?.success) setHomeownerEstimates(Array.isArray(j.estimates) ? j.estimates : []);
+                } catch {}
+                toast.success('Payment successful. Estimate unlocked. Click again to download.');
+              } else {
+                toast.error(ver?.message || 'Payment verification failed');
+              }
+            } catch (e) { toast.error('Verification error'); }
+          },
+          prefill: { name: me?.first_name || 'Homeowner', email: me?.email || '' }
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+        return;
+      }
+
+      const structured = (() => { try { return est.structured ? JSON.parse(est.structured) : null; } catch { return null; } })();
+      const fmt = (n) => (n === undefined || n === null || n === '' || isNaN(Number(n))) ? '₹0' : `₹${Number(n).toLocaleString('en-IN')}`;
+      
+      const contractorName = est.contractor_name || 'Contractor Name';
+      const currentDate = new Date().toLocaleDateString('en-IN', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+
+      const html = `
+        <div style="font-family: 'Times New Roman', serif; color: #1a1a1a; margin: 0; padding: 0; line-height: 1.4; background: white;">
+      <!-- Company Header -->
+          <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #2c3e50; padding-bottom: 20px;">
+            <div style="width: 120px; height: 120px; margin: 0 auto 15px; border: 2px solid #2c3e50; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: bold; color: #2c3e50; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">🏗️</div>
+            <div style="font-size: 28px; font-weight: bold; color: #2c3e50; margin: 10px 0 5px 0; text-transform: uppercase; letter-spacing: 2px;">${contractorName} Construction</div>
+            <div style="font-size: 14px; color: #6c757d; font-style: italic; margin-bottom: 10px;">Professional Construction Services</div>
+            <div style="font-size: 12px; color: #495057; line-height: 1.3;">
+          📧 Email: ${est.contractor_email || 'contact@company.com'} | 
+          📱 Phone: ${est.contractor_phone || '+91-XXXXX-XXXXX'} | 
+          🏢 License: ${est.contractor_license || 'LIC-XXXXX'}
+        </div>
+      </div>
+
+      <!-- Document Title -->
+          <div style="text-align: center; margin: 30px 0; font-size: 24px; font-weight: bold; color: #2c3e50; text-transform: uppercase; letter-spacing: 1px;">Cost Estimate Report</div>
+
+      <!-- Estimate Information -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; padding: 15px; background: #f8f9fa; border-left: 4px solid #2c3e50;">
+            <div>
+              <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #2c3e50; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">Project Details</h3>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Project Name:</strong> ${structured?.project_name||'Construction Project'}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Location:</strong> ${structured?.project_address||'Project Location'}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Client:</strong> ${est.client_name||'Client Name'}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Plot Size:</strong> ${structured?.plot_size||'—'}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Built-up Area:</strong> ${structured?.built_up_area||'—'}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Floors:</strong> ${structured?.floors||'—'}</p>
+        </div>
+            <div>
+              <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #2c3e50; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">Estimate Information</h3>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Estimate Date:</strong> ${currentDate}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Estimate Valid Until:</strong> ${new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('en-IN')}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Project Duration:</strong> ${est.timeline||'90 days'}</p>
+              <p style="margin: 5px 0; font-size: 14px;"><strong>Estimate #:</strong> EST-${est.id}</p>
+        </div>
+      </div>
+
+      <!-- Cost Breakdown -->
+          <div style="margin: 30px 0;">
+            <h2 style="font-size: 20px; color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 20px;">Detailed Cost Breakdown</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <thead>
+            <tr>
+                  <th style="background: #2c3e50; color: white; padding: 12px; text-align: left; font-weight: bold; font-size: 14px;">Item Description</th>
+                  <th style="background: #2c3e50; color: white; padding: 12px; text-align: left; font-weight: bold; font-size: 14px;">Quantity</th>
+                  <th style="background: #2c3e50; color: white; padding: 12px; text-align: left; font-weight: bold; font-size: 14px;">Unit Rate (₹)</th>
+                  <th style="background: #2c3e50; color: white; padding: 12px; text-align: left; font-weight: bold; font-size: 14px;">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+                ${structured && structured.materials ? Object.entries(structured.materials).filter(([key, val]) => val && typeof val === 'object' && (val.name || val.amount)).map(([key, val], index) => `
+                  <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'};">
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.name || key}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.qty || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.rate || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${fmt(val.amount)}</td>
+              </tr>
+            `).join('') : ''}
+                ${structured && structured.labor ? Object.entries(structured.labor).filter(([key, val]) => val && typeof val === 'object' && (val.name || val.amount)).map(([key, val], index) => `
+                  <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'};">
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.name || key}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.qty || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.rate || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${fmt(val.amount)}</td>
+              </tr>
+            `).join('') : ''}
+                ${structured && structured.utilities ? Object.entries(structured.utilities).filter(([key, val]) => val && typeof val === 'object' && (val.name || val.amount)).map(([key, val], index) => `
+                  <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'};">
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.name || key}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.qty || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.rate || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${fmt(val.amount)}</td>
+              </tr>
+            `).join('') : ''}
+                ${structured && structured.misc ? Object.entries(structured.misc).filter(([key, val]) => val && typeof val === 'object' && (val.name || val.amount)).map(([key, val], index) => `
+                  <tr style="background: ${index % 2 === 0 ? '#f8f9fa' : 'white'};">
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.name || key}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.qty || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${val.rate || ''}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; font-size: 14px;">${fmt(val.amount)}</td>
+              </tr>
+            `).join('') : ''}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Total Section -->
+          <div style="margin: 30px 0; padding: 20px; background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); color: white; border-radius: 8px;">
+            <h2 style="margin: 0 0 15px 0; font-size: 18px; text-align: center;">Cost Summary</h2>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px;">
+          <span>Materials Cost:</span>
+          <span>${fmt(structured?.totals?.materials||0)}</span>
+        </div>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px;">
+          <span>Labor Cost:</span>
+          <span>${fmt(structured?.totals?.labor||0)}</span>
+        </div>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px;">
+          <span>Utilities:</span>
+          <span>${fmt(structured?.totals?.utilities||0)}</span>
+        </div>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px;">
+          <span>Miscellaneous:</span>
+          <span>${fmt(structured?.totals?.misc||0)}</span>
+        </div>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px;">
+          <span>Transportation:</span>
+          <span>${fmt(structured?.totals?.transport||0)}</span>
+        </div>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 16px;">
+          <span>Contingency (5%):</span>
+          <span>${fmt(structured?.totals?.contingency||0)}</span>
+        </div>
+            <div style="display: flex; justify-content: space-between; margin: 8px 0; font-size: 18px; font-weight: bold; border-top: 2px solid white; padding-top: 10px; margin-top: 15px;">
+          <span>GRAND TOTAL:</span>
+          <span>${fmt(structured?.totals?.grand || est.total_cost)}</span>
+        </div>
+      </div>
+
+      <!-- Terms and Conditions -->
+          <div style="margin: 30px 0; padding: 20px; background: #f8f9fa; border-left: 4px solid #28a745;">
+            <h3 style="margin: 0 0 15px 0; color: #28a745; font-size: 16px;">Terms & Conditions</h3>
+            <p style="margin: 8px 0; font-size: 14px; line-height: 1.5;"><strong>Payment Terms:</strong> 30% advance, 40% on completion of foundation, 30% on completion</p>
+            <p style="margin: 8px 0; font-size: 14px; line-height: 1.5;"><strong>Validity:</strong> This estimate is valid for 30 days from the date of issue</p>
+            <p style="margin: 8px 0; font-size: 14px; line-height: 1.5;"><strong>Materials:</strong> All materials will be of standard quality as per specifications</p>
+            <p style="margin: 8px 0; font-size: 14px; line-height: 1.5;"><strong>Timeline:</strong> Project completion within ${est.timeline||'90'} days from commencement</p>
+            <p style="margin: 8px 0; font-size: 14px; line-height: 1.5;"><strong>Warranty:</strong> 1 year warranty on workmanship, 5 years on structural elements</p>
+            <p style="margin: 8px 0; font-size: 14px; line-height: 1.5;"><strong>Notes:</strong> ${est.notes ? est.notes.replace(/\n/g,'<br/>') : 'All work to be done as per approved drawings and specifications'}</p>
+      </div>
+
+      <!-- Signature Section -->
+          <div style="margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+            <div style="text-align: center; padding: 20px; border: 2px solid #2c3e50; border-radius: 8px; background: #f8f9fa;">
+              <div style="border-bottom: 2px solid #2c3e50; margin: 40px 0 10px 0; height: 2px;"></div>
+              <div style="font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;">Client Signature</div>
+          <p style="margin-top: 10px; font-size: 12px; color: #6c757d;">Date: _______________</p>
+        </div>
+            <div style="text-align: center; padding: 20px; border: 2px solid #2c3e50; border-radius: 8px; background: #f8f9fa;">
+              <div style="width: 100px; height: 100px; border: 3px solid #dc3545; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: #dc3545; background: white; text-align: center; line-height: 1.2;">
+            <div>OFFICIAL<br/>SEAL</div>
+          </div>
+              <div style="border-bottom: 2px solid #2c3e50; margin: 40px 0 10px 0; height: 2px;"></div>
+              <div style="font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;">${contractorName}</div>
+          <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">Authorized Contractor</p>
+          <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">Date: ${currentDate}</p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+          <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #6c757d; border-top: 1px solid #dee2e6; padding-top: 15px;">
+        <p>This is a computer-generated estimate. For any clarifications, please contact us.</p>
+        <p>© ${new Date().getFullYear()} ${contractorName} Construction. All rights reserved.</p>
+      </div>
+        </div>`;
+      
+      // Create a temporary div to render the HTML content
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '-9999px';
+      tempDiv.style.width = '210mm';
+      tempDiv.style.padding = '20mm';
+      tempDiv.style.backgroundColor = 'white';
+      tempDiv.style.fontFamily = 'Times New Roman, serif';
+      tempDiv.style.fontSize = '12px';
+      tempDiv.style.lineHeight = '1.4';
+      tempDiv.style.color = '#1a1a1a';
+      
+      tempDiv.innerHTML = html;
+      document.body.appendChild(tempDiv);
+      
+      // Convert to canvas and then to PDF
+      console.log('Converting HTML to canvas...');
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+      
+      console.log('Canvas created:', canvas.width, 'x', canvas.height);
+      
+      // Remove the temporary div
+      document.body.removeChild(tempDiv);
+      
+      // Create PDF
+      console.log('Creating PDF...');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      
+      console.log('Image dimensions:', imgWidth, 'x', imgHeight);
+      
+      let position = 0;
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Download the PDF
+      const fileName = `Estimate_${contractorName.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}.pdf`;
+      console.log('Saving PDF as:', fileName);
+      
+      // Try alternative download method
+      try {
+        const pdfBlob = pdf.output('blob');
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log('PDF downloaded via blob method');
+      } catch (blobError) {
+        console.log('Blob method failed, trying direct save:', blobError);
+        pdf.save(fileName);
+      }
+      console.log('PDF save method called');
+    } catch (e) {
+      console.error('Error generating PDF report:', e);
+      toast.error('Error generating PDF report');
+    }
+  };
+
+  const respondToEstimate = async (est, action, message = '') => {
+    try {
+      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+      const res = await fetch('/buildhub/backend/api/homeowner/respond_to_estimate.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ homeowner_id: me.id, estimate_id: est.id, action, message })
+      });
+      const j = await res.json();
+      if (j?.success) {
+        // refresh list
+        try {
+          const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
+          const k = await r.json().catch(()=>({}));
+          if (k?.success) setHomeownerEstimates(Array.isArray(k.estimates) ? k.estimates : []);
+        } catch {}
+        const msg = action === 'accept' ? 'Accepted. Contractor will be notified.' : action === 'changes' ? 'Change request sent.' : 'Estimate rejected.';
+        try { toast.success(msg); } catch { /* no-op */ }
+      } else {
+        try { toast.error(j?.message || 'Failed to update'); } catch { /* no-op */ }
+      }
     } catch {}
+  };
+
+  const startConstruction = async (est) => {
+    try {
+      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+      if (!me?.id) { try { toast.error('Not logged in'); } catch {} return; }
+      if (!est?.id || !est?.contractor_id) { try { toast.error('Invalid estimate'); } catch {} return; }
+
+      // Optional lightweight message; skip UI modals per request
+      let homeownerMessage = '';
+      try {
+        homeownerMessage = '';
+      } catch {}
+
+      // Prefer simple GET with query params to avoid server JSON parsing issues
+      const qs = new URLSearchParams({
+        homeowner_id: String(me.id || ''),
+        estimate_id: String(est.id || ''),
+        contractor_id: String(est.contractor_id || ''),
+        project_title: String(est.project_title || 'Untitled Project'),
+        message: String(homeownerMessage || '')
+      });
+      const res = await fetch(`/buildhub/backend/api/homeowner/start_construction.php?${qs.toString()}`, {
+        method: 'GET',
+        credentials: 'include'
+      });
+      const j = await res.json().catch(()=>({}));
+      if (j?.success) {
+        try { toast.success('Sent to contractor. Construction can begin.'); } catch {}
+        // Refresh estimates to reflect status update
+        try {
+          const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
+          const k = await r.json().catch(()=>({}));
+          if (k?.success) setHomeownerEstimates(Array.isArray(k.estimates) ? k.estimates : []);
+        } catch {}
+      } else {
+        try { toast.error(j?.message || 'Failed to notify contractor'); } catch {}
+      }
+    } catch (e) {
+      try { toast.error('Error sending notification'); } catch {}
+    }
+  };
+
+  const confirmStartConstruction = async () => {
+    if (!selectedEstimate) return;
+    
+    try {
+      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+      const res = await fetch('/buildhub/backend/api/homeowner/start_construction.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          homeowner_id: me.id, 
+          estimate_id: selectedEstimate.id,
+          contractor_id: selectedEstimate.contractor_id,
+          project_title: selectedEstimate.project_title || 'Untitled Project'
+        })
+      });
+      
+      const j = await res.json();
+      if (j?.success) {
+        try { toast.success('Construction started! Contractor has been notified.'); } catch { /* no-op */ }
+        // Refresh estimates to update status
+        try {
+          const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
+          const k = await r.json().catch(()=>({}));
+          if (k?.success) setHomeownerEstimates(Array.isArray(k.estimates) ? k.estimates : []);
+        } catch {}
+      } else {
+        try { toast.error(j?.message || 'Failed to start construction'); } catch { /* no-op */ }
+      }
+    } catch (error) {
+      try { toast.error('Error starting construction'); } catch { /* no-op */ }
+    } finally {
+      setShowConstructionModal(false);
+      setSelectedEstimate(null);
+    }
+  };
+
+  const sendMessageToContractor = async (est) => {
+    try {
+      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+      if (!me?.id) { 
+        try { toast.error('Not logged in'); } catch {} 
+        return; 
+      }
+      if (!est?.id || !est?.contractor_id) { 
+        try { toast.error('Invalid estimate'); } catch {} 
+        return; 
+      }
+
+      const res = await fetch('/buildhub/backend/api/homeowner/send_estimate_message.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          homeowner_id: me.id, 
+          estimate_id: est.id,
+          contractor_id: est.contractor_id,
+          project_title: est.project_title || 'Untitled Project',
+          message: messageToContractor.trim() || 'I am satisfied with this estimate and ready to start the construction project. Please let me know the next steps and when we can begin work.'
+        })
+      });
+
+      const j = await res.json();
+      if (j?.success) {
+        try { toast.success('Message sent to contractor successfully!'); } catch { /* no-op */ }
+        // Mark this estimate as having a message sent
+        setMessagesSentToContractors(prev => ({
+          ...prev,
+          [est.id]: true
+        }));
+        // Refresh estimates to update status
+        try {
+          const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
+          const k = await r.json().catch(()=>({}));
+          if (k?.success) setHomeownerEstimates(Array.isArray(k.estimates) ? k.estimates : []);
+        } catch {}
+        // Close modal and reset state
+        setShowMessageModal(false);
+        setMessageToContractor('');
+        setSelectedEstimateForMessage(null);
+      } else {
+        try { toast.error(j?.message || 'Failed to send message'); } catch { /* no-op */ }
+      }
+    } catch (error) {
+      try { toast.error('Error sending message'); } catch { /* no-op */ }
+    }
+  };
+
+  // Direct message function - sends message immediately without modal
+  const sendDirectMessageToContractor = async (est) => {
+    try {
+      console.log('=== SEND MESSAGE DEBUG ===');
+      console.log('Estimate object:', est);
+      
+      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+      console.log('User:', me);
+      
+      if (!me?.id) { 
+        console.log('No user ID found');
+        try { toast.error('Not logged in'); } catch {} 
+        return; 
+      }
+      if (!est?.id || !est?.contractor_id) { 
+        console.log('Invalid estimate data:', { id: est?.id, contractor_id: est?.contractor_id });
+        try { toast.error('Invalid estimate data'); } catch {} 
+        return; 
+      }
+
+      console.log('Sending direct message for estimate:', est.id);
+      console.log('Contractor ID:', est.contractor_id);
+      console.log('Homeowner ID:', me.id);
+
+      const requestData = { 
+        homeowner_id: me.id, 
+        estimate_id: est.id,
+        contractor_id: est.contractor_id,
+        project_title: est.project_title || `Estimate #${est.id}`,
+        message: 'I am satisfied with this estimate and ready to start the construction project. Please let me know the next steps and when we can begin work.'
+      };
+      
+      console.log('Request data:', requestData);
+
+      const res = await fetch('/buildhub/backend/api/homeowner/send_estimate_message.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(requestData)
+      });
+
+      console.log('Response status:', res.status);
+      const j = await res.json();
+      console.log('Response data:', j);
+      
+      if (j?.success) {
+        console.log('Message sent successfully!');
+        try { toast.success('Message sent to contractor successfully!'); } catch { /* no-op */ }
+        // Mark this estimate as having a message sent
+        setMessagesSentToContractors(prev => ({
+          ...prev,
+          [est.id]: true
+        }));
+        // Refresh estimates to update status
+        try {
+          const r = await fetch(`/buildhub/backend/api/homeowner/get_estimates.php?homeowner_id=${me.id}`, { credentials: 'include' });
+          const k = await r.json().catch(()=>({}));
+          if (k?.success) setHomeownerEstimates(Array.isArray(k.estimates) ? k.estimates : []);
+        } catch {}
+      } else {
+        console.log('Failed to send message:', j);
+        try { toast.error(j?.message || 'Failed to send message'); } catch { /* no-op */ }
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      try { toast.error('Error sending message: ' + error.message); } catch { /* no-op */ }
+    }
   };
 
   // Sidebar badge counts
@@ -231,8 +792,14 @@ const HomeownerDashboard = () => {
     return 0;
   };
 
-  // Pricing: base 8000 + 10 per sqft
+  // Pricing: use architect-set price if available, otherwise fallback to calculated price
   const calculateDesignPrice = (design) => {
+    // If architect has set a specific price, use that
+    if (design?.view_price && design.view_price > 0) {
+      return parseFloat(design.view_price);
+    }
+    
+    // Fallback to calculated price based on sqft
     const sqft = getDesignSqft(design);
     const base = 8000;
     const variable = sqft > 0 ? sqft * 10 : 0;
@@ -360,62 +927,7 @@ const HomeownerDashboard = () => {
   const [architectReviews, setArchitectReviews] = useState([]);
   const [architectReviewsLoading, setArchitectReviewsLoading] = useState(false);
   
-  // AI Recommendation Engine state
-  const [showRecommendationEngine, setShowRecommendationEngine] = useState(false);
-  const [recommendedArchitects, setRecommendedArchitects] = useState([]);
-  const [recommendationLoading, setRecommendationLoading] = useState(false);
 
-  // Fetch AI recommendations based on style preferences
-  const fetchRecommendations = async (preferences) => {
-    setRecommendationLoading(true);
-    setError('');
-    
-    try {
-      const response = await fetch('/buildhub/backend/api/homeowner/recommend_architects.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          preferences: preferences,
-          k: 5
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setRecommendedArchitects(result.recommendations || []);
-      } else {
-        setError(result.message || 'Failed to get recommendations');
-      }
-    } catch (err) {
-      setError('Network error. Please try again.');
-      console.error('Recommendation error:', err);
-    } finally {
-      setRecommendationLoading(false);
-    }
-  };
-
-  // Helpers to mark recommended architects and show score
-  const getRecommendationScore = (architectId) => {
-    try {
-      const rec = (recommendedArchitects || []).find(r => Number(r?.architect?.id) === Number(architectId));
-      return rec?.composite_score ?? null;
-    } catch (_) { return null; }
-  };
-  const isRecommendedArchitect = (architectId) => getRecommendationScore(architectId) !== null;
-
-  // Auto-fetch recommendations when style preferences change or when modal opens
-  useEffect(() => {
-    try {
-      const hasPrefs = requestData && requestData.style_preferences && Object.keys(requestData.style_preferences).length > 0;
-      if (showArchitectModal && hasPrefs) {
-        fetchRecommendations(requestData.style_preferences);
-      }
-    } catch (_) {}
-  }, [showArchitectModal, requestData?.style_preferences]);
   const [archStepDone, setArchStepDone] = useState(false);
   const [selectedRequestForAssign, setSelectedRequestForAssign] = useState(null);
   const [selectedArchitectId, setSelectedArchitectId] = useState([]);
@@ -456,17 +968,13 @@ const HomeownerDashboard = () => {
 
   // Profile dropdown outside-click handler (top header)
   const profileRef = useRef(null);
-  const sidebarProfileRef = useRef(null);
   useEffect(() => {
     const onDocClick = (e) => {
       if (profileRef.current && !profileRef.current.contains(e.target)) {
         setProfileMenuOpen(false);
       }
-      if (sidebarProfileRef.current && !sidebarProfileRef.current.contains(e.target)) {
-        setSidebarProfileOpen(false);
-      }
     };
-    const onKey = (e) => { if (e.key === 'Escape') { setProfileMenuOpen(false); setSidebarProfileOpen(false); } };
+    const onKey = (e) => { if (e.key === 'Escape') { setProfileMenuOpen(false); } };
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDocClick); document.removeEventListener('keydown', onKey); };
@@ -475,11 +983,19 @@ const HomeownerDashboard = () => {
   useEffect(() => {
     // Get user data from session
     const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
+    console.log('User data loaded:', userData);
     setUser(userData);
+  }, []);
 
+  useEffect(() => {
+    console.log('Profile menu open state changed:', profileMenuOpen);
+  }, [profileMenuOpen]);
+
+  useEffect(() => {
     import('../utils/session').then(({ preventCache, verifyServerSession }) => {
       preventCache();
       (async () => {
+        const userData = JSON.parse(sessionStorage.getItem('user') || '{}');
         const serverAuth = await verifyServerSession();
         if (!userData.id || userData.role !== 'homeowner' || !serverAuth) {
           sessionStorage.removeItem('user');
@@ -1186,7 +1702,29 @@ const HomeownerDashboard = () => {
             <h1>Welcome back, {user?.first_name || 'Homeowner'} <span role="img" aria-label="wave"></span></h1>
             <p>Plan and track your home project. Request designs, review proposals, and manage progress.</p>
           </div>
-          <div className="hero-actions"></div>
+          <div className="hero-actions">
+            <button 
+              className="btn btn-primary" 
+              onClick={() => {
+                setShowDashboardTour(true);
+                setTourStep(0);
+              }}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: '600',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              🎯 Take a Tour Guide
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1245,6 +1783,9 @@ const HomeownerDashboard = () => {
               <div className="fr-icon">📐</div>
               <div className="fr-title">Request Custom Design</div>
               <div className="fr-sub">Get professional architectural designs for your plot</div>
+              <div className="fr-help" style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,255,255,0.2)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', cursor: 'pointer' }} title="New to custom design requests? Click for a guided tour!">
+                ?
+              </div>
             </button>
             <button 
               className="float-rect w-purple"
@@ -1538,7 +2079,12 @@ const HomeownerDashboard = () => {
                         <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
                           <div>
                             <div style={{fontWeight:600, color:'#92400e'}}>Payment required to view files</div>
-                            <div style={{color:'#92400e', fontSize:14}}>Price based on sqft: ₹{calculateDesignPrice(d).toLocaleString('en-IN')}</div>
+                            <div style={{color:'#92400e', fontSize:14}}>
+                              {d?.view_price && d.view_price > 0 ? 
+                                `Architect-set price: ₹${parseFloat(d.view_price).toLocaleString('en-IN')}` : 
+                                `Price based on sqft: ₹${calculateDesignPrice(d).toLocaleString('en-IN')}`
+                              }
+                            </div>
                           </div>
                           <button
                             className="btn btn-primary"
@@ -1649,39 +2195,7 @@ const HomeownerDashboard = () => {
         </div>
       </div>
 
-      {/* Estimates from Contractors */}
-      <div className="section-card" style={{marginTop: '1rem'}}>
-        <div className="section-header">
-          <h2>Contractor Estimates</h2>
-          <p>Submitted cost estimates for your layouts/designs</p>
-        </div>
-        <div className="section-content">
-          {homeownerEstimates.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">📄</div>
-              <h3>No Estimates Yet</h3>
-              <p>When contractors submit estimates, they will appear here.</p>
-            </div>
-          ) : (
-            <div className="item-list">
-              {homeownerEstimates.map(est => (
-                <div key={est.id} className="list-item">
-                  <div className="item-icon">📋</div>
-                  <div className="item-content" style={{flex:1}}>
-                    <h4 className="item-title" style={{margin:0}}>Estimate #{est.id}</h4>
-                    <p className="item-subtitle" style={{margin:'2px 0 0 0'}}>Total: ₹{est.total_cost ?? '—'} • {new Date(est.created_at).toLocaleString()}</p>
-                    {est.timeline && <p className="item-meta">Timeline: {est.timeline}</p>}
-                    {est.notes && <p className="item-meta">Notes: {est.notes}</p>}
-                  </div>
-                  <div className="item-actions" style={{display:'flex', gap:6}}>
-                    <button className="btn btn-primary" onClick={()=>downloadEstimateReport(est)}>Download</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Contractor Estimates moved to 'Estimations' tab */}
     </div>
   );
 
@@ -1859,129 +2373,18 @@ const HomeownerDashboard = () => {
           </a>
           <a 
             href="#" 
-            className={`nav-item sb-item ${activeTab === 'projects' ? 'active' : ''}`}
-            data-title="My Projects"
-            onClick={(e) => { e.preventDefault(); setActiveTab('projects'); fetchMyProjects(); }}
+            className={`nav-item sb-item ${activeTab === 'estimates' ? 'active' : ''}`}
+            data-title="Estimations"
+            onClick={(e) => { e.preventDefault(); setActiveTab('estimates'); }}
           >
-            <span className="nav-label sb-label">My Projects</span>
-            {projectsCount > 0 && (
-              <span className="nav-badge pulse" style={{ marginLeft: 'auto' }}>{projectsCount}</span>
+            <span className="nav-label sb-label">Estimations</span>
+            {homeownerEstimates.length > 0 && (
+              <span className="nav-badge pulse" style={{ marginLeft: 'auto' }}>{homeownerEstimates.length}</span>
             )}
           </a>
 
         </nav>
 
-        <div className="sidebar-footer sb-footer" style={{ padding:'12px', borderTop:'1px solid #e5e7eb', marginTop:'auto' }} ref={sidebarProfileRef}>
-          <button
-            type="button"
-            onClick={() => setSidebarProfileOpen(v => !v)}
-            aria-haspopup="menu"
-            aria-expanded={sidebarProfileOpen ? 'true' : 'false'}
-            style={{
-              width:'100%', background:'transparent', border:'none', padding:0, textAlign:'left', cursor:'pointer'
-            }}
-            title="Profile"
-          >
-            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: '#ffffff',
-                border: '1px solid #e5e7eb',
-                display: 'flex', alignItems:'center', justifyContent:'center',
-                overflow:'hidden'
-              }}>
-                {user?.avatar_url ? (
-                  <img src={user.avatar_url} alt="Avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                ) : (
-                  <span style={{ fontWeight: 700, fontSize: 12, color:'#374151' }}>
-                    {(user?.first_name?.[0] || 'U').toUpperCase()}{(user?.last_name?.[0] || '').toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontWeight:600, fontSize:13, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                  {user?.first_name || 'Homeowner'} {user?.last_name || ''}
-                </div>
-                <div style={{ fontSize:12, color:'#6b7280', display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ display:'inline-flex', width:6, height:6, borderRadius:6, background:'#10b981' }}></span>
-                  Homeowner
-                </div>
-              </div>
-              <span style={{ fontSize:12, color:'#6b7280', transition:'transform 160ms ease', transform: sidebarProfileOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-            </div>
-          </button>
-
-          {sidebarProfileOpen && (
-            <div
-              role="menu"
-              style={{
-                marginTop:8,
-                background:'#fff',
-                border:'1px solid #e5e7eb',
-                borderRadius:10,
-                boxShadow:'0 10px 28px rgba(2,6,23,0.12)',
-                overflow:'hidden',
-                transition:'opacity 120ms ease, transform 120ms ease',
-                opacity: 1,
-                transform:'scale(1)'
-              }}
-              aria-label="Profile menu"
-            >
-              <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'#f9fafb', borderBottom:'1px solid #f1f5f9' }}>
-                <div style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  background: '#ffffff',
-                  border: '1px solid #e5e7eb',
-                  display: 'flex', alignItems:'center', justifyContent:'center',
-                  fontWeight: 700, fontSize: 12, color:'#374151'
-                }}>
-                  {(user?.first_name?.[0] || 'U').toUpperCase()}{(user?.last_name?.[0] || '').toUpperCase()}
-                </div>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontWeight:600, fontSize:13, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {user?.first_name || 'Homeowner'} {user?.last_name || ''}
-                  </div>
-                  <div style={{ fontSize:12, color:'#6b7280' }}>{user?.email || ''}</div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => { setSidebarProfileOpen(false); navigate('/homeowner/profile'); }}
-                style={{
-                  width:'100%', display:'flex', alignItems:'center', gap:10,
-                  background:'transparent', border:'none', textAlign:'left', padding:'10px 12px', cursor:'pointer'
-                }}
-                onMouseOver={(e)=>{ e.currentTarget.style.background='#f9fafb'; }}
-                onFocus={(e)=>{ e.currentTarget.style.background='#f9fafb'; e.currentTarget.style.outline='none'; }}
-                onMouseOut={(e)=>{ e.currentTarget.style.background='transparent'; }}
-              >
-                <span aria-hidden style={{ width:18, textAlign:'center' }}>👤</span>
-                <span style={{ fontSize:14, color:'#111827' }}>Profile Setup</span>
-              </button>
-
-              <div style={{ height:1, background:'#f1f5f9' }}></div>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                style={{
-                  width:'100%', display:'flex', alignItems:'center', gap:10,
-                  background:'transparent', border:'none', textAlign:'left', padding:'10px 12px', cursor:'pointer', color:'#b91c1c'
-                }}
-                onMouseOver={(e)=>{ e.currentTarget.style.background='#fff1f2'; }}
-                onMouseOut={(e)=>{ e.currentTarget.style.background='transparent'; }}
-              >
-                <span aria-hidden style={{ width:18, textAlign:'center' }}>🚪</span>
-                <span style={{ fontSize:14 }}>Logout</span>
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Main Content */}
@@ -1997,6 +2400,11 @@ const HomeownerDashboard = () => {
           <div className="right">
             <NotificationSystem userId={user?.id} />
             <button className="icon-btn" title="Help" onClick={() => { setShowSupportModal(true); loadSupportIssues(); }}>❓</button>
+            <HomeownerProfileButton 
+              user={user}
+              position="bottom-right"
+              onLogout={handleLogout}
+            />
           </div>
         </div>
         {/* In-page alerts */}
@@ -2019,7 +2427,142 @@ const HomeownerDashboard = () => {
         {activeTab === 'library' && renderLibrary()}
         {activeTab === 'requests' && renderRequests()}
         {activeTab === 'designs' && renderReceivedDesigns()}
-        {activeTab === 'projects' && renderProjects()}
+        {activeTab === 'estimates' && (
+          <div className="section-card" style={{marginTop: '1rem'}}>
+            <div className="section-header">
+              <h2>Contractor Estimates</h2>
+              <p>Submitted cost estimates for your layouts/designs</p>
+            </div>
+            <div className="section-content">
+              {(() => {
+                console.log('Rendering estimates tab. Count:', homeownerEstimates.length);
+                console.log('Estimates data:', homeownerEstimates);
+                return null;
+              })()}
+              {homeownerEstimates.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-icon">📄</div>
+                  <h3>No Estimates Yet</h3>
+                  <p>When contractors submit estimates, they will appear here.</p>
+                </div>
+              ) : (
+                <div className="item-list">
+                  {homeownerEstimates.map(est => (
+                    <div key={est.id} className="list-item">
+                      <div className="item-icon">📋</div>
+                      <div className="item-content" style={{flex:1}}>
+                        <h4 className="item-title" style={{margin:0}}>Estimate #{est.id}</h4>
+                        <p className="item-subtitle" style={{margin:'2px 0 0 0'}}>Total: ₹{est.total_cost ?? '—'} • {new Date(est.created_at).toLocaleString()}</p>
+                        {est.timeline && <p className="item-meta">Timeline: {est.timeline}</p>}
+                        {est.notes && <p className="item-meta">Notes: {est.notes}</p>}
+                        <p className="item-meta">Contractor: {est.contractor_name || 'Unknown'}{est.contractor_email ? ` • ${est.contractor_email}` : ''}</p>
+                        <p className="item-meta" style={{fontSize: '12px', color: '#666'}}>Status: {est.status || 'unknown'}</p>
+                        {Number(est.is_paid||0) === 0 && (
+                          <span className="status-badge pending">Locked • Pay ₹100 to view</span>
+                        )}
+                      </div>
+                      <div className="item-actions" style={{display:'flex', gap:6, alignItems:'center'}}>
+                        <button className="btn btn-primary" onClick={()=>downloadEstimateReport(est)}>{Number(est.is_paid||0)===0? 'Pay ₹100 to Unlock' : 'Download'}</button>
+                        {Number(est.is_paid||0)===1 && (
+                          <>
+                            {est.status === 'submitted' && (
+                              <>
+                                <button className="btn btn-secondary" onClick={()=>respondToEstimate(est, 'accept')}>Accept</button>
+                                <button className="btn btn-secondary" onClick={()=>respondToEstimate(est, 'reject')}>Reject</button>
+                              </>
+                            )}
+                            {est.status === 'accepted' && (
+                              <>
+                              <button className="btn btn-secondary" onClick={()=> setOpenChangeByEstimateId(prev=>({...prev, [est.id]: !prev[est.id]})) }>
+                                {openChangeByEstimateId[est.id] ? 'Close Changes' : 'Request Changes'}
+                              </button>
+                              <button 
+                                className={messagesSentToContractors[est.id] ? "btn btn-success" : "btn btn-primary"}
+                                onClick={() => {
+                                  console.log('Send message button clicked for estimate:', est.id);
+                                  sendDirectMessageToContractor(est);
+                                }}
+                                style={messagesSentToContractors[est.id] ? {
+                                  backgroundColor: '#10b981',
+                                  borderColor: '#10b981',
+                                  color: 'white'
+                                } : {}}
+                              >
+                                {messagesSentToContractors[est.id] ? '✅ Message Sent' : '💬 Send Message'}
+                              </button>
+                                <button 
+                                  type="button"
+                                  className="btn btn-success" 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    console.log('Button clicked!', est);
+                                    startConstruction(est);
+                                  }}
+                                  style={{cursor: 'pointer'}}
+                                >
+                                  🏗️ Start Construction
+                                </button>
+                              </>
+                            )}
+                            {(est.status === 'construction_started' || est.status === 'changes_requested') && (
+                              <>
+                                <button 
+                                  className={messagesSentToContractors[est.id] ? "btn btn-success" : "btn btn-primary"}
+                                  onClick={() => {
+                                    console.log('Send message button clicked for estimate:', est.id);
+                                    sendDirectMessageToContractor(est);
+                                  }}
+                                  style={messagesSentToContractors[est.id] ? {
+                                    backgroundColor: '#10b981',
+                                    borderColor: '#10b981',
+                                    color: 'white'
+                                  } : {}}
+                                >
+                                  {messagesSentToContractors[est.id] ? '✅ Message Sent' : '💬 Send Message'}
+                                </button>
+                                {est.status === 'changes_requested' && (
+                                  <button className="btn btn-secondary" onClick={()=> setOpenChangeByEstimateId(prev=>({...prev, [est.id]: !prev[est.id]})) }>
+                                    {openChangeByEstimateId[est.id] ? 'Close Changes' : 'Request Changes'}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {(est.status === 'rejected') && (
+                              <span className="status-badge rejected">Rejected</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {openChangeByEstimateId[est.id] && (
+                        <div className="card" style={{marginTop:8}}>
+                          <div style={{fontWeight:600, marginBottom:6}}>Request Changes</div>
+                          <textarea
+                            placeholder="Describe the changes you want the contractor to make"
+                            rows={3}
+                            value={changeTextByEstimateId[est.id] || ''}
+                            onChange={(e)=> setChangeTextByEstimateId(prev=>({...prev, [est.id]: e.target.value}))}
+                            style={{width:'100%', border:'1px solid #e5e7eb', borderRadius:6, padding:8}}
+                          />
+                          <div style={{display:'flex', gap:8, marginTop:8}}>
+                            <button className="btn btn-primary" onClick={()=>{
+                              const msg = (changeTextByEstimateId[est.id] || '').trim();
+                              if (!msg) { try { toast.warning('Please describe the changes.'); } catch {} return; }
+                              respondToEstimate(est, 'changes', msg);
+                              setOpenChangeByEstimateId(prev=>({...prev, [est.id]: false}));
+                              setChangeTextByEstimateId(prev=>({...prev, [est.id]: ''}));
+                            }}>Send</button>
+                            <button className="btn btn-secondary" onClick={()=> setOpenChangeByEstimateId(prev=>({...prev, [est.id]: false}))}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {activeTab === 'scene3d' && (
           <div className="section-card">
             <div className="section-header">
@@ -2036,17 +2579,29 @@ const HomeownerDashboard = () => {
 
         {/* Support / Help Modal */}
         {showSupportModal && (
-          <div className="form-modal" onClick={() => setShowSupportModal(false)} style={{background:'rgba(30,58,138,0.55)', position:'fixed', inset:0}}>
+          <div className="form-modal" onClick={() => setShowSupportModal(false)} style={{
+            background:'rgba(30,58,138,0.55)', 
+            position:'fixed', 
+            inset:0, 
+            zIndex:999,
+            display:'flex',
+            alignItems:'stretch',
+            justifyContent:'stretch',
+            padding:0,
+            margin:0
+          }}>
             <div
               className="form-content"
               onClick={(e) => e.stopPropagation()}
               style={{
                 maxWidth:'unset', width:'100vw', height:'100vh', borderRadius:0, padding:0,
-                display:'flex', flexDirection:'column', overflow:'hidden', background:'#fff'
+                display:'flex', flexDirection:'column', overflow:'hidden', background:'#fff',
+                position:'relative', zIndex:1000, margin:0, border:0,
+                alignSelf:'stretch', flex:1
               }}
             >
               {/* Fullscreen header */}
-              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px', borderBottom:'1px solid #dbeafe', background:'#1d4ed8'}}>
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px', borderBottom:'1px solid #dbeafe', background:'#1d4ed8', position:'relative', zIndex:1001, flexShrink:0}}>
                 <div>
                   <h3 style={{margin:0, color:'#fff'}}>Help & Support</h3>
                   <p style={{margin:'2px 0 0 0', color:'#e0e7ff'}}>Report an issue to admin and view replies</p>
@@ -2058,10 +2613,10 @@ const HomeownerDashboard = () => {
               </div>
 
               {/* Body: two-pane layout (single column when no thread selected) */}
-              <div style={{display:'grid', gridTemplateColumns: selectedIssue ? '480px 1fr' : '1fr', gap:0, flex:1, minHeight:0, background:'#eff6ff'}}>
+              <div style={{display:'grid', gridTemplateColumns: selectedIssue ? '480px 1fr' : '1fr', gap:0, flex:1, minHeight:0, background:'#eff6ff', overflow:'hidden'}}>
                 {/* Left column: form + issues list */}
-                <div style={{borderRight: selectedIssue ? '1px solid #bfdbfe' : 'none', display:'flex', flexDirection:'column', minHeight:0, background:'#fff'}}>
-                  <div style={{padding: selectedIssue ? '16px 16px 8px' : '24px 24px 12px', maxWidth: selectedIssue ? 'unset' : '1200px', flex: showReportsList ? 'unset' : 1}}>
+                <div style={{borderRight: selectedIssue ? '1px solid #bfdbfe' : 'none', display:'flex', flexDirection:'column', minHeight:0, background:'#fff', overflow:'hidden'}}>
+                  <div style={{padding: selectedIssue ? '16px 16px 8px' : '24px 24px 12px', maxWidth: selectedIssue ? 'unset' : '1200px', flex: showReportsList ? 'unset' : 1, overflow:'auto'}}>
                     <h4 style={{margin:'0 0 8px'}}>Report an Issue</h4>
                     <form onSubmit={(e)=>{ e.preventDefault(); submitSupportIssue(); }}>
                       <div className="form-group">
@@ -2215,6 +2770,19 @@ const HomeownerDashboard = () => {
                         className="form-control"
                       />
                     </div>
+                    <div className="form-group">
+                      <label>Building Size (sq ft)</label>
+                      <input
+                        type="number"
+                        value={requestData.building_size}
+                        onChange={(e) => setRequestData({...requestData, building_size: e.target.value})}
+                        placeholder="e.g., 800"
+                        min="100"
+                        className="form-control"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row">
                     <div className="form-group">
                       <label>Budget Range (₹) *</label>
                       <select
@@ -2537,160 +3105,19 @@ const HomeownerDashboard = () => {
                   </div>
                 </div>
 
-                {/* Inline Architect selection before submit */}
+                {/* Integrated Architect Selection */}
                 <div className="form-card architect-selection-card">
-                  <h4 className="architect-selection-title">Choose Architect (optional)</h4>
-                  <p className="architect-selection-subtitle">
-                    Pick who should receive your request immediately after submission.
-                    {Object.keys(requestData.style_preferences).length > 0 && (
-                      <span style={{ color: '#3b82f6', fontWeight: '500' }}>
-                        {' '}🤖 AI recommendations will appear below based on your style preferences.
-                      </span>
-                    )}
-                  </p>
-                  <div className="architect-filters-row">
-                    <div className="filter-input-group">
-                      <i className="fas fa-search filter-icon"></i>
-                      <input
-                        type="text"
-                        placeholder="Search name/company/email"
-                        value={archSearch}
-                        onChange={(e) => setArchSearch(e.target.value)}
-                        className="architect-filter-input"
-                      />
-                    </div>
-                    <div className="filter-input-group">
-                      <i className="fas fa-briefcase filter-icon"></i>
-                      <input
-                        type="text"
-                        placeholder="Modern, Traditional, Minimalist"
-                        value={archSpec}
-                        onChange={(e) => setArchSpec(e.target.value)}
-                        className="architect-filter-input"
-                      />
-                    </div>
-                    <div className="filter-input-group">
-                      <i className="fas fa-clock filter-icon"></i>
-                      <input
-                        type="number"
-                        placeholder="Min experience"
-                        value={archMinExp}
-                        onChange={(e) => setArchMinExp(e.target.value)}
-                        min="0"
-                        className="architect-filter-input"
-                      />
-                    </div>
-                    <button type="button" className="architect-search-btn" onClick={() => fetchArchitects({ status: 'approved', search: archSearch, specialization: archSpec, min_experience: archMinExp })}>
-                      <i className="fas fa-search"></i> Search
-                    </button>
-                  </div>
-
-                  {/* AI Recommendations based on style preferences */}
-                  {Object.keys(requestData.style_preferences).length > 0 && (
-                    <div className="ai-recommendations-inline">
-                      <div className="ai-recommendations-header">
-                        <h5>🤖 AI Recommended Architects</h5>
-                        <button 
-                          type="button"
-                          className="btn btn-sm btn-outline"
-                          onClick={() => {
-                            fetchRecommendations(requestData.style_preferences);
-                          }}
-                          disabled={recommendationLoading}
-                        >
-                          {recommendationLoading ? 'Finding...' : 'Get AI Recommendations'}
-                        </button>
-                      </div>
-                      
-                      {recommendedArchitects.length > 0 && (
-                        <div className="recommended-architects-inline">
-                          {recommendedArchitects.slice(0, 3).map((rec, index) => (
-                            <div key={rec.architect.id} className="recommended-architect-inline">
-                              <div className="architect-info">
-                                <h6>{rec.architect.first_name} {rec.architect.last_name}</h6>
-                                <p className="specialization">{rec.architect.specialization}</p>
-                                <div className="architect-stats">
-                                  <span>⭐ {rec.architect.avg_rating || 0}/5</span>
-                                  <span>{rec.architect.experience_years || 0} years</span>
-                                </div>
-                              </div>
-                              <div className="match-score">
-                                <div className="score-badge" style={{ 
-                                  backgroundColor: rec.composite_score >= 0.8 ? '#10b981' : 
-                                                 rec.composite_score >= 0.6 ? '#f59e0b' : '#ef4444'
-                                }}>
-                                  {Math.round(rec.composite_score * 100)}%
-                                </div>
-                              </div>
-                              <button 
-                                type="button"
-                                className="btn btn-primary btn-sm"
-                                onClick={() => {
-                                  setSelectedArchitectId([rec.architect.id]);
-                                }}
-                              >
-                                Select
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {archError && <div className="alert alert-error architect-error">{archError}</div>}
-                  <div className="architect-list">
-                    {archLoading ? (
-                      <div className="architect-loading">
-                        <i className="fas fa-spinner fa-spin"></i> Loading architects...
-                      </div>
-                    ) : architects.length === 0 ? (
-                      <div className="architect-empty-state">
-                        <div className="empty-icon">🧑‍🎨</div>
-                        <h4 className="empty-title">No architects found</h4>
-                        <p className="empty-message">Adjust your filters and try again</p>
-                      </div>
-                    ) : (
-                      architects
-                        .filter(a => (a.status || 'approved') === 'approved')
-                        .map(a => (
-                        <label key={a.id} className="architect-list-item">
-                          <div className="architect-avatar">
-                            <i className="fas fa-user-tie"></i>
-                          </div>
-                          <div className="architect-content">
-                            <div className="architect-name" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                              <span>{a.first_name} {a.last_name} {a.company_name ? `• ${a.company_name}` : ''}</span>
-                              {isRecommendedArchitect(a.id) && (
-                                <span className="best-option-badge">Best Option</span>
-                              )}
-                            </div>
-                            <div className="architect-specialization">
-                              <i className="fas fa-briefcase"></i> {a.specialization || 'General'} 
-                              <span className="experience-badge">{a.experience_years ?? 'N/A'} yrs</span>
-                            </div>
-                            <div className="architect-email">{a.email || ''}</div>
-                            <div className="architect-rating">
-                              <span title={a.avg_rating ? `${a.avg_rating} / 5` : 'No ratings yet'}>
-                                {[1,2,3,4,5].map(star => (
-                                  <span key={star} className="rating-star" style={{color: (a.avg_rating || 0) >= star ? '#f5a623' : '#ddd'}}>★</span>
-                                ))}
-                              </span>
-                              <span className="rating-count">({a.review_count || 0} reviews)</span>
-                            </div>
-                            <div style={{marginTop:6}}>
-                              <button type="button" className="btn btn-secondary" onClick={(e)=>{ e.preventDefault(); openArchitectDetails(a); }}>View details</button>
-                            </div>
-                          </div>
-                          <div className="architect-actions">
-                            <button type="button" className="select-architect-btn" onClick={() => { setSelectedArchitectId([a.id]); setArchStepDone(true); }}>
-                              <i className="fas fa-check"></i> Select
-                            </button>
-                          </div>
-                        </label>
-                      ))
-                    )}
-                  </div>
+                  <ArchitectSelection
+                    selectedArchitectIds={Array.isArray(selectedArchitectId) ? selectedArchitectId : (selectedArchitectId ? [selectedArchitectId] : [])}
+                    onSelectionChange={(selectedIds) => {
+                      setSelectedArchitectId(selectedIds);
+                      setArchStepDone(selectedIds.length > 0);
+                    }}
+                    layoutRequestId={null}
+                    showAIRecommendations={Object.keys(requestData.style_preferences || {}).length > 0}
+                    stylePreferences={requestData.style_preferences || {}}
+                  />
+                  
                   {!archStepDone ? (
                     <div className="muted" style={{marginTop:8}}>Select an approved architect above to proceed.</div>
                   ) : (
@@ -2743,217 +3170,76 @@ const HomeownerDashboard = () => {
         {/* Architect Selection Modal */}
         {showArchitectModal && (
           <div className="form-modal">
-            <div className="form-content architect-modal">
-              <div className="form-header">
-                <h3>Select Architect</h3>
-                <p>Choose an architect to send your request</p>
-                <div className="header-actions">
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setShowRecommendationEngine(!showRecommendationEngine)}
-                  >
-                    🤖 AI Recommendations
-                  </button>
-                  <button className="modal-close" onClick={() => setShowArchitectModal(false)}>×</button>
-                </div>
+            <div className="form-content architect-modal" style={{maxWidth: 'min(1200px, 95vw)', maxHeight: '90vh', height: '90vh', overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgb(203, 213, 224) rgb(247, 250, 252)', padding: '20px', position: 'relative', scrollBehavior: 'smooth', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+              <div className="modal-close-container" style={{position: 'absolute', top: '16px', right: '16px', zIndex: 10}}>
+                <button className="modal-close" onClick={() => setShowArchitectModal(false)} style={{background: 'rgba(0,0,0,0.1)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '18px', color: '#666'}}>×</button>
               </div>
 
               {/* Request selection fallback */}
-              {(!selectedRequestForAssign || !selectedRequestForAssign.id) ? (
-                <div className="form-group">
-                  <label>Select one of your requests</label>
-                  <select
-                    value={selectedRequestForAssign?.id || ''}
-                    onChange={(e) => {
-                      const req = layoutRequests.find(r => String(r.id) === e.target.value);
-                      setSelectedRequestForAssign(req || null);
-                    }}
-                    className="form-control"
-                  >
-                    <option value="">-- Select request --</option>
-                    {layoutRequests.map(r => (
-                      <option key={r.id} value={r.id}>
-                        #{r.id} • {r.layout_type === 'library' ? (r.selected_layout_title || 'Library') : 'Custom'} • {r.plot_size} sq ft
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="info-row">
-                  <span className="status-chip success">For Request #{selectedRequestForAssign.id}</span>
-                </div>
-              )}
-
-              {/* AI Recommendation Engine */}
-              {showRecommendationEngine && (
-                <ArchitectRecommendationEngine
-                  onRecommendations={setRecommendedArchitects}
-                  onLoading={setRecommendationLoading}
-                  showRecommendations={true}
-                />
-              )}
-
-              <div className="filters-row">
-                <input
-                  type="text"
-                  placeholder="Search name/company/email"
-                  value={archSearch}
-                  onChange={(e) => setArchSearch(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Specialization (optional)"
-                  value={archSpec}
-                  onChange={(e) => setArchSpec(e.target.value)}
-                />
-                <input
-                  type="number"
-                  placeholder="Min experience"
-                  value={archMinExp}
-                  onChange={(e) => setArchMinExp(e.target.value)}
-                  min="0"
-                />
-                <button onClick={() => fetchArchitects({ status: 'approved', search: archSearch, specialization: archSpec, min_experience: archMinExp })}>
-                  <i className="fas fa-search"></i> Search
-                </button>
-              </div>
-
-              {archError && <div className="alert alert-error">{archError}</div>}
-
-              {/* Show AI Recommendations if available */}
-              {showRecommendationEngine && recommendedArchitects.length > 0 && (
-                <div className="ai-recommendations-section">
-                  <h4>🤖 AI Recommended Architects</h4>
-                  <div className="recommended-architects">
-                    {recommendedArchitects.map((rec, index) => (
-                      <div key={rec.architect.id} className="recommended-architect-card">
-                        <div className="architect-info">
-                          <h5>{rec.architect.first_name} {rec.architect.last_name}</h5>
-                          <p className="specialization">{rec.architect.specialization}</p>
-                          <div className="architect-stats">
-                            <span>⭐ {rec.architect.avg_rating || 0}/5</span>
-                            <span>{rec.architect.experience_years || 0} years</span>
-                          </div>
-                        </div>
-                        <div className="match-score">
-                          <div className="score-badge" style={{ 
-                            backgroundColor: rec.composite_score >= 0.8 ? '#10b981' : 
-                                           rec.composite_score >= 0.6 ? '#f59e0b' : '#ef4444'
-                          }}>
-                            {Math.round(rec.composite_score * 100)}% Match
-                          </div>
-                        </div>
-                        <button 
-                          className="btn btn-primary btn-sm"
-                          onClick={() => {
-                            setSelectedArchitectId([rec.architect.id]);
-                            setShowRecommendationEngine(false);
-                          }}
-                        >
-                          Select
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="architects-list">
-                {archLoading ? (
-                  <div className="loading">Loading architects...</div>
-                ) : architects.length === 0 ? (
-                  <div className="empty-state">
-                    <div className="empty-icon">🧑‍🎨</div>
-                    <h3>No architects found</h3>
-                    <p>Adjust your filters and try again</p>
+              <div style={{width: '100%', maxWidth: '1000px', marginBottom: '24px', marginTop: '10px'}}>
+                {(!selectedRequestForAssign || !selectedRequestForAssign.id) ? (
+                  <div className="form-group request-selector" style={{width: '100%', background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e5e7eb'}}>
+                    <label style={{fontSize: '18px', fontWeight: '700', color: '#1f2937', marginBottom: '12px', display: 'block'}}>📋 Select Your Request</label>
+                    <p style={{fontSize: '14px', color: '#6b7280', marginBottom: '16px'}}>Choose which project you want to assign an architect to</p>
+                    <select
+                      value={selectedRequestForAssign?.id || ''}
+                      onChange={(e) => {
+                        const req = layoutRequests.find(r => String(r.id) === e.target.value);
+                        setSelectedRequestForAssign(req || null);
+                      }}
+                      className="form-control"
+                      style={{width: '100%', padding: '14px 18px', border: '2px solid #d1d5db', borderRadius: '10px', fontSize: '16px', background: 'white'}}
+                    >
+                      <option value="">-- Select request --</option>
+                      {layoutRequests.map(r => (
+                        <option key={r.id} value={r.id}>
+                          #{r.id} • {r.layout_type === 'library' ? (r.selected_layout_title || 'Library') : 'Custom'} • {r.plot_size} sq ft
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ) : (
-                  <div className="item-list">
-                    {architects.map(a => {
-                      const already = !!a.already_assigned;
-                      const status = a.assignment_status; // sent | accepted | declined | null
-                      return (
-                        <label key={a.id} className={`list-item ${already ? 'disabled' : ''} ${Array.isArray(selectedArchitectId) ? selectedArchitectId.includes(a.id) ? 'selected' : '' : (selectedArchitectId === a.id ? 'selected' : '')}`}>
-                          <div className="item-icon">🧑‍🎨</div>
-                          <div className="item-content">
-                            <h4 className="item-title" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                              <span>{a.first_name} {a.last_name} {a.company_name ? `• ${a.company_name}` : ''}</span>
-                              {isRecommendedArchitect(a.id) && (
-                                <span className="best-option-badge">Best Option</span>
-                              )}
-                            </h4>
-                            <p className="item-subtitle" style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                              <span>{a.specialization || 'General'}</span>
-                              {isRecommendedArchitect(a.id) && (
-                                <span className="score-chip">{Math.round((getRecommendationScore(a.id) || 0) * 100)}% match</span>
-                              )}
-                            </p>
-                            <div className="detail-grid">
-                              <span><strong>Experience:</strong> {a.experience_years ?? 'N/A'} years</span>
-                              <span><strong>Projects:</strong> {a.project_count || '0'}</span>
-                              <span><strong>Email:</strong> {a.email || 'N/A'}</span>
-                              <span><strong>License:</strong> {a.license_number || 'N/A'}</span>
-                            </div>
-                            <div className="rating-row">
-                              <span title={a.avg_rating ? `${a.avg_rating} / 5` : 'No ratings yet'}>
-                                {[1,2,3,4,5].map(star => (
-                                  <span key={star} style={{color: (a.avg_rating || 0) >= star ? '#f5a623' : '#ddd'}}>★</span>
-                                ))}
-                              </span>
-                              <span style={{marginLeft:8, color:'#666', fontSize:'0.9rem'}}>({a.review_count || 0})</span>
-                            </div>
-                            <div className="contact-info">
-                              <span className="muted">Phone: {a.phone || 'N/A'}</span>
-                              <span className="muted">City: {a.city || 'N/A'}</span>
-                            </div>
-                            {already && (
-                              <div className="status-row">
-                                <span className={`status-chip ${status === 'accepted' ? 'success' : status === 'declined' ? 'danger' : ''}`}>
-                                  {status ? `Already ${formatStatus(status)}` : 'Request sent'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="item-actions">
-                            <input 
-                              type="checkbox" 
-                              disabled={already}
-                              checked={Array.isArray(selectedArchitectId) ? selectedArchitectId.includes(a.id) : selectedArchitectId === a.id}
-                              onChange={(e) => {
-                                if (Array.isArray(selectedArchitectId)) {
-                                  setSelectedArchitectId(
-                                    e.target.checked
-                                      ? [...selectedArchitectId, a.id]
-                                      : selectedArchitectId.filter(id => id !== a.id)
-                                  );
-                                } else {
-                                  setSelectedArchitectId(e.target.checked ? [a.id] : []);
-                                }
-                              }}
-                            />
-                          </div>
-                        </label>
-                      );
-                    })}
+                  <div className="info-row" style={{width: '100%', background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)', padding: '20px', borderRadius: '12px', border: '2px solid #bae6fd', textAlign: 'center'}}>
+                    <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px'}}>
+                      <span style={{fontSize: '20px'}}>✅</span>
+                      <span className="status-chip success" style={{fontSize: '16px', fontWeight: '700', color: '#0369a1'}}>Working on Request #{selectedRequestForAssign.id}</span>
+                    </div>
                   </div>
                 )}
               </div>
 
-              <div className="form-group">
+
+              {/* Integrated Architect Selection */}
+              <div className="form-card architect-selection-card" style={{width: '100%', maxWidth: '1000px', background: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb'}}>
+                <ArchitectSelection
+                  selectedArchitectIds={Array.isArray(selectedArchitectId) ? selectedArchitectId : (selectedArchitectId ? [selectedArchitectId] : [])}
+                  onSelectionChange={(selectedIds) => {
+                    setSelectedArchitectId(selectedIds);
+                    setArchStepDone(selectedIds.length > 0);
+                  }}
+                  layoutRequestId={selectedRequestForAssign?.id}
+                  showAIRecommendations={Object.keys(requestData.style_preferences || {}).length > 0}
+                  stylePreferences={requestData.style_preferences || {}}
+                />
+              </div>
+
+              {/* Message section for selected architects */}
+              <div className="form-group message-section" style={{width: '100%', maxWidth: '600px', marginTop: '24px'}}>
                 <label>Message to architect (optional)</label>
                 <textarea
                   value={assignMessage}
                   onChange={(e) => setAssignMessage(e.target.value)}
-                  placeholder="Add any specific requirements or notes for the architect"
+                  placeholder="Add any specific requirements or notes for the architect..."
                   rows="3"
                 />
-              </div>
 
-              <div className="modal-footer">
+                {/* Action buttons inside the form */}
+                <div className="form-actions" style={{display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px'}}>
                 <button className="btn btn-secondary" onClick={() => setShowArchitectModal(false)}>Cancel</button>
                 <button className="btn btn-primary" disabled={archLoading || !selectedArchitectId} onClick={handleAssignArchitect}>
                   {archLoading ? 'Sending...' : 'Send Request'}
                 </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3402,6 +3688,74 @@ const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo 
     if (!req) return {};
     try { return typeof req === 'string' ? JSON.parse(req) : req; } catch { return {}; }
   };
+  
+  // Handle direct sends to contractors
+  if (request.type === 'direct_send' || request.id?.toString().startsWith('send_')) {
+    return (
+      <div className="list-item" style={{
+        background: 'white',
+        borderRadius: '12px',
+        border: '1px solid #e5e7eb',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        padding: '20px',
+        marginBottom: '16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            color: 'white'
+          }}>
+            🏗️
+          </div>
+          <div style={{ flex: 1 }}>
+            <h4 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>
+              Sent to Contractor
+            </h4>
+            <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#6b7280' }}>
+              {request.contractor_name || 'Contractor'} • {request.layout_title || 'Layout'}
+            </p>
+            <div style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#9ca3af' }}>
+              <div>📤 Sent: {new Date(request.created_at).toLocaleString()}</div>
+              {request.acknowledged_at && (
+                <div style={{ color: '#10b981', marginTop: '2px' }}>
+                  ✅ Acknowledged: {new Date(request.acknowledged_at).toLocaleString()}
+                </div>
+              )}
+              {request.due_date && (
+                <div style={{ color: '#f59e0b', marginTop: '2px' }}>
+                  📅 Due: {new Date(request.due_date).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          </div>
+          <span className={`status-badge ${request.acknowledged_at ? 'accepted' : 'pending'}`} style={{ marginLeft: 'auto' }}>
+            {request.acknowledged_at ? 'Acknowledged' : 'Sent'}
+          </span>
+        </div>
+        {request.message && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            background: '#f9fafb',
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <strong style={{ fontSize: '13px', color: '#374151' }}>Message:</strong>
+            <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#6b7280', whiteSpace: 'pre-wrap' }}>
+              {request.message}
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
    const renderForwardedDesign = () => {
      const reqObj = parseRequirements(request.requirements);
      const forwarded = reqObj.forwarded_design;
@@ -3594,147 +3948,502 @@ const RequestItem = ({ request, onAssignArchitect, onRemove, showContractorInfo 
     );
   };
   return (
-    <div className="list-item">
-      <div className="item-icon">
+    <div className="list-item" style={{
+      background: 'white',
+      borderRadius: '12px',
+      border: '1px solid #e5e7eb',
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+      padding: '20px',
+      marginBottom: '16px',
+      transition: 'all 0.2s ease',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Header Section */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        marginBottom: '16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: request.layout_type === 'library' 
+              ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)'
+              : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            color: 'white',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+          }}>
         {request.layout_type === 'library' 
           ? '📚' 
           : ((Number(request?.accepted_count) > 0 || request?.status === 'approved' || request?.status === 'accepted') ? '✅' : (request.status === 'rejected' ? '❌' : '⏳'))}
       </div>
-      <div className="item-content">
-        <h4 className="item-title">
-          <span className="status-chip" style={{ marginRight: 8, background:'#eef2ff', color:'#3730a3' }}>#{request.id}</span>
+          <div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '4px'
+            }}>
+              <span style={{
+                background: '#eef2ff',
+                color: '#3730a3',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                #{request.id}
+              </span>
+              <h4 style={{
+                margin: 0,
+                fontSize: '18px',
+                fontWeight: '600',
+                color: '#1f2937',
+                lineHeight: '1.3'
+              }}>
           {request.layout_type === 'library' 
             ? `Library Layout: ${request.selected_layout_title || 'Selected Layout'}` 
             : `Custom Layout Request - ${request.plot_size} sq ft`
           }
         </h4>
-        <p className="item-subtitle">
+            </div>
+            <p style={{
+              margin: 0,
+              fontSize: '14px',
+              color: '#6b7280',
+              lineHeight: '1.4'
+            }}>
           Budget: {request.budget_range}
           {request.layout_type === 'library' && request.selected_layout_type && (
-            <span className="layout-type-badge"> • {request.selected_layout_type}</span>
+                <span style={{
+                  background: '#f0fdf4',
+                  color: '#166534',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  marginLeft: '8px',
+                  fontSize: '12px',
+                  fontWeight: '500'
+                }}>
+                  {request.selected_layout_type}
+                </span>
           )}
         </p>
-        <p className="item-meta">
-          Submitted: {new Date(request.created_at).toLocaleDateString()}
-          {request.location && ` • ${request.location}`}
-          • Designs: {request.design_count} • Proposals: {request.proposal_count}
-        </p>
-        <div className="status-row">
-          <span className="status-chip">Sent: {request.sent_count || 0}</span>
-          <span className="status-chip success">Accepted: {request.accepted_count || 0}</span>
-          <span className="status-chip danger">Rejected: {request.rejected_count || 0}</span>
         </div>
+        </div>
+        
+        {/* Status Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {(() => { 
+            const derivedStatus = (Number(request?.accepted_count) > 0 || request?.status === 'approved' || request?.status === 'accepted') ? 'accepted' : request?.status;
+            return (
+              <span style={{
+                background: derivedStatus === 'accepted' ? '#d1fae5' : 
+                           derivedStatus === 'rejected' ? '#fee2e2' : 
+                           derivedStatus === 'pending' ? '#fef3c7' : '#f3f4f6',
+                color: derivedStatus === 'accepted' ? '#065f46' : 
+                       derivedStatus === 'rejected' ? '#991b1b' : 
+                       derivedStatus === 'pending' ? '#92400e' : '#6b7280',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                {derivedStatus === 'deleted' ? 'Deleted' : formatStatus(derivedStatus)}
+              </span>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Details Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '16px',
+        marginBottom: '16px'
+      }}>
+        <div style={{
+          background: '#f8fafc',
+          padding: '12px',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Submitted</div>
+          <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '600' }}>
+            {new Date(request.created_at).toLocaleDateString()}
+          </div>
+        </div>
+        
+        {request.location && (
+          <div style={{
+            background: '#f8fafc',
+            padding: '12px',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Location</div>
+            <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '600' }}>{request.location}</div>
+          </div>
+        )}
+        
+        <div style={{
+          background: '#f8fafc',
+          padding: '12px',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Designs</div>
+          <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '600' }}>{request.design_count || 0}</div>
+        </div>
+        
+        <div style={{
+          background: '#f8fafc',
+          padding: '12px',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Proposals</div>
+          <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '600' }}>{request.proposal_count || 0}</div>
+        </div>
+      </div>
+
+      {/* Status Row */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        flexWrap: 'wrap',
+        marginBottom: '16px'
+      }}>
+        <span style={{
+          background: '#e0f2fe',
+          color: '#0369a1',
+          padding: '4px 10px',
+          borderRadius: '12px',
+          fontSize: '12px',
+          fontWeight: '500'
+        }}>
+          Sent: {request.sent_count || 0}
+        </span>
+        <span style={{
+          background: '#d1fae5',
+          color: '#065f46',
+          padding: '4px 10px',
+          borderRadius: '12px',
+          fontSize: '12px',
+          fontWeight: '500'
+        }}>
+          Accepted: {request.accepted_count || 0}
+        </span>
+        <span style={{
+          background: '#fee2e2',
+          color: '#991b1b',
+          padding: '4px 10px',
+          borderRadius: '12px',
+          fontSize: '12px',
+          fontWeight: '500'
+        }}>
+          Rejected: {request.rejected_count || 0}
+        </span>
+      </div>
+      {/* Contractor Info Section */}
         {showContractorInfo && (
-          <div className="contractor-info" style={{ marginTop: '8px', padding: '8px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontWeight: '600', color: '#374151' }}>Contractor Assignments</span>
-              <span className="status-chip" style={{ background: '#dbeafe', color: '#1e40af' }}>
+        <div style={{
+          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+          marginBottom: '16px'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '12px'
+          }}>
+            <span style={{
+              fontWeight: '600',
+              color: '#374151',
+              fontSize: '14px'
+            }}>
+              Contractor Assignments
+            </span>
+            <span style={{
+              background: '#dbeafe',
+              color: '#1e40af',
+              padding: '4px 10px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontWeight: '500'
+            }}>
                 {request.assignment_count || 0} assigned
               </span>
             </div>
             {request.assigned_contractors && request.assigned_contractors.length > 0 ? (
               <div>
-                <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '4px' }}>Assigned Contractors:</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              <div style={{
+                fontSize: '13px',
+                color: '#6b7280',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                Assigned Contractors:
+              </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px'
+              }}>
                   {request.assigned_contractors.map((contractor, index) => (
-                    <span key={index} className="status-chip" style={{ background: '#ecfdf5', color: '#065f46' }}>
+                  <span key={index} style={{
+                    background: '#ecfdf5',
+                    color: '#065f46',
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '500'
+                  }}>
                       {contractor}
                     </span>
                   ))}
                 </div>
                 {request.assignment_statuses && request.assignment_statuses.length > 0 && (
-                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>
+                <div style={{
+                  marginTop: '8px',
+                  fontSize: '12px',
+                  color: '#6b7280'
+                }}>
                     Status: {request.assignment_statuses.join(', ')}
                   </div>
                 )}
               </div>
             ) : (
-              <div style={{ fontSize: '14px', color: '#6b7280', fontStyle: 'italic' }}>
+            <div style={{
+              fontSize: '14px',
+              color: '#6b7280',
+              fontStyle: 'italic'
+            }}>
                 No contractors assigned yet
               </div>
             )}
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+          <div style={{
+            marginTop: '12px',
+            fontSize: '12px',
+            color: '#6b7280',
+            fontWeight: '500'
+          }}>
               Proposals received: {request.proposal_count || 0}
             </div>
           </div>
         )}
-        {/* Minimal homeowner view: show details and forwarded design (if any) */}
+      {/* Details Panel */}
         {showDetails && (
-          <div className="details-panel" style={{ marginTop:10, padding:12, border:'1px solid #e5e7eb', borderRadius:8, background:'#fafafa' }}>
-            <div className="grid-2" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              <div>
-                <div className="muted" style={{ fontSize:12, color:'#666' }}>Request Type</div>
-                <div style={{ fontWeight:600 }}>{request.layout_type === 'library' ? 'Library Layout' : 'Custom Request'}</div>
+        <div style={{
+          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+          padding: '20px',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          marginBottom: '16px'
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gap: '16px'
+          }}>
+            <div style={{
+              background: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Request Type</div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>
+                {request.layout_type === 'library' ? 'Library Layout' : 'Custom Request'}
               </div>
-              <div>
-                <div className="muted" style={{ fontSize:12, color:'#666' }}>Plot Size</div>
-                <div style={{ fontWeight:600 }}>{request.plot_size || '-'}</div>
               </div>
-              <div>
-                <div className="muted" style={{ fontSize:12, color:'#666' }}>Budget Range</div>
-                <div style={{ fontWeight:600 }}>{request.budget_range || '-'}</div>
+            <div style={{
+              background: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Plot Size</div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.plot_size || '-'}</div>
               </div>
-              <div>
-                <div className="muted" style={{ fontSize:12, color:'#666' }}>Location</div>
-                <div style={{ fontWeight:600 }}>{request.location || '-'}</div>
+            <div style={{
+              background: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Budget Range</div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.budget_range || '-'}</div>
               </div>
-              <div>
-                <div className="muted" style={{ fontSize:12, color:'#666' }}>Timeline</div>
-                <div style={{ fontWeight:600 }}>{request.timeline || '-'}</div>
+            <div style={{
+              background: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Location</div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.location || '-'}</div>
+            </div>
+            <div style={{
+              background: 'white',
+              padding: '12px',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Timeline</div>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.timeline || '-'}</div>
               </div>
               {request.layout_type === 'library' && (
-                <div style={{ gridColumn:'1 / -1' }}>
-                  <div className="muted" style={{ fontSize:12, color:'#666' }}>Selected Layout</div>
-                  <div style={{ fontWeight:600 }}>{request.selected_layout_title || 'Selected Layout'}</div>
+              <div style={{
+                background: 'white',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                gridColumn: '1 / -1'
+              }}>
+                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Selected Layout</div>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.selected_layout_title || 'Selected Layout'}</div>
                 </div>
               )}
               {request.layout_type === 'library' && (request.selected_layout_architect_name || request.selected_layout_architect_email) && (
-                <div style={{ gridColumn:'1 / -1', display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div style={{
+                background: 'white',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                gridColumn: '1 / -1',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '12px'
+              }}>
                   {request.selected_layout_architect_name && (
-                    <div><strong>Architect:</strong> {request.selected_layout_architect_name}</div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Architect</div>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.selected_layout_architect_name}</div>
+                  </div>
                   )}
                   {request.selected_layout_architect_email && (
-                    <div><strong>Email:</strong> {request.selected_layout_architect_email}</div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px', fontWeight: '500' }}>Email</div>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>{request.selected_layout_architect_email}</div>
+                  </div>
                   )}
                 </div>
               )}
               {request.requirements && (
-                <div style={{ gridColumn:'1 / -1' }}>
+              <div style={{ gridColumn: '1 / -1' }}>
                   <NeatJsonCard raw={request.requirements} title="Requirements" />
                 </div>
               )}
               {showContractorInfo && (
-                <div style={{ gridColumn:'1 / -1' }}>
-                  <div className="muted" style={{ fontSize:12, color:'#666', marginBottom:6 }}>Forwarded to Contractor</div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px', fontWeight: '500' }}>Forwarded to Contractor</div>
                   {renderForwardedDesign()}
                 </div>
               )}
             </div>
           </div>
         )}
-      </div>
-      <div className="item-actions" style={{ position:'relative' }}>
-        {(() => { const derivedStatus = (Number(request?.accepted_count) > 0 || request?.status === 'approved' || request?.status === 'accepted') ? 'accepted' : request?.status; return (
-          <span className={`status-badge ${badgeClass(derivedStatus)}`}>
-            {derivedStatus === 'deleted' ? 'Deleted' : formatStatus(derivedStatus)}
-          </span>
-        ); })()}
-        <button className="btn btn-secondary" onClick={() => setShowDetails(s => !s)}>{showDetails ? 'Hide Details' : 'View Details'}</button>
+
+      {/* Action Buttons */}
+      <div style={{
+        display: 'flex',
+        gap: '12px',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        paddingTop: '16px',
+        borderTop: '1px solid #e5e7eb'
+      }}>
         <button 
-          className="btn btn-primary"
+          style={{
+            background: '#f3f4f6',
+            color: '#374151',
+            border: '1px solid #d1d5db',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          onClick={() => setShowDetails(s => !s)}
+          onMouseEnter={(e) => {
+            e.target.style.background = '#e5e7eb';
+            e.target.style.borderColor = '#9ca3af';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = '#f3f4f6';
+            e.target.style.borderColor = '#d1d5db';
+          }}
+        >
+          {showDetails ? 'Hide Details' : 'View Details'}
+        </button>
+        <button 
+          style={{
+            background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+          }}
           onClick={onAssignArchitect}
           title="Send this request to a selected architect"
+          onMouseEnter={(e) => {
+            e.target.style.transform = 'translateY(-1px)';
+            e.target.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = 'translateY(0)';
+            e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.3)';
+          }}
         >
           Send to Architect
         </button>
         <button
-          className="btn"
+          style={{
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)'
+          }}
           onClick={onRemove}
           title="Remove request"
+          onMouseEnter={(e) => {
+            e.target.style.transform = 'translateY(-1px)';
+            e.target.style.boxShadow = '0 4px 8px rgba(239, 68, 68, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = 'translateY(0)';
+            e.target.style.boxShadow = '0 2px 4px rgba(239, 68, 68, 0.3)';
+          }}
         >
           Remove
         </button>
-
       </div>
     </div>
   );
@@ -4060,6 +4769,472 @@ const ImageViewer = ({ viewer, setViewer }) => {
           </a>
         </div>
       </div>
+      
+      {/* Dashboard Tour Guide */}
+      <HomeownerDashboardTour
+        isOpen={showDashboardTour}
+        onClose={handleDashboardTourClose}
+        currentStep={tourStep}
+        totalSteps={10}
+        onNext={handleDashboardTourNext}
+        onPrev={handleDashboardTourPrev}
+        onSkip={handleDashboardTourSkip}
+      />
+
+      {/* Debug info */}
+      <div style={{
+        position: 'fixed',
+        top: '10px',
+        left: '10px',
+        backgroundColor: 'red',
+        color: 'white',
+        padding: '10px',
+        zIndex: 10000,
+        borderRadius: '5px',
+        fontSize: '12px'
+      }}>
+        Modal: {showConstructionModal ? 'TRUE' : 'FALSE'}<br/>
+        Estimate: {selectedEstimate ? selectedEstimate.id : 'NULL'}
+      </div>
+
+      {/* Simple Test Modal (via Portal) */}
+      {showConstructionModal && createPortal((
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'red',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '24px',
+          color: 'white'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            color: 'black',
+            padding: '20px',
+            borderRadius: '10px',
+            textAlign: 'center'
+          }}>
+            <h2>TEST MODAL IS WORKING!</h2>
+            <p>Estimate ID: {selectedEstimate?.id}</p>
+            <button 
+              onClick={() => {
+                setShowConstructionModal(false);
+                setSelectedEstimate(null);
+              }}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: 'red',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer'
+              }}
+            >
+              Close Test Modal
+            </button>
+          </div>
+        </div>
+      ), document.body)}
+
+      {/* Construction Confirmation Modal (via Portal) */}
+      {showConstructionModal && selectedEstimate && createPortal((
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowConstructionModal(false);
+              setSelectedEstimate(null);
+            }
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '30px',
+              maxWidth: '500px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowConstructionModal(false);
+                setSelectedEstimate(null);
+              }}
+              style={{
+                position: 'absolute',
+                top: '15px',
+                right: '15px',
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#6b7280',
+                padding: '5px',
+                borderRadius: '4px'
+              }}
+            >
+              ×
+            </button>
+
+            {/* Modal content */}
+            <div style={{ marginBottom: '20px' }}>
+              <h2 style={{ 
+                margin: '0 0 15px 0', 
+                fontSize: '24px', 
+                fontWeight: '600', 
+                color: '#1f2937',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                🏗️ Start Construction
+              </h2>
+              
+              <p style={{
+                margin: '0 0 20px 0',
+                fontSize: '16px',
+                color: '#374151',
+                lineHeight: '1.5'
+              }}>
+                Are you sure you want to start construction for this project?
+              </p>
+              
+              <div style={{
+                backgroundColor: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ marginBottom: '8px' }}>
+                  <strong style={{ color: '#374151' }}>Contractor:</strong>
+                  <span style={{ marginLeft: '8px', color: '#6b7280' }}>
+                    {selectedEstimate.contractor_name || 'Unknown Contractor'}
+                  </span>
+                </div>
+                <div style={{ marginBottom: '8px' }}>
+                  <strong style={{ color: '#374151' }}>Project:</strong>
+                  <span style={{ marginLeft: '8px', color: '#6b7280' }}>
+                    {selectedEstimate.project_title || 'Untitled Project'}
+                  </span>
+                </div>
+                <div>
+                  <strong style={{ color: '#374151' }}>Estimate ID:</strong>
+                  <span style={{ marginLeft: '8px', color: '#6b7280' }}>
+                    #{selectedEstimate.id}
+                  </span>
+                </div>
+              </div>
+              
+              <div style={{
+                backgroundColor: '#fef3c7',
+                border: '1px solid #f59e0b',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '20px'
+              }}>
+                <p style={{
+                  margin: 0,
+                  fontSize: '14px',
+                  color: '#92400e',
+                  fontWeight: '500'
+                }}>
+                  ⚠️ This will notify the contractor that they can begin construction work as per the agreed terms.
+                </p>
+              </div>
+            </div>
+            
+            {/* Action buttons */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => {
+                  setShowConstructionModal(false);
+                  setSelectedEstimate(null);
+                }}
+                style={{
+                  padding: '12px 24px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStartConstruction}
+                style={{
+                  padding: '12px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#10b981'}
+              >
+                🏗️ Start Construction
+              </button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {/* Message to Contractor Modal */}
+      {showMessageModal && selectedEstimateForMessage && createPortal((
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowMessageModal(false);
+              setSelectedEstimateForMessage(null);
+              setMessageToContractor('');
+            }
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '500px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowMessageModal(false);
+                setSelectedEstimateForMessage(null);
+                setMessageToContractor('');
+              }}
+              style={{
+                position: 'absolute',
+                top: '15px',
+                right: '15px',
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                color: '#6b7280',
+                padding: '4px',
+                borderRadius: '4px'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+              onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+            >
+              ×
+            </button>
+
+            {/* Modal Header */}
+            <div style={{ marginBottom: '20px' }}>
+              <h2 style={{
+                margin: '0 0 8px 0',
+                fontSize: '20px',
+                fontWeight: '600',
+                color: '#111827'
+              }}>
+                💬 Send Message to Contractor
+              </h2>
+              <p style={{
+                margin: 0,
+                fontSize: '14px',
+                color: '#6b7280'
+              }}>
+                Send a message to the contractor with complete estimation details, layout information, and your contact details to start working on the project.
+              </p>
+            </div>
+
+            {/* Estimate Info */}
+            <div style={{
+              backgroundColor: '#f9fafb',
+              padding: '16px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <h3 style={{
+                margin: '0 0 8px 0',
+                fontSize: '16px',
+                fontWeight: '600',
+                color: '#374151'
+              }}>
+                Project: {selectedEstimateForMessage?.project_title || 'Untitled Project'}
+              </h3>
+              <p style={{
+                margin: '0 0 4px 0',
+                fontSize: '14px',
+                color: '#6b7280'
+              }}>
+                <strong>Total Cost:</strong> ₹{selectedEstimateForMessage?.total_cost || 'N/A'}
+              </p>
+              <p style={{
+                margin: '0 0 4px 0',
+                fontSize: '14px',
+                color: '#6b7280'
+              }}>
+                <strong>Timeline:</strong> {selectedEstimateForMessage?.timeline || 'N/A'}
+              </p>
+              <p style={{
+                margin: 0,
+                fontSize: '14px',
+                color: '#6b7280'
+              }}>
+                <strong>Contractor:</strong> {selectedEstimateForMessage?.contractor_name || 'Unknown'}
+              </p>
+            </div>
+
+            {/* Message Input */}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{
+                display: 'block',
+                marginBottom: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151'
+              }}>
+                Your Message to Contractor
+              </label>
+              <textarea
+                value={messageToContractor}
+                onChange={(e) => setMessageToContractor(e.target.value)}
+                placeholder="I am satisfied with this estimate and ready to start the construction project. Please let me know the next steps and when we can begin work..."
+                style={{
+                  width: '100%',
+                  minHeight: '120px',
+                  padding: '12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  outline: 'none',
+                  transition: 'border-color 0.2s'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+              />
+              <p style={{
+                margin: '8px 0 0 0',
+                fontSize: '12px',
+                color: '#6b7280'
+              }}>
+                This message will be sent along with the complete estimation details and your contact information.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => {
+                  setShowMessageModal(false);
+                  setSelectedEstimateForMessage(null);
+                  setMessageToContractor('');
+                }}
+                style={{
+                  padding: '12px 24px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                onMouseOut={(e) => e.target.style.backgroundColor = 'white'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => sendMessageToContractor(selectedEstimateForMessage)}
+                style={{
+                  padding: '12px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
+              >
+                💬 Send Message
+              </button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 };

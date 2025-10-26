@@ -32,6 +32,7 @@ try {
         design_file_url VARCHAR(500),
         technical_details TEXT,
         price_range VARCHAR(100),
+        view_price DECIMAL(10,2) DEFAULT 0,
         architect_id INT,
         status ENUM('active', 'inactive') DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -41,6 +42,7 @@ try {
     // Ensure new columns exist on older tables
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS design_file_url VARCHAR(500) NULL AFTER image_url"); } catch (Exception $__) {}
     try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS technical_details TEXT NULL AFTER design_file_url"); } catch (Exception $__) {}
+    try { $db->exec("ALTER TABLE layout_library ADD COLUMN IF NOT EXISTS view_price DECIMAL(10,2) DEFAULT 0 AFTER price_range"); } catch (Exception $__) {}
 
     $input = $_POST;
 
@@ -51,6 +53,7 @@ try {
     $area = isset($input['area']) ? (int)$input['area'] : 0;
     $description = trim($input['description'] ?? '');
     $price_range = trim($input['price_range'] ?? '');
+    $view_price = isset($input['view_price']) ? (float)$input['view_price'] : 0;
     
     // Handle technical details
     $technical_details = null;
@@ -100,8 +103,8 @@ try {
         $design_file_url = '/buildhub/backend/uploads/designs/' . $safe;
     }
 
-    $stmt = $db->prepare("INSERT INTO layout_library (title, layout_type, bedrooms, bathrooms, area, description, image_url, design_file_url, technical_details, price_range, architect_id)
-                          VALUES (:title, :layout_type, :bedrooms, :bathrooms, :area, :description, :image_url, :design_file_url, :technical_details, :price_range, :architect_id)");
+    $stmt = $db->prepare("INSERT INTO layout_library (title, layout_type, bedrooms, bathrooms, area, description, image_url, design_file_url, technical_details, price_range, view_price, architect_id)
+                          VALUES (:title, :layout_type, :bedrooms, :bathrooms, :area, :description, :image_url, :design_file_url, :technical_details, :price_range, :view_price, :architect_id)");
     $ok = $stmt->execute([
         ':title' => $title,
         ':layout_type' => $layout_type,
@@ -113,6 +116,7 @@ try {
         ':design_file_url' => $design_file_url,
         ':technical_details' => $technical_details,
         ':price_range' => $price_range,
+        ':view_price' => $view_price,
         ':architect_id' => $architect_id
     ]);
 

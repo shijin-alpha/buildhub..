@@ -44,6 +44,7 @@ try {
     $design_title = isset($_POST['design_title']) ? trim($_POST['design_title']) : '';
     $description = $_POST['description'] ?? '';
     $batch_id = $_POST['batch_id'] ?? null; // optional to group submissions
+    $view_price = isset($_POST['view_price']) ? floatval($_POST['view_price']) : 0; // Price for viewing layout
 
     // If neither request nor homeowner specified, try to infer from most recent assignment for this architect
     if (!$request_id && !$homeowner_id) {
@@ -209,8 +210,8 @@ try {
     // Insert design record
     $files_json = json_encode($uploaded_files);
 
-    $query = "INSERT INTO designs (layout_request_id, homeowner_id, architect_id, design_title, description, design_files, layout_json, technical_details, status, batch_id)
-              VALUES (:request_id, :homeowner_id, :architect_id, :design_title, :description, :design_files, :layout_json, :technical_details, 'proposed', :batch_id)";
+    $query = "INSERT INTO designs (layout_request_id, homeowner_id, architect_id, design_title, description, design_files, layout_json, technical_details, status, batch_id, view_price)
+              VALUES (:request_id, :homeowner_id, :architect_id, :design_title, :description, :design_files, :layout_json, :technical_details, 'proposed', :batch_id, :view_price)";
 
     $stmt = $db->prepare($query);
     if ($request_id !== null && $request_id !== '') {
@@ -242,6 +243,7 @@ try {
     } else {
         $stmt->bindValue(':batch_id', null, PDO::PARAM_NULL);
     }
+    $stmt->bindValue(':view_price', $view_price, PDO::PARAM_STR);
 
     if ($stmt->execute()) {
         $newId = $db->lastInsertId();

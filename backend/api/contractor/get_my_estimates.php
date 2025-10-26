@@ -31,10 +31,17 @@ try {
         INDEX(send_id), INDEX(contractor_id)
     )");
 
-    $q = $db->prepare("SELECT id, send_id, contractor_id, materials, cost_breakdown, total_cost, timeline, notes, structured, status, created_at
-                        FROM contractor_send_estimates
-                        WHERE contractor_id = :cid
-                        ORDER BY created_at DESC");
+    $q = $db->prepare("SELECT 
+                           e.id, e.send_id, e.contractor_id, e.materials, e.cost_breakdown, e.total_cost, e.timeline, e.notes, e.structured, e.status, e.created_at,
+                           e.homeowner_feedback, e.homeowner_action_at,
+                           s.homeowner_id,
+                           CONCAT(h.first_name, ' ', h.last_name) AS homeowner_name,
+                           h.email AS homeowner_email
+                        FROM contractor_send_estimates e
+                        LEFT JOIN contractor_layout_sends s ON s.id = e.send_id
+                        LEFT JOIN users h ON h.id = s.homeowner_id
+                        WHERE e.contractor_id = :cid
+                        ORDER BY e.created_at DESC");
     $q->bindValue(':cid', $contractor_id, PDO::PARAM_INT);
     $q->execute();
     $rows = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];

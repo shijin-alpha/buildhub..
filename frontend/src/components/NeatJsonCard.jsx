@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './NeatJsonCard.css';
 
 // Renders a neat UI card for requirement-like JSON
 // Accepts either `data` (object) or `raw` (string JSON)
-const NeatJsonCard = ({ data, raw, title = 'Requirements' }) => {
+const NeatJsonCard = ({ data, raw, title = 'Requirements', expandable = true }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   let obj = null;
   if (data && typeof data === 'object') {
     obj = data;
@@ -26,30 +28,68 @@ const NeatJsonCard = ({ data, raw, title = 'Requirements' }) => {
     { key: 'notes', label: 'Notes' },
   ].filter(({ key }) => obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== '') : [];
 
+  const handleHeaderClick = () => {
+    if (expandable) {
+      setIsExpanded(!isExpanded);
+    }
+  };
+
   return (
     <div className="json-card">
-      <div className="json-card__header">
+      <div 
+        className={`json-card__header ${expandable ? 'json-card__header--clickable' : ''}`}
+        onClick={handleHeaderClick}
+        style={{ cursor: expandable ? 'pointer' : 'default' }}
+      >
         <div className="json-card__icon" aria-hidden>🗂️</div>
         <h4 className="json-card__title">{title}</h4>
+        {expandable && (
+          <div className="json-card__expand-icon">
+            {isExpanded ? '▼' : '▶'}
+          </div>
+        )}
       </div>
 
-      {obj ? (
-        <div className="json-card__body">
-          {entries.length ? (
-            <dl className="json-grid">
-              {entries.map(({ key, label }) => (
-                <div className="json-row" key={key}>
-                  <dt className="json-label">{label}</dt>
-                  <dd className="json-value">{String(obj[key])}</dd>
-                </div>
-              ))}
-            </dl>
+      {expandable ? (
+        isExpanded && (
+          obj ? (
+            <div className="json-card__body">
+              {entries.length ? (
+                <dl className="json-grid">
+                  {entries.map(({ key, label }) => (
+                    <div className="json-row" key={key}>
+                      <dt className="json-label">{label}</dt>
+                      <dd className="json-value">{String(obj[key])}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <div className="json-empty">No details provided</div>
+              )}
+            </div>
           ) : (
-            <div className="json-empty">No details provided</div>
-          )}
-        </div>
+            <pre className="json-raw">{(raw || '').trim()}</pre>
+          )
+        )
       ) : (
-        <pre className="json-raw">{(raw || '').trim()}</pre>
+        obj ? (
+          <div className="json-card__body">
+            {entries.length ? (
+              <dl className="json-grid">
+                {entries.map(({ key, label }) => (
+                  <div className="json-row" key={key}>
+                    <dt className="json-label">{label}</dt>
+                    <dd className="json-value">{String(obj[key])}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <div className="json-empty">No details provided</div>
+            )}
+          </div>
+        ) : (
+          <pre className="json-raw">{(raw || '').trim()}</pre>
+        )
       )}
     </div>
   );

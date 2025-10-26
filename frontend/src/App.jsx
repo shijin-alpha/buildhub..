@@ -19,7 +19,7 @@ import ProtectedAdminRoute from "./components/ProtectedAdminRoute.jsx";
 import HomeownerRoute from "./components/HomeownerRoute.jsx";
 import ArchitectRoute from "./components/ArchitectRoute.jsx";
 import ContractorRoute from "./components/ContractorRoute.jsx";
-import { useToast } from "./components/ToastProvider.jsx";
+import { ToastProvider, useToast } from "./components/ToastProvider.jsx";
 import ArchitectFullPageUpload from "./components/ArchitectFullPageUpload.jsx";
 import PageLoader from "./components/PageLoader.jsx";
 import NavigationWrapper from "./components/NavigationWrapper.jsx";
@@ -835,8 +835,9 @@ export default function App() {
   }, [loadingTimeout]);
 
   return (
-    <Router>
-      <NavigationWrapper>
+    <ToastProvider>
+      <Router>
+        <NavigationWrapper>
         <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<Register />} />
@@ -892,5 +893,6 @@ export default function App() {
         </Routes>
       </NavigationWrapper>
     </Router>
+    </ToastProvider>
   );
 }
