@@ -61,6 +61,25 @@ try {
 
     $items = [];
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        // Parse requirements once
+        $requirements_parsed = json_decode($row['requirements'], true);
+        
+        // Try to get floor_rooms from dedicated column first, then from requirements JSON
+        $floor_rooms = [];
+        if ($row['floor_rooms']) {
+            $floor_rooms = json_decode($row['floor_rooms'], true) ?: [];
+        } elseif ($requirements_parsed && isset($requirements_parsed['floor_rooms'])) {
+            $floor_rooms_value = $requirements_parsed['floor_rooms'];
+            
+            // Handle case where floor_rooms is stored as a JSON string (double-encoded)
+            if (is_string($floor_rooms_value)) {
+                $decoded = json_decode($floor_rooms_value, true);
+                $floor_rooms = $decoded ?: [];
+            } else {
+                $floor_rooms = $floor_rooms_value;
+            }
+        }
+        
         $items[] = [
             'assignment_id' => (int)$row['assignment_id'],
             'assignment_status' => $row['assignment_status'],
@@ -71,7 +90,7 @@ try {
                 'plot_size' => $row['plot_size'],
                 'budget_range' => $row['budget_range'],
                 'requirements' => $row['requirements'],
-                'requirements_parsed' => json_decode($row['requirements'], true),
+                'requirements_parsed' => $requirements_parsed,
                 'location' => $row['location'],
                 'timeline' => $row['timeline'],
                 'preferred_style' => $row['preferred_style'] ?? null,
@@ -86,7 +105,7 @@ try {
                 'site_considerations' => $row['site_considerations'] ?? null,
                 'material_preferences' => $row['material_preferences'] ? json_decode($row['material_preferences'], true) : [],
                 'budget_allocation' => $row['budget_allocation'] ?? null,
-                'floor_rooms' => $row['floor_rooms'] ? json_decode($row['floor_rooms'], true) : [],
+                'floor_rooms' => $floor_rooms,
                 'num_floors' => $row['num_floors'] ? (int)$row['num_floors'] : null,
                 'status' => $row['request_status'],
                 'created_at' => $row['request_created_at'],

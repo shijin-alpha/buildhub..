@@ -8,6 +8,7 @@ import { badgeClass, formatStatus } from '../utils/status';
 import { useToast } from './ToastProvider.jsx';
 import ContractorProfileButton from './ContractorProfileButton';
 import BuildHubSeal from './BuildHubSeal';
+import TechnicalDetailsDisplay from './TechnicalDetailsDisplay';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -662,6 +663,7 @@ const ContractorDashboard = () => {
         }
         fetchLayoutRequests();
         fetchMyProposals();
+        fetchMyEstimates();
       })();
     });
   }, []);
@@ -914,6 +916,22 @@ const ContractorDashboard = () => {
     }
   };
 
+  const fetchMyEstimates = async () => {
+    try {
+      const me = JSON.parse(sessionStorage.getItem('user') || '{}');
+      if (me?.id) {
+        const response = await fetch(`/buildhub/backend/api/contractor/get_my_estimates.php?contractor_id=${me.id}`, { credentials: 'include' });
+        const result = await response.json();
+        if (result.success) {
+          console.log('Fetched estimates:', result.estimates);
+          setMyEstimates(Array.isArray(result.estimates) ? result.estimates : []);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching estimates:', error);
+    }
+  };
+
   const handleLogout = async () => {
     try { await fetch('/buildhub/backend/api/logout.php', { method: 'POST', credentials: 'include' }); } catch {}
     localStorage.removeItem('bh_user');
@@ -1160,7 +1178,7 @@ const ContractorDashboard = () => {
     const firstFile = fd && Array.isArray(fd.files) && fd.files[0] ? fd.files[0] : null;
     const rawImg = payload.layout_image_url || (firstFile && (firstFile.url || firstFile.path || (typeof firstFile === 'string' ? firstFile : null)));
     const img = assetUrl(rawImg);
-    const technical = fd?.technical_details || payload.technical_details || null;
+    const technical = item.technical_details || fd?.technical_details || payload.technical_details || null;
     const floor = payload.floor_details || null;
     
     // Handle construction start notifications
@@ -1175,10 +1193,8 @@ const ContractorDashboard = () => {
               <div className="muted" style={{fontSize:'0.85rem'}}>
                 From: {item.homeowner_name || 'Homeowner'}{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}
               </div>
-              <div style={{marginTop: 8, padding: 12, backgroundColor: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0'}}>
-                <div style={{whiteSpace: 'pre-wrap', fontSize: '0.9rem', color: '#166534'}}>
-                  {item.message || 'The homeowner has approved your estimate and given permission to start construction work.'}
-                </div>
+              <div style={{marginTop: 8, fontSize: '0.9rem', color: '#047857'}}>
+                The homeowner has approved your estimate and given permission to start construction work.
               </div>
             </div>
             <div style={{display:'flex', alignItems:'center', gap:8}}>
@@ -1197,14 +1213,27 @@ const ContractorDashboard = () => {
       const layoutDetails = payload.layout_details || {};
       
       return (
-        <div className="card" key={item.id} style={{marginBottom: 12, borderLeft: '4px solid #3b82f6'}}>
-          <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div className="card" key={item.id} style={{
+          marginBottom: 12, 
+          border: '1px solid #3b82f6', 
+          borderRadius: '12px', 
+          boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+          background: 'linear-gradient(to right, #ffffff 0%, #f8fafc 100%)'
+        }}>
+          <div className="card-header" style={{
+            display:'flex',
+            justifyContent:'space-between',
+            alignItems:'center',
+            padding: '16px',
+            borderBottom: '1px solid #3b82f6',
+            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+          }}>
             <div>
-              <div className="card-title" style={{color: '#3b82f6', fontWeight: 'bold'}}>
-                💬 {item.title || 'Estimate Approved with Message'}
+              <div className="card-title" style={{color: '#1e40af', fontWeight: 'bold', fontSize: '16px'}}>
+                ✅ Estimate Accepted - Ready to Start
               </div>
-              <div className="muted" style={{fontSize:'0.85rem'}}>
-                From: {item.homeowner_name || 'Homeowner'}{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}
+              <div className="muted" style={{fontSize:'0.875rem', color: '#6b7280', marginTop: '4px'}}>
+                From: <strong style={{color: '#1f2937'}}>{item.homeowner_name || 'Homeowner'}</strong>{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}
               </div>
             </div>
             <div style={{display:'flex', alignItems:'center', gap:8}}>
@@ -1212,91 +1241,152 @@ const ContractorDashboard = () => {
               <span className="status-badge success">Estimate Approved</span>
             </div>
           </div>
-          <div className="card-body" style={{padding: '16px'}}>
-            {/* Homeowner Message */}
-            <div style={{marginBottom: '16px', padding: '12px', backgroundColor: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe'}}>
-              <h4 style={{margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600', color: '#1e40af'}}>
-                Homeowner's Message:
-              </h4>
-              <div style={{whiteSpace: 'pre-wrap', fontSize: '0.9rem', color: '#1e3a8a'}}>
+          <div className="card-body" style={{padding: '20px'}}>
+            {/* Homeowner Message - Prominent Display */}
+            <div style={{
+              marginBottom: '20px', 
+              padding: '16px', 
+              background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+              borderRadius: '10px', 
+              border: '2px solid #10b981',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{display: 'flex', alignItems: 'center', marginBottom: '12px'}}>
+                <span style={{fontSize: '24px', marginRight: '10px'}}>💬</span>
+                <h4 style={{margin: 0, fontSize: '15px', fontWeight: '700', color: '#065f46'}}>
+                  Message from Homeowner
+                </h4>
+              </div>
+              <div style={{
+                whiteSpace: 'pre-wrap', 
+                fontSize: '14px', 
+                color: '#047857',
+                lineHeight: '1.7',
+                paddingLeft: '34px'
+              }}>
                 {item.message || 'I am satisfied with this estimate and would like to proceed with the project.'}
               </div>
             </div>
 
             {/* Estimate Details */}
-            <div style={{marginBottom: '16px'}}>
-              <h4 style={{margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600', color: '#374151'}}>
-                📊 Estimate Details:
-              </h4>
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.9rem'}}>
-                <div>
-                  <strong>Total Cost:</strong> ₹{estimateDetails.total_cost || 'N/A'}
-                </div>
-                <div>
-                  <strong>Timeline:</strong> {estimateDetails.timeline || 'N/A'}
-                </div>
-                <div style={{gridColumn: '1 / -1'}}>
-                  <strong>Materials:</strong> {estimateDetails.materials || 'Not specified'}
-                </div>
-                <div style={{gridColumn: '1 / -1'}}>
-                  <strong>Cost Breakdown:</strong> {estimateDetails.cost_breakdown || 'Not specified'}
-                </div>
-                {estimateDetails.notes && (
-                  <div style={{gridColumn: '1 / -1'}}>
-                    <strong>Notes:</strong> {estimateDetails.notes}
+            <details style={{marginBottom: '12px'}}>
+              <summary style={{
+                cursor: 'pointer',
+                padding: '12px',
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderRadius: '8px',
+                fontWeight: '600',
+                fontSize: '14px',
+                color: '#1e40af',
+                border: '1px solid #bfdbfe'
+              }}>
+                📊 Estimate Details
+              </summary>
+              <div style={{padding: '16px', background: '#f8fafc', borderRadius: '6px', marginTop: '8px'}}>
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.9rem'}}>
+                  <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                    <strong style={{color: '#6b7280'}}>Total Cost:</strong> <span style={{color: '#10b981', fontWeight: '600'}}>₹{estimateDetails.total_cost || 'N/A'}</span>
                   </div>
-                )}
+                  <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                    <strong style={{color: '#6b7280'}}>Timeline:</strong> {estimateDetails.timeline || 'N/A'}
+                  </div>
+                  {estimateDetails.materials && (
+                    <div style={{gridColumn: '1 / -1', padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>Materials:</strong> {estimateDetails.materials}
+                    </div>
+                  )}
+                  {estimateDetails.cost_breakdown && (
+                    <div style={{gridColumn: '1 / -1', padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>Cost Breakdown:</strong> {estimateDetails.cost_breakdown}
+                    </div>
+                  )}
+                  {estimateDetails.notes && (
+                    <div style={{gridColumn: '1 / -1', padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>Notes:</strong> {estimateDetails.notes}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </details>
 
             {/* Homeowner Contact Details */}
-            <div style={{marginBottom: '16px'}}>
-              <h4 style={{margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600', color: '#374151'}}>
-                👤 Homeowner Contact Details:
-              </h4>
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.9rem'}}>
-                <div>
-                  <strong>Name:</strong> {homeownerDetails.first_name} {homeownerDetails.last_name}
-                </div>
-                <div>
-                  <strong>Email:</strong> {homeownerDetails.email}
-                </div>
-                <div>
-                  <strong>Phone:</strong> {homeownerDetails.phone || 'Not provided'}
-                </div>
-                <div>
-                  <strong>City:</strong> {homeownerDetails.city || 'Not provided'}
-                </div>
-                <div style={{gridColumn: '1 / -1'}}>
-                  <strong>Address:</strong> {homeownerDetails.address || 'Not provided'}
-                </div>
-                {homeownerDetails.zip_code && (
-                  <div>
-                    <strong>Zip Code:</strong> {homeownerDetails.zip_code}
+            <details style={{marginBottom: '12px'}}>
+              <summary style={{
+                cursor: 'pointer',
+                padding: '12px',
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderRadius: '8px',
+                fontWeight: '600',
+                fontSize: '14px',
+                color: '#1e40af',
+                border: '1px solid #bfdbfe'
+              }}>
+                👤 Homeowner Contact Details
+              </summary>
+              <div style={{padding: '16px', background: '#f8fafc', borderRadius: '6px', marginTop: '8px'}}>
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.9rem'}}>
+                  <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                    <strong style={{color: '#6b7280'}}>Name:</strong> {homeownerDetails.first_name} {homeownerDetails.last_name}
                   </div>
-                )}
-                {homeownerDetails.state && (
-                  <div>
-                    <strong>State:</strong> {homeownerDetails.state}
+                  <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                    <strong style={{color: '#6b7280'}}>Email:</strong> {homeownerDetails.email}
                   </div>
-                )}
+                  <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                    <strong style={{color: '#6b7280'}}>Phone:</strong> {homeownerDetails.phone || 'Not provided'}
+                  </div>
+                  <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                    <strong style={{color: '#6b7280'}}>City:</strong> {homeownerDetails.city || 'Not provided'}
+                  </div>
+                  {homeownerDetails.address && (
+                    <div style={{gridColumn: '1 / -1', padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>Address:</strong> {homeownerDetails.address}
+                    </div>
+                  )}
+                  {homeownerDetails.zip_code && (
+                    <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>Zip Code:</strong> {homeownerDetails.zip_code}
+                    </div>
+                  )}
+                  {homeownerDetails.state && (
+                    <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>State:</strong> {homeownerDetails.state}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </details>
 
             {/* Layout Details (if available) */}
             {layoutDetails && layoutDetails.id && (
-              <div style={{marginBottom: '16px'}}>
-                <h4 style={{margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600', color: '#374151'}}>
-                  🏠 Layout Details:
-                </h4>
-                <div style={{fontSize: '0.9rem'}}>
-                  <div><strong>Layout Title:</strong> {layoutDetails.title}</div>
-                  {layoutDetails.description && (
-                    <div><strong>Description:</strong> {layoutDetails.description}</div>
-                  )}
-                  <div><strong>Created:</strong> {new Date(layoutDetails.created_at).toLocaleDateString()}</div>
+              <details style={{marginBottom: '12px'}}>
+                <summary style={{
+                  cursor: 'pointer',
+                  padding: '12px',
+                  background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  color: '#1e40af',
+                  border: '1px solid #bfdbfe'
+                }}>
+                  🏠 Layout Details
+                </summary>
+                <div style={{padding: '16px', background: '#f8fafc', borderRadius: '6px', marginTop: '8px'}}>
+                  <div style={{fontSize: '0.9rem'}}>
+                    <div style={{padding: '8px', background: 'white', borderRadius: '4px', marginBottom: '8px'}}>
+                      <strong style={{color: '#6b7280'}}>Layout Title:</strong> {layoutDetails.title}
+                    </div>
+                    {layoutDetails.description && (
+                      <div style={{padding: '8px', background: 'white', borderRadius: '4px', marginBottom: '8px'}}>
+                        <strong style={{color: '#6b7280'}}>Description:</strong> {layoutDetails.description}
+                      </div>
+                    )}
+                    <div style={{padding: '8px', background: 'white', borderRadius: '4px'}}>
+                      <strong style={{color: '#6b7280'}}>Created:</strong> {new Date(layoutDetails.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </details>
             )}
 
             {/* Action Buttons */}
@@ -1348,11 +1438,20 @@ const ContractorDashboard = () => {
     }
     
     return (
-      <div className="card" key={item.id} style={{marginBottom: 12}}>
-        <div className="card-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <div className="card" key={item.id} style={{marginBottom: 12, border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)'}}>
+        <div className="card-header" style={{
+          display:'flex',
+          justifyContent:'space-between',
+          alignItems:'center',
+          padding: '16px',
+          borderBottom: '1px solid #e5e7eb',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)'
+        }}>
           <div>
-            <div className="card-title">New layout sent</div>
-            <div className="muted" style={{fontSize:'0.85rem'}}>From: {item.homeowner_name || 'Homeowner'}{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}</div>
+            <div className="card-title" style={{fontWeight: '600', fontSize: '16px', color: '#1f2937'}}>📋 New Layout Request</div>
+            <div className="muted" style={{fontSize:'0.875rem', color: '#6b7280', marginTop: '4px'}}>
+              From: <strong style={{color: '#374151'}}>{item.homeowner_name || 'Homeowner'}</strong>{item.homeowner_email ? ` • ${item.homeowner_email}` : ''}
+            </div>
           </div>
           <div style={{display:'flex', alignItems:'center', gap:8}}>
             <div className="muted" style={{fontSize:'0.85rem'}}>{new Date(item.created_at).toLocaleString()}</div>
@@ -1435,7 +1534,7 @@ const ContractorDashboard = () => {
             }}>Remove</button>
           </div>
         </div>
-        <div className="card-body" style={{display:'grid',gridTemplateColumns:'160px 1fr',gap:12}}>
+        <div className="card-body" style={{display:'grid',gridTemplateColumns:'160px 1fr',gap:16, padding: '20px'}}>
           <div>
             {img ? (
               <img src={img} alt="Layout preview" style={{width:'160px',height:'120px',objectFit:'cover',borderRadius:8,border:'1px solid #eee'}} onError={(e)=>{ e.currentTarget.style.display='none'; }} />
@@ -1446,11 +1545,52 @@ const ContractorDashboard = () => {
           <div style={{display:'grid',gap:6}}>
             {fd?.title && <div><strong>Design:</strong> {fd.title}</div>}
             {fd?.description && <div><strong>Description:</strong> {fd.description}</div>}
-            {item.message && <div><strong>Message:</strong> {item.message}</div>}
+            
+            {/* Homeowner Message in a nice card */}
+            {item.message && (
+              <div style={{
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderLeft: '4px solid #3b82f6',
+                padding: '16px',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                  <span style={{fontSize: '20px', marginRight: '8px'}}>💬</span>
+                  <strong style={{color: '#1e40af', fontSize: '15px'}}>Message from Homeowner</strong>
+                </div>
+                <div style={{
+                  color: '#1e3a8a',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '14px',
+                  paddingLeft: '28px'
+                }}>
+                  {item.message}
+                </div>
+              </div>
+            )}
+            
+            {(item.plot_size || item.building_size) && (
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '6px', border: '1px solid #e0e0e0'}}>
+                {item.plot_size && <div><strong>📐 Plot Size:</strong> {item.plot_size}</div>}
+                {item.building_size && <div><strong>🏗️ Building Size:</strong> {item.building_size}</div>}
+              </div>
+            )}
             {floor && (
-              <details>
-                <summary style={{cursor:'pointer'}}>Floor details</summary>
-                <div style={{marginTop:8}}>
+              <details style={{marginTop: '8px'}}>
+                <summary style={{
+                  cursor: 'pointer',
+                  padding: '10px',
+                  background: '#f8f9fa',
+                  borderRadius: '6px',
+                  fontWeight: '500',
+                  fontSize: '14px',
+                  border: '1px solid #dee2e6'
+                }}>
+                  🏢 Floor Details
+                </summary>
+                <div style={{marginTop:8, padding: '12px', background: '#f8f9fa', borderRadius: '6px'}}>
                   <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
                     {floor.floors_count !== undefined && <div><strong>Floors:</strong> {String(floor.floors_count)}</div>}
                     {floor.floor_height && <div><strong>Floor height:</strong> {String(floor.floor_height)}</div>}
@@ -1463,27 +1603,68 @@ const ContractorDashboard = () => {
               </details>
             )}
             {technical && (
-              <details>
-                <summary style={{cursor:'pointer'}}>Technical details</summary>
-                <div style={{marginTop:8}}>{renderTechnicalNeat(technical)}</div>
-              </details>
+              <div style={{marginTop: 16}}>
+                <TechnicalDetailsDisplay technicalDetails={technical} startExpanded={false} />
+              </div>
             )}
             {fd?.files && Array.isArray(fd.files) && fd.files.length > 0 && (
-              <details>
-                <summary style={{cursor:'pointer'}}>Files ({fd.files.length})</summary>
-                <ul style={{margin:'8px 0 0 16px'}}>
+              <details style={{marginTop: '8px'}}>
+                <summary style={{
+                  cursor: 'pointer',
+                  padding: '10px',
+                  background: '#f8f9fa',
+                  borderRadius: '6px',
+                  fontWeight: '500',
+                  fontSize: '14px',
+                  border: '1px solid #dee2e6'
+                }}>
+                  📎 Files ({fd.files.length})
+                </summary>
+                <ul style={{margin:'8px 0 0 16px', listStyle: 'none', padding: '8px'}}>
                   {fd.files.map((f, idx) => {
                     const url = assetUrl(f.url || f.path || (typeof f === 'string' ? f : ''));
                     const name = f.name || (typeof f === 'string' ? f : `File ${idx+1}`);
-                    return <li key={idx}><a href={url} target="_blank" rel="noreferrer">{name}</a></li>;
+                    return (
+                      <li key={idx} style={{marginBottom: '6px'}}>
+                        <a 
+                          href={url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          style={{
+                            color: '#3b82f6',
+                            textDecoration: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            display: 'inline-block',
+                            background: '#e0f2fe',
+                            transition: 'background 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = '#bae6fd'}
+                          onMouseLeave={(e) => e.target.style.background = '#e0f2fe'}
+                        >
+                          📄 {name}
+                        </a>
+                      </li>
+                    );
                   })}
                 </ul>
               </details>
             )}
 
             {/* Submit Estimate for this send */}
-            <details>
-              <summary style={{cursor:'pointer'}}>Submit Estimate</summary>
+            <details style={{marginTop: '12px'}}>
+              <summary style={{
+                cursor: 'pointer',
+                padding: '12px',
+                background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '14px',
+                color: '#1e40af',
+                border: '1px solid #cbd5e1'
+              }}>
+                📋 Submit Estimate
+              </summary>
               <form ref={estimateFormRef} className="estimate-form" onInput={(e)=>{ try { recalcTotalsFromForm(e.currentTarget); } catch(_) {} }} onSubmit={async (e)=>{
                 e.preventDefault();
                 const me = JSON.parse(sessionStorage.getItem('user') || '{}');
@@ -2600,21 +2781,57 @@ const ProjectItem = ({ request, onProposalSubmit }) => {
 };
 
 // Proposal Item Component
-const ProposalItem = ({ proposal }) => (
-  <div className="list-item">
-    <div className="item-image">📄</div>
-    <div className="item-content">
-      <h4 className="item-title">Estimate for {proposal.homeowner_name}</h4>
-      <p className="item-subtitle">Total Cost: ₹{proposal.total_cost} • Timeline: {proposal.timeline}</p>
-      <p className="item-meta">Submitted: {new Date(proposal.created_at).toLocaleDateString()}</p>
+const ProposalItem = ({ proposal }) => {
+  const hasMessage = proposal.homeowner_message && proposal.homeowner_message.trim();
+  
+  return (
+    <div className="list-item" style={{
+      borderLeft: hasMessage && proposal.status === 'accepted' ? '4px solid #10b981' : undefined,
+      background: hasMessage && proposal.status === 'accepted' ? 'linear-gradient(to right, #ffffff 0%, #f0fdf4 5%)' : undefined
+    }}>
+      <div className="item-image">
+        {hasMessage && proposal.status === 'accepted' ? '✅' : '📄'}
+      </div>
+      <div className="item-content" style={{ flex: 1 }}>
+        <h4 className="item-title">
+          {hasMessage && proposal.status === 'accepted' ? '✓ Accepted' : ''} Estimate for {proposal.homeowner_name}
+        </h4>
+        <p className="item-subtitle">Total Cost: ₹{proposal.total_cost} • Timeline: {proposal.timeline}</p>
+        <p className="item-meta">Submitted: {new Date(proposal.created_at).toLocaleDateString()}</p>
+        
+        {/* Homeowner Message Display */}
+        {hasMessage && proposal.status === 'accepted' && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+            borderRadius: '8px',
+            border: '1px solid #10b981'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '18px', marginRight: '8px' }}>💬</span>
+              <strong style={{ color: '#065f46', fontSize: '14px' }}>Message from Homeowner:</strong>
+            </div>
+            <div style={{
+              color: '#047857',
+              fontSize: '13px',
+              lineHeight: '1.6',
+              whiteSpace: 'pre-wrap',
+              paddingLeft: '26px'
+            }}>
+              {proposal.homeowner_message}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="item-actions">
+        <span className={`status-badge ${badgeClass(proposal.status)}`}>
+          {formatStatus(proposal.status)}
+        </span>
+      </div>
     </div>
-    <div className="item-actions">
-      <span className={`status-badge ${badgeClass(proposal.status)}`}>
-        {formatStatus(proposal.status)}
-      </span>
-    </div>
-  </div>
-);
+  );
+};
 
 const EstimateListItem = ({ est, user }) => {
   let structured = null;
@@ -3046,12 +3263,53 @@ const EstimateListItem = ({ est, user }) => {
     </body></html>`;
   };
 
+  const hasMessage = est.homeowner_message && est.homeowner_message.trim();
+  const isAccepted = est.status === 'accepted';
+  
+  // Debug logging
+  if (hasMessage) {
+    console.log('Estimate has homeowner message:', est.id, est.homeowner_message);
+  }
+  
   return (
-    <div className="list-item">
+    <div className="list-item" style={{
+      borderLeft: hasMessage ? '4px solid #10b981' : undefined,
+      background: hasMessage ? 'linear-gradient(to right, #ffffff 0%, #f0fdf4 5%)' : undefined
+    }}>
+      <div className="item-image">
+        {hasMessage ? '✅' : '📄'}
+      </div>
       <div className="item-content" style={{flex:1}}>
-        <h4 className="item-title" style={{margin:0}}>Estimate #{est.id}</h4>
+        <h4 className="item-title" style={{margin:0}}>
+          {hasMessage && isAccepted ? '✓ Accepted ' : ''}Estimate #{est.id}
+        </h4>
         <p className="item-subtitle" style={{margin:'2px 0 0 0'}}>Total: {money(est.total_cost ?? s?.totals?.grand)} • {new Date(est.created_at).toLocaleString()}</p>
         {est.timeline && <p className="item-meta">Timeline: {est.timeline}</p>}
+
+        {/* Homeowner Message Display */}
+        {hasMessage && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px',
+            background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+            borderRadius: '8px',
+            border: '1px solid #10b981'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '18px', marginRight: '8px' }}>💬</span>
+              <strong style={{ color: '#065f46', fontSize: '14px' }}>Message from Homeowner:</strong>
+            </div>
+            <div style={{
+              color: '#047857',
+              fontSize: '13px',
+              lineHeight: '1.6',
+              whiteSpace: 'pre-wrap',
+              paddingLeft: '26px'
+            }}>
+              {est.homeowner_message}
+            </div>
+          </div>
+        )}
 
         <details style={{ marginTop: 6 }}>
           <summary style={{ cursor:'pointer' }}>View breakdown</summary>

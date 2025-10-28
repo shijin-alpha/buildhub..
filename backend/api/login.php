@@ -1,4 +1,9 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../../error.log');
+
 header('Content-Type: application/json');
 if (isset($_SERVER['HTTP_ORIGIN'])) {
     header("Access-Control-Allow-Origin: " . $_SERVER['HTTP_ORIGIN']);
@@ -17,15 +22,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 try {
     require_once '../config/db.php';
 } catch (Throwable $e) {
+    error_log("DB Connection Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed.', 'error' => $e->getMessage()]);
     exit;
 }
+
+try {
 
 $response = ['success' => false, 'message' => '', 'redirect' => ''];
 
 // Get input data
 $data = json_decode(file_get_contents('php://input'), true);
+
+// Check if data was parsed successfully
+if ($data === null) {
+    $response['message'] = "Invalid request data.";
+    echo json_encode($response);
+    exit;
+}
 
 // Google Sign-In: If "google" key is set, handle Google login
 if (!empty($data['google']) && !empty($data['email'])) {
@@ -256,3 +271,9 @@ switch ($user['role']) {
 }
 
 echo json_encode($response);
+
+} catch (Throwable $e) {
+    error_log("Login Error: " . $e->getMessage() . "\n" . $e->getTraceAsString());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'An error occurred during login.', 'error' => $e->getMessage()]);
+}

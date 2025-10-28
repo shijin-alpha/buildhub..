@@ -33,6 +33,8 @@ try {
     $forwarded_design = isset($input['forwarded_design']) && is_array($input['forwarded_design']) ? $input['forwarded_design'] : null;
     $floor_details = isset($input['floor_details']) && is_array($input['floor_details']) ? $input['floor_details'] : null;
     $layout_image_url = isset($input['layout_image_url']) ? (string)$input['layout_image_url'] : '';
+    $plot_size = isset($input['plot_size']) ? trim((string)$input['plot_size']) : '';
+    $building_size = isset($input['building_size']) ? trim((string)$input['building_size']) : '';
 
     if ($contractor_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Missing contractor_id']);
@@ -95,6 +97,50 @@ try {
         // ignore column ensure errors
     }
 
+    // Get technical details and layout details from layout if available
+    $technical_details = null;
+    $layout_plot_size = null;
+    $layout_building_size = null;
+    
+    if ($layout_id) {
+        try {
+            $techStmt = $db->prepare("SELECT technical_details, plot_size, building_size FROM layout_library WHERE id = :id");
+            $techStmt->bindValue(':id', $layout_id, PDO::PARAM_INT);
+            $techStmt->execute();
+            $techRow = $techStmt->fetch(PDO::FETCH_ASSOC);
+            if ($techRow) {
+                if (!empty($techRow['technical_details'])) {
+                    $technical_details = json_decode($techRow['technical_details'], true);
+                }
+                $layout_plot_size = $techRow['plot_size'] ?? null;
+                $layout_building_size = $techRow['building_size'] ?? null;
+            }
+        } catch (Throwable $e) {
+            error_log("Failed to get technical details: " . $e->getMessage());
+            // Try without plot_size and building_size if they don't exist
+            try {
+                $techStmt = $db->prepare("SELECT technical_details FROM layout_library WHERE id = :id");
+                $techStmt->bindValue(':id', $layout_id, PDO::PARAM_INT);
+                $techStmt->execute();
+                $techRow = $techStmt->fetch(PDO::FETCH_ASSOC);
+                if ($techRow && !empty($techRow['technical_details'])) {
+                    $technical_details = json_decode($techRow['technical_details'], true);
+                }
+            } catch (Throwable $e2) {
+                error_log("Failed to get technical details: " . $e2->getMessage());
+            }
+        }
+    }
+    
+    // Also try to get technical details from forwarded design
+    if (!$technical_details && $forwarded_design && isset($forwarded_design['technical_details'])) {
+        $technical_details = $forwarded_design['technical_details'];
+    }
+    
+    // Use layout values if provided, otherwise use passed values
+    $final_plot_size = $layout_plot_size ?: $plot_size;
+    $final_building_size = $layout_building_size ?: $building_size;
+
     $payload = [
         'layout_id' => $layout_id ?: null,
         'design_id' => $design_id ?: null,
@@ -102,6 +148,9 @@ try {
         'forwarded_design' => $forwarded_design ?: null,
         'layout_image_url' => $layout_image_url ?: null,
         'floor_details' => $floor_details ?: null,
+        'technical_details' => $technical_details,
+        'plot_size' => $final_plot_size ?: null,
+        'building_size' => $final_building_size ?: null,
     ];
 
     $ins = $db->prepare("INSERT INTO contractor_layout_sends (contractor_id, homeowner_id, layout_id, design_id, message, payload) VALUES (:cid, :hid, :lid, :did, :msg, :payload)");

@@ -23,7 +23,7 @@ try {
         exit;
     }
     
-    // Get contractor's proposals
+    // Get contractor's proposals with homeowner messages
     $query = "SELECT 
                 cp.id,
                 cp.layout_request_id,
@@ -39,10 +39,12 @@ try {
                 lr.requirements,
                 u.first_name as homeowner_first_name,
                 u.last_name as homeowner_last_name,
-                CONCAT(u.first_name, ' ', u.last_name) as homeowner_name
+                CONCAT(u.first_name, ' ', u.last_name) as homeowner_name,
+                ci.message as homeowner_message
               FROM contractor_proposals cp
               JOIN layout_requests lr ON cp.layout_request_id = lr.id
               JOIN users u ON lr.homeowner_id = u.id
+              LEFT JOIN contractor_inbox ci ON ci.estimate_id = cp.id AND ci.type = 'estimate_message'
               WHERE cp.contractor_id = :contractor_id
               ORDER BY cp.created_at DESC";
     

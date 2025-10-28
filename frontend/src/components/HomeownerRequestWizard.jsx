@@ -73,6 +73,7 @@ export default function HomeownerRequestWizard() {
   const [fieldWarnings, setFieldWarnings] = useState({});
   const [realTimeRecommendations, setRealTimeRecommendations] = useState({});
   const [estimatedCost, setEstimatedCost] = useState(null);
+  const [costPerSqft, setCostPerSqft] = useState(null);
   const [plotCategory, setPlotCategory] = useState(null);
   const [budgetCategory, setBudgetCategory] = useState(null);
   const [timelineData, setTimelineData] = useState(null);
@@ -211,6 +212,12 @@ export default function HomeownerRequestWizard() {
         if (result.estimated_cost) {
           console.log('💰 ML estimates cost:', result.estimated_cost);
           setEstimatedCost(result.estimated_cost);
+          
+          // Store cost per sq ft if available
+          if (result.cost_per_sqft) {
+            console.log('💰 Cost per sq ft:', result.cost_per_sqft);
+            setCostPerSqft(result.cost_per_sqft);
+          }
           
           // Set timeline data from ML prediction
           if (result.predicted_timeline) {
@@ -621,6 +628,12 @@ export default function HomeownerRequestWizard() {
   async function submit() {
     setLoading(true);
     try {
+      // Validate that at least one architect is selected
+      if (!Array.isArray(data.selected_architect_ids) || data.selected_architect_ids.length === 0) {
+        toast.error('Please select at least one architect before submitting your request');
+        return;
+      }
+      
       // 1) Create the layout request
       const submitData = {
         plot_size: data.plot_size,
@@ -640,6 +653,7 @@ export default function HomeownerRequestWizard() {
         aesthetic: data.aesthetic,
         num_floors: data.num_floors,
         preferred_style: data.aesthetic, // Use aesthetic as preferred_style
+        floor_rooms: data.floor_rooms || {}, // Floor-wise room distribution
         reference_images: data.reference_images || [],
         site_images: data.site_images || [], // Site images
         room_images: data.room_images || {}, // Room-specific images
@@ -648,6 +662,7 @@ export default function HomeownerRequestWizard() {
       };
       
       console.log('Submitting data:', submitData); // Debug log
+      console.log('🏗️ Floor rooms data being submitted:', data.floor_rooms);
       
       // Validate required fields
       if (!submitData.plot_size || !submitData.building_size) {
@@ -689,49 +704,45 @@ export default function HomeownerRequestWizard() {
 
       const requestId = json.request_id;
 
-      // 2) If user selected architect(s), send assignment(s)
-      if (Array.isArray(data.selected_architect_ids) && data.selected_architect_ids.length > 0) {
-        console.log('📤 Assigning architects:', data.selected_architect_ids);
-        try {
-          console.log('🚀 Submitting architect assignment to:', '/buildhub/backend/api/homeowner/assign_architect.php');
-          const ares = await fetch('/buildhub/backend/api/homeowner/assign_architect.php', {
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({
-              layout_request_id: requestId,
-              architect_ids: data.selected_architect_ids
-            }),
-            credentials: 'include'
-          });
-          
-          console.log('📡 Architect assignment response status:', ares.status);
-          console.log('📡 Architect assignment response ok:', ares.ok);
-          
-          if (!ares.ok) {
-            const errorText = await ares.text();
-            console.error('❌ Architect assignment HTTP error:', errorText);
-            throw new Error(`HTTP error! status: ${ares.status} - ${errorText}`);
-          }
-          
-          const aj = await ares.json();
-          console.log('📊 Architect assignment response:', aj);
-          
-          if (aj.success) {
-            console.log('✅ Architects assigned successfully');
-          } else {
-            console.warn('⚠️ Architect assignment warning:', aj.message);
-            // Don't fail the entire submission for architect assignment issues
-          }
-        } catch (e) { 
-          console.warn('⚠️ Architect assignment failed:', e.message);
+      // 2) Send architect assignment(s) - validated earlier that architects are selected
+      console.log('📤 Assigning architects:', data.selected_architect_ids);
+      try {
+        console.log('🚀 Submitting architect assignment to:', '/buildhub/backend/api/homeowner/assign_architect.php');
+        const ares = await fetch('/buildhub/backend/api/homeowner/assign_architect.php', {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({
+            layout_request_id: requestId,
+            architect_ids: data.selected_architect_ids
+          }),
+          credentials: 'include'
+        });
+        
+        console.log('📡 Architect assignment response status:', ares.status);
+        console.log('📡 Architect assignment response ok:', ares.ok);
+        
+        if (!ares.ok) {
+          const errorText = await ares.text();
+          console.error('❌ Architect assignment HTTP error:', errorText);
+          throw new Error(`HTTP error! status: ${ares.status} - ${errorText}`);
+        }
+        
+        const aj = await ares.json();
+        console.log('📊 Architect assignment response:', aj);
+        
+        if (aj.success) {
+          console.log('✅ Architects assigned successfully');
+        } else {
+          console.warn('⚠️ Architect assignment warning:', aj.message);
           // Don't fail the entire submission for architect assignment issues
         }
-      } else {
-        console.log('ℹ️ No architects selected');
+      } catch (e) { 
+        console.warn('⚠️ Architect assignment failed:', e.message);
+        // Don't fail the entire submission for architect assignment issues
       }
 
       // Show success message
-      toast.success('Request submitted successfully! Your custom design request has been created and sent to the selected architects.');
+      toast.success('Request submitted successfully! Your custom design request has been created and assigned to the selected architects.');
       
       // Redirect to homeowner dashboard using React Router
       navigate('/homeowner-dashboard');
@@ -1009,7 +1020,7 @@ export default function HomeownerRequestWizard() {
                         border: '1px solid #0ea5e9', 
                         borderRadius: '6px' 
                       }}>
-                        💡 Estimated cost: ₹{Math.round(estimatedCost).toLocaleString()} (₹{Math.round(estimatedCost / (data.building_size || 1000))}/sq ft)
+                        💡 Estimated cost: ₹{Math.round(estimatedCost).toLocaleString()} (₹{costPerSqft ? Math.round(costPerSqft) : Math.round(estimatedCost / (parseFloat(data.building_size) || 1000))}/sq ft)
                       </div>
                     )}
                     {budgetCategory && budgetCategory !== 'unknown' && (

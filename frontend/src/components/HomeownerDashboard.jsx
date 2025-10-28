@@ -194,6 +194,18 @@ const HomeownerDashboard = () => {
       // Require payment: unlock only if paid
       const isPaid = Number(est.is_paid || 0) > 0;
       if (!isPaid) {
+        // Wait for Razorpay to be available
+        let attempts = 0;
+        while ((!window.Razorpay || window._razorpayLoading) && attempts < 20) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+        
+        if (!window.Razorpay) {
+          toast.error('Payment system not loaded. Please refresh the page and try again.');
+          return;
+        }
+
         const me = JSON.parse(sessionStorage.getItem('user') || '{}');
         const initRes = await fetch('/buildhub/backend/api/homeowner/initiate_estimate_payment.php', {
           method: 'POST',
@@ -241,8 +253,14 @@ const HomeownerDashboard = () => {
           },
           prefill: { name: me?.first_name || 'Homeowner', email: me?.email || '' }
         };
-        const rzp = new window.Razorpay(options);
-        rzp.open();
+        
+        try {
+          const rzp = new window.Razorpay(options);
+          rzp.open();
+        } catch (e) {
+          console.error('Razorpay error:', e);
+          toast.error('Failed to open payment gateway. Please try again.');
+        }
         return;
       }
 
@@ -485,10 +503,137 @@ const HomeownerDashboard = () => {
         console.log('Blob method failed, trying direct save:', blobError);
         pdf.save(fileName);
       }
-      console.log('PDF save method called');
+    console.log('PDF save method called');
+  } catch (e) {
+    console.error('Error generating PDF report:', e);
+    toast.error('Error generating PDF report');
+  }
+};
+
+  const downloadTechnicalDetailsPDF = async (est) => {
+    try {
+      const parsed = (() => { 
+        try { return est.structured ? JSON.parse(est.structured) : null; } 
+        catch { return null; } 
+      })();
+      
+      const technicalDetails = parsed?.technical_details || {};
+      if (!technicalDetails || Object.keys(technicalDetails).length === 0) {
+        toast.warning('No technical details available for this estimate');
+        return;
+      }
+
+      const contractorName = est.contractor_name || 'Contractor';
+      const currentDate = new Date().toLocaleDateString('en-IN', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+
+      const formatValue = (value) => {
+        if (!value) return '—';
+        if (typeof value === 'object') return JSON.stringify(value, null, 2);
+        return String(value);
+      };
+
+      const html = `
+        <div style="font-family: 'Times New Roman', serif; color: #1a1a1a; margin: 0; padding: 20px; line-height: 1.4; background: white;">
+          <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #2c3e50; padding-bottom: 20px;">
+            <div style="font-size: 28px; font-weight: bold; color: #2c3e50;">Technical Details Report</div>
+            <div style="font-size: 14px; color: #6c757d; margin-top: 8px;">Contractor: ${contractorName}</div>
+            <div style="font-size: 12px; color: #9ca3af;">Date: ${currentDate}</div>
+          </div>
+          
+          ${technicalDetails.room_dimensions ? `
+          <div style="margin-bottom: 24px;">
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 8px;">Room Dimensions</h3>
+            <div style="margin-top: 12px;">
+              ${Object.entries(technicalDetails.room_dimensions).map(([room, dimensions]) => `
+                <div style="padding: 8px 12px; margin: 4px 0; background: #f8f9fa; border-left: 3px solid #2c3e50;">
+                  <strong>${room}:</strong> ${formatValue(dimensions)}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+
+          ${technicalDetails.floor_plans ? `
+          <div style="margin-bottom: 24px;">
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 8px;">Floor Plans</h3>
+            <div style="margin-top: 12px;">
+              ${Object.entries(technicalDetails.floor_plans).map(([key, value]) => `
+                <div style="padding: 8px 12px; margin: 4px 0; background: #f8f9fa; border-left: 3px solid #2c3e50;">
+                  <strong>${key.replace(/_/g, ' ')}:</strong> ${formatValue(value)}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+
+          ${technicalDetails.structural_elements ? `
+          <div style="margin-bottom: 24px;">
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 8px;">Structural Elements</h3>
+            <div style="margin-top: 12px;">
+              ${Object.entries(technicalDetails.structural_elements).map(([key, value]) => `
+                <div style="padding: 8px 12px; margin: 4px 0; background: #f8f9fa; border-left: 3px solid #2c3e50;">
+                  <strong>${key.replace(/_/g, ' ')}:</strong> ${formatValue(value)}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+
+          ${technicalDetails.material_specifications ? `
+          <div style="margin-bottom: 24px;">
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 8px;">Material Specifications</h3>
+            <div style="margin-top: 12px;">
+              ${Object.entries(technicalDetails.material_specifications).map(([key, value]) => `
+                <div style="padding: 8px 12px; margin: 4px 0; background: #f8f9fa; border-left: 3px solid #2c3e50;">
+                  <strong>${key.replace(/_/g, ' ')}:</strong> ${formatValue(value)}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+        </div>`;
+
+      const tempDiv = document.createElement('div');
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.top = '-9999px';
+      tempDiv.style.width = '210mm';
+      tempDiv.style.padding = '20mm';
+      tempDiv.style.backgroundColor = 'white';
+      tempDiv.innerHTML = html;
+      document.body.appendChild(tempDiv);
+
+      const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' });
+      document.body.removeChild(tempDiv);
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const fileName = `Technical_Details_${contractorName.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}.pdf`;
+      pdf.save(fileName);
+      toast.success('Technical details PDF downloaded successfully');
     } catch (e) {
-      console.error('Error generating PDF report:', e);
-      toast.error('Error generating PDF report');
+      console.error('Error generating technical details PDF:', e);
+      toast.error('Error generating PDF');
     }
   };
 
@@ -958,7 +1103,7 @@ const HomeownerDashboard = () => {
   const [contractors, setContractors] = useState([]);
   const [contractorLoading, setContractorLoading] = useState(false);
   const [contractorError, setContractorError] = useState('');
-  const [selectedContractor, setSelectedContractor] = useState(null);
+  const [selectedContractors, setSelectedContractors] = useState([]);
   const [contractorMessage, setContractorMessage] = useState('');
   const [sendingToContractor, setSendingToContractor] = useState(false);
   const [sourceDesignForContractor, setSourceDesignForContractor] = useState(null); // when opened from Received Designs
@@ -1351,7 +1496,7 @@ const HomeownerDashboard = () => {
 
   const openContractorModal = (layout) => {
     setSelectedLibraryLayout(layout);
-    setSelectedContractor(null);
+    setSelectedContractors([]);
     setContractorMessage('');
     setShowContractorModal(true);
     fetchContractors();
@@ -1367,6 +1512,7 @@ const HomeownerDashboard = () => {
     } else {
       setSelectedLibraryLayout(null);
     }
+    setSelectedContractors([]);
     setShowContractorModal(true);
     fetchContractors();
 
@@ -1396,8 +1542,8 @@ const HomeownerDashboard = () => {
 
   const sendToContractor = async () => {
     const layoutIdToSend = selectedLibraryLayout?.id || sourceDesignForContractor?.selected_layout_id;
-    if (!selectedContractor) {
-      setError('Please select a contractor');
+    if (!selectedContractors || selectedContractors.length === 0) {
+      setError('Please select at least one contractor');
       return;
     }
     // Allow send without layout if we have a forwarded design bundle
@@ -1408,33 +1554,51 @@ const HomeownerDashboard = () => {
     }
 
     setSendingToContractor(true);
+    const successMessages = [];
+    const errorMessages = [];
+    
     try {
-      const response = await fetch('/buildhub/backend/api/homeowner/send_to_contractor.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          layout_id: layoutIdToSend || null,
-          contractor_id: selectedContractor.id,
-          homeowner_id: user?.id,
-          contractor_message: contractorMessage || '',
-          forwarded_design: sourceDesignForContractor ? {
-            id: sourceDesignForContractor.id,
-            title: sourceDesignForContractor.design_title,
-            description: sourceDesignForContractor.description,
-            files: Array.isArray(sourceDesignForContractor.files) ? sourceDesignForContractor.files : [],
-            technical_details: sourceDesignForContractor.technical_details || null,
-            created_at: sourceDesignForContractor.created_at
-          } : null
-        })
-      });
+      // Send to all selected contractors
+      for (const contractor of selectedContractors) {
+        try {
+          const response = await fetch('/buildhub/backend/api/homeowner/send_to_contractor.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              layout_id: layoutIdToSend || null,
+              contractor_id: contractor.id,
+              homeowner_id: user?.id,
+              contractor_message: contractorMessage || '',
+              forwarded_design: sourceDesignForContractor ? {
+                id: sourceDesignForContractor.id,
+                title: sourceDesignForContractor.design_title,
+                description: sourceDesignForContractor.description,
+                files: Array.isArray(sourceDesignForContractor.files) ? sourceDesignForContractor.files : [],
+                technical_details: sourceDesignForContractor.technical_details || null,
+                created_at: sourceDesignForContractor.created_at
+              } : null,
+              plot_size: selectedLibraryLayout?.plot_size || requestData.plot_size || null,
+              building_size: selectedLibraryLayout?.building_size || requestData.building_size || null
+            })
+          });
 
-      const result = await response.json();
-      if (result.success) {
-        // Show success message in the UI
-        setSuccess(`Layout sent to ${result.contractor_name} successfully!`);
+          const result = await response.json();
+          if (result.success) {
+            successMessages.push(result.contractor_name || contractor.first_name);
+          } else {
+            errorMessages.push(`${contractor.first_name}: ${result.message || 'Failed'}`);
+          }
+        } catch (error) {
+          errorMessages.push(`${contractor.first_name}: Network error`);
+        }
+      }
+
+      // Show success/error messages
+      if (successMessages.length > 0) {
+        setSuccess(`Layout sent to ${successMessages.length} contractor(s): ${successMessages.join(', ')}`);
         setShowContractorModal(false);
-        setSelectedContractor(null);
+        setSelectedContractors([]);
         setContractorMessage('');
         setSelectedLibraryLayout(null);
         setSourceDesignForContractor(null);
@@ -1442,8 +1606,14 @@ const HomeownerDashboard = () => {
         fetchMyRequests();
         // Auto-hide success message after 5 seconds
         setTimeout(() => setSuccess(''), 5000);
-      } else {
-        setError(result.message || 'Failed to send to contractor');
+      }
+      
+      if (errorMessages.length > 0) {
+        setError(errorMessages.join('; '));
+      }
+      
+      if (successMessages.length === 0 && errorMessages.length > 0) {
+        setError('Failed to send to any contractors: ' + errorMessages.join('; '));
       }
     } catch (error) {
       setError('Network error. Please try again.');
@@ -1784,7 +1954,6 @@ const HomeownerDashboard = () => {
               <div className="fr-title">Request Custom Design</div>
               <div className="fr-sub">Get professional architectural designs for your plot</div>
               <div className="fr-help" style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,255,255,0.2)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', cursor: 'pointer' }} title="New to custom design requests? Click for a guided tour!">
-                ?
               </div>
             </button>
             <button 
@@ -2061,7 +2230,8 @@ const HomeownerDashboard = () => {
                             )}
                             {d.technical_details && (
                               <div className="technical-details-section" style={{marginTop:16}}>
-                                <TechnicalDetailsDisplay technicalDetails={d.technical_details} />
+                                <h3 style={{margin:'0 0 12px 0', fontSize:'16px', fontWeight:600, color:'#374151'}}>Technical Details</h3>
+                                <TechnicalDetailsDisplay technicalDetails={d.technical_details} startExpanded={true} />
                               </div>
                             )}
                           </div>
@@ -2457,12 +2627,37 @@ const HomeownerDashboard = () => {
                         {est.notes && <p className="item-meta">Notes: {est.notes}</p>}
                         <p className="item-meta">Contractor: {est.contractor_name || 'Unknown'}{est.contractor_email ? ` • ${est.contractor_email}` : ''}</p>
                         <p className="item-meta" style={{fontSize: '12px', color: '#666'}}>Status: {est.status || 'unknown'}</p>
+                        
+                        {/* Acknowledgment Information */}
+                        {est.acknowledged_at && (
+                          <div style={{
+                            marginTop: '12px',
+                            padding: '12px',
+                            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                            borderRadius: '8px',
+                            border: '1px solid #3b82f6'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+                              <span style={{ fontSize: '16px', marginRight: '8px' }}>✅</span>
+                              <strong style={{ color: '#1e40af', fontSize: '13px' }}>Acknowledged by Contractor</strong>
+                            </div>
+                            <div style={{ color: '#1e3a8a', fontSize: '12px', paddingLeft: '24px' }}>
+                              Acknowledged: {new Date(est.acknowledged_at).toLocaleString()}
+                              {est.due_date && <span> • Due: {new Date(est.due_date).toLocaleDateString()}</span>}
+                            </div>
+                          </div>
+                        )}
                         {Number(est.is_paid||0) === 0 && (
                           <span className="status-badge pending">Locked • Pay ₹100 to view</span>
                         )}
                       </div>
-                      <div className="item-actions" style={{display:'flex', gap:6, alignItems:'center'}}>
-                        <button className="btn btn-primary" onClick={()=>downloadEstimateReport(est)}>{Number(est.is_paid||0)===0? 'Pay ₹100 to Unlock' : 'Download'}</button>
+                      <div className="item-actions" style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
+                        <button className="btn btn-primary" onClick={()=>downloadEstimateReport(est)}>{Number(est.is_paid||0)===0? 'Pay ₹100 to Unlock' : 'Download Report'}</button>
+                        {Number(est.is_paid||0)===1 && (
+                          <>
+                            <button className="btn btn-secondary" onClick={()=>downloadTechnicalDetailsPDF(est)} style={{background:'#10b981', color:'white', border:'1px solid #10b981'}}>📄 Download Tech Details</button>
+                          </>
+                        )}
                         {Number(est.is_paid||0)===1 && (
                           <>
                             {est.status === 'submitted' && (
@@ -3259,8 +3454,8 @@ const HomeownerDashboard = () => {
           <div className="form-modal">
             <div className="form-content contractor-modal">
               <div className="form-header">
-                <h3>Select Contractor</h3>
-                <p>Choose a contractor to send your layout</p>
+                <h3>Select Contractor{selectedContractors.length > 0 ? ` (${selectedContractors.length})` : ''}</h3>
+                <p>Select one or more contractors to send your layout</p>
                 <button className="modal-close" onClick={() => setShowContractorModal(false)}>×</button>
               </div>
 
@@ -3309,6 +3504,12 @@ const HomeownerDashboard = () => {
 
               {contractorError && <div className="alert alert-error">{contractorError}</div>}
 
+              {selectedContractors.length > 0 && (
+                <div className="alert alert-info" style={{marginBottom: '12px', padding: '8px 12px', fontSize: '0.9rem'}}>
+                  📋 {selectedContractors.length} contractor{selectedContractors.length > 1 ? 's' : ''} selected
+                </div>
+              )}
+
               <div className="contractors-list">
                 {contractorLoading ? (
                   <div className="loading">Loading contractors...</div>
@@ -3320,37 +3521,45 @@ const HomeownerDashboard = () => {
                   </div>
                 ) : (
                   <div className="item-list">
-                    {contractors.map(contractor => (
-                      <label key={contractor.id} className={`list-item ${selectedContractor?.id === contractor.id ? 'selected' : ''}`}>
-                        <div className="item-icon">👷</div>
-                        <div className="item-content">
-                          <h4 className="item-title">{contractor.first_name} {contractor.last_name}</h4>
-                          <p className="item-subtitle">Verified Contractor</p>
-                          <div className="detail-grid">
-                            <span><strong>Email:</strong> {contractor.email || 'N/A'}</span>
-                            <span><strong>License:</strong> {contractor.license ? 'Verified' : 'Not provided'}</span>
-                            <span><strong>Portfolio:</strong> {contractor.portfolio ? 'Available' : 'Not provided'}</span>
-                            <span><strong>Member since:</strong> {contractor.created_at ? new Date(contractor.created_at).getFullYear() : 'N/A'}</span>
+                    {contractors.map(contractor => {
+                      const isSelected = selectedContractors.some(c => c.id === contractor.id);
+                      return (
+                        <label key={contractor.id} className={`list-item ${isSelected ? 'selected' : ''}`}>
+                          <div className="item-icon">👷</div>
+                          <div className="item-content">
+                            <h4 className="item-title">{contractor.first_name} {contractor.last_name}</h4>
+                            <p className="item-subtitle">Verified Contractor</p>
+                            <div className="detail-grid">
+                              <span><strong>Email:</strong> {contractor.email || 'N/A'}</span>
+                              <span><strong>License:</strong> {contractor.license ? 'Verified' : 'Not provided'}</span>
+                              <span><strong>Portfolio:</strong> {contractor.portfolio ? 'Available' : 'Not provided'}</span>
+                              <span><strong>Member since:</strong> {contractor.created_at ? new Date(contractor.created_at).getFullYear() : 'N/A'}</span>
+                            </div>
+                            <div className="rating-row">
+                              <span title={contractor.avg_rating ? `${contractor.avg_rating} / 5` : 'No ratings yet'}>
+                                {[1,2,3,4,5].map(star => (
+                                  <span key={star} style={{color: (contractor.avg_rating || 0) >= star ? '#f5a623' : '#ddd'}}>★</span>
+                                ))}
+                              </span>
+                              <span style={{marginLeft:8, color:'#666', fontSize:'0.9rem'}}>({contractor.review_count || 0})</span>
+                            </div>
                           </div>
-                          <div className="rating-row">
-                            <span title={contractor.avg_rating ? `${contractor.avg_rating} / 5` : 'No ratings yet'}>
-                              {[1,2,3,4,5].map(star => (
-                                <span key={star} style={{color: (contractor.avg_rating || 0) >= star ? '#f5a623' : '#ddd'}}>★</span>
-                              ))}
-                            </span>
-                            <span style={{marginLeft:8, color:'#666', fontSize:'0.9rem'}}>({contractor.review_count || 0})</span>
+                          <div className="item-actions">
+                            <input 
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedContractors([...selectedContractors, contractor]);
+                                } else {
+                                  setSelectedContractors(selectedContractors.filter(c => c.id !== contractor.id));
+                                }
+                              }}
+                            />
                           </div>
-                        </div>
-                        <div className="item-actions">
-                          <input 
-                            type="radio" 
-                            name="contractor"
-                            checked={selectedContractor?.id === contractor.id}
-                            onChange={() => setSelectedContractor(contractor)}
-                          />
-                        </div>
-                      </label>
-                    ))}
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -3367,8 +3576,8 @@ const HomeownerDashboard = () => {
 
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setShowContractorModal(false)}>Cancel</button>
-                <button className="btn btn-primary" disabled={contractorLoading || !selectedContractor || sendingToContractor} onClick={sendToContractor}>
-                  {sendingToContractor ? 'Sending...' : 'Send to Contractor'}
+                <button className="btn btn-primary" disabled={contractorLoading || !selectedContractors || selectedContractors.length === 0 || sendingToContractor} onClick={sendToContractor}>
+                  {sendingToContractor ? `Sending to ${selectedContractors.length} contractor(s)...` : `Send to ${selectedContractors.length > 0 ? `${selectedContractors.length} Contractor${selectedContractors.length > 1 ? 's' : ''}` : 'Contractor'}`}
                 </button>
               </div>
             </div>

@@ -3573,3 +3573,73 @@ button:focus,
     padding: 16px;
   }
 }
+
+/* Contractors List Scrollable Area */
+.contractors-list {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.contractors-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.contractors-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.contractors-list::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.contractors-list::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+  .contractors-list {
+    max-height: 300px;
+  }
+}
+
+/* Technical Details Grid Layout */
+.technical-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 12px;
+  width: 100%;
+}
+
+@media (min-width: 1200px) {
+  .technical-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+@media (min-width: 1600px) {
+  .technical-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .technical-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .technical-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+}

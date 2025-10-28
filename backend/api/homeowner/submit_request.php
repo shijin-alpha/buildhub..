@@ -93,6 +93,16 @@ try {
         layout_type ENUM('custom', 'library') DEFAULT 'custom',
         status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
         layout_file VARCHAR(255),
+        orientation VARCHAR(100) NULL,
+        site_considerations TEXT NULL,
+        material_preferences VARCHAR(255) NULL,
+        budget_allocation TEXT NULL,
+        num_floors INT NULL,
+        preferred_style VARCHAR(100) NULL,
+        floor_rooms TEXT NULL,
+        site_images TEXT NULL,
+        reference_images TEXT NULL,
+        room_images TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -100,6 +110,18 @@ try {
         FOREIGN KEY (selected_layout_id) REFERENCES layout_library(id)
     )";
     $db->exec($create_table_query);
+    
+    // Add missing columns if they don't exist (for existing tables)
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS orientation VARCHAR(100) NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS site_considerations TEXT NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS material_preferences VARCHAR(255) NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS budget_allocation TEXT NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS num_floors INT NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS preferred_style VARCHAR(100) NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS floor_rooms TEXT NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS site_images TEXT NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS reference_images TEXT NULL");
+    $db->exec("ALTER TABLE layout_requests ADD COLUMN IF NOT EXISTS room_images TEXT NULL");
     
     // Pack structured fields into JSON for the existing 'requirements' column
     $requirements_payload = [
@@ -163,11 +185,14 @@ try {
         $stmt->bindParam(':budget_allocation', $budget_allocation);
         $stmt->bindParam(':num_floors', $num_floors);
         $stmt->bindParam(':preferred_style', $preferred_style);
-        $stmt->bindParam(':floor_rooms', $floor_rooms);
-        // Pre-encode arrays to avoid passing expressions by reference
+        
+        // Pre-encode arrays/objects to JSON to avoid passing expressions by reference
+        $floor_rooms_json = $floor_rooms ? (is_string($floor_rooms) ? $floor_rooms : json_encode($floor_rooms)) : null;
         $site_images_json = json_encode($site_images);
         $reference_images_json = json_encode($reference_images);
         $room_images_json = json_encode($room_images);
+        
+        $stmt->bindParam(':floor_rooms', $floor_rooms_json);
         $stmt->bindParam(':site_images', $site_images_json);
         $stmt->bindParam(':reference_images', $reference_images_json);
         $stmt->bindParam(':room_images', $room_images_json);

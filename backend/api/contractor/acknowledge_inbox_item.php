@@ -8,6 +8,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); header('Access-Control-Max-Age: 86400'); exit; }
 
 require_once '../../config/database.php';
+require_once '../../utils/send_mail.php';
 
 try {
     $database = new Database();
@@ -54,7 +55,7 @@ try {
     $stmt->bindValue(':cid', $contractorId, PDO::PARAM_INT);
     $stmt->execute();
 
-    // Create notification for homeowner if they exist
+    // Create notification and send email to homeowner if they exist
     if ($homeownerId) {
         try {
             // Get contractor details
@@ -63,6 +64,49 @@ try {
             $contractorStmt->execute();
             $contractorData = $contractorStmt->fetch(PDO::FETCH_ASSOC);
             $contractorName = trim(($contractorData['first_name'] ?? '') . ' ' . ($contractorData['last_name'] ?? '')) ?: 'Contractor';
+            $contractorEmail = $contractorData['email'] ?? '';
+            
+            // Get homeowner details
+            $homeownerStmt = $db->prepare("SELECT first_name, last_name, email FROM users WHERE id = :id");
+            $homeownerStmt->bindValue(':id', $homeownerId, PDO::PARAM_INT);
+            $homeownerStmt->execute();
+            $homeownerData = $homeownerStmt->fetch(PDO::FETCH_ASSOC);
+            $homeownerName = trim(($homeownerData['first_name'] ?? '') . ' ' . ($homeownerData['last_name'] ?? '')) ?: 'Homeowner';
+            $homeownerEmail = $homeownerData['email'] ?? '';
+            
+            // Parse payload to get technical details
+            $payload = [];
+            if (!empty($itemData['payload'])) {
+                $decoded = json_decode($itemData['payload'], true);
+                if (is_array($decoded)) $payload = $decoded;
+            }
+            
+            // Get technical details from payload
+            $technicalDetails = null;
+            if (isset($payload['technical_details']) && is_array($payload['technical_details'])) {
+                $technicalDetails = $payload['technical_details'];
+            } else if (isset($payload['forwarded_design']['technical_details']) && is_array($payload['forwarded_design']['technical_details'])) {
+                $technicalDetails = $payload['forwarded_design']['technical_details'];
+            }
+            
+            // Get layout/design details
+            $layoutTitle = 'Layout';
+            $layoutDetails = [];
+            if ($itemData['layout_id']) {
+                $layoutStmt = $db->prepare("SELECT title, layout_type, bedrooms, bathrooms, area FROM layout_library WHERE id = :id");
+                $layoutStmt->bindValue(':id', $itemData['layout_id'], PDO::PARAM_INT);
+                $layoutStmt->execute();
+                $layoutData = $layoutStmt->fetch(PDO::FETCH_ASSOC);
+                if ($layoutData) {
+                    $layoutTitle = $layoutData['title'] ?? 'Layout';
+                    $layoutDetails = [
+                        'type' => $layoutData['layout_type'] ?? '',
+                        'bedrooms' => $layoutData['bedrooms'] ?? '',
+                        'bathrooms' => $layoutData['bathrooms'] ?? '',
+                        'area' => $layoutData['area'] ?? ''
+                    ];
+                }
+            }
             
             // Ensure homeowner_notifications table exists
             $db->exec("CREATE TABLE IF NOT EXISTS homeowner_notifications (
@@ -81,14 +125,124 @@ try {
             $ackTime = date('Y-m-d H:i:s');
             $ackDate = $dueDate ? date('F j, Y', strtotime($dueDate)) : 'not specified';
             $title = "Contractor Acknowledged Your Layout";
-            $message = "{$contractorName} acknowledged your layout at {$ackTime}.\nDue date: {$ackDate}";
+            $notificationMessage = "{$contractorName} acknowledged your layout at {$ackTime}.\nDue date: {$ackDate}";
             
             $notifStmt = $db->prepare("INSERT INTO homeowner_notifications (homeowner_id, contractor_id, type, title, message, status) VALUES (:hid, :cid, 'acknowledgment', :title, :msg, 'unread')");
             $notifStmt->bindValue(':hid', $homeownerId, PDO::PARAM_INT);
             $notifStmt->bindValue(':cid', $contractorId, PDO::PARAM_INT);
             $notifStmt->bindValue(':title', $title);
-            $notifStmt->bindValue(':msg', $message);
+            $notifStmt->bindValue(':msg', $notificationMessage);
             $notifStmt->execute();
+            
+            // Send email to homeowner
+            if ($homeownerEmail) {
+                try {
+                    $formattedDate = $dueDate ? date('F j, Y', strtotime($dueDate)) : 'Not specified';
+                    $layoutInfo = '';
+                    if (!empty($layoutDetails)) {
+                        $parts = array_filter([
+                            $layoutDetails['type'] ? 'Type: ' . $layoutDetails['type'] : '',
+                            $layoutDetails['bedrooms'] ? $layoutDetails['bedrooms'] . ' BHK' : '',
+                            $layoutDetails['area'] ? $layoutDetails['area'] . ' sq ft' : ''
+                        ]);
+                        if (!empty($parts)) {
+                            $layoutInfo = ' (' . implode(', ', $parts) . ')';
+                        }
+                    }
+                    
+                    $emailSubject = "Contractor Acknowledged Your Estimate Request - {$layoutTitle}";
+                    
+                    $emailBody = "
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset='UTF-8'>
+                        <style>
+                            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
+                            .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb; }
+                            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                            .header h1 { margin: 0; font-size: 24px; }
+                            .content { background: white; padding: 30px 20px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                            .info-box { background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 5px; }
+                            .info-row { margin: 10px 0; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+                            .info-row:last-child { border-bottom: none; }
+                            .info-label { font-weight: 600; color: #374151; display: inline-block; width: 150px; }
+                            .info-value { color: #6b7280; }
+                            .cta-button { display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 20px; font-weight: 600; }
+                            .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 14px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class='container'>
+                            <div class='header'>
+                                <h1>✅ Layout Acknowledgment</h1>
+                                <p style='margin: 5px 0; opacity: 0.9;'>Your estimate request has been acknowledged</p>
+                            </div>
+                            <div class='content'>
+                                <p>Dear {$homeownerName},</p>
+                                
+                                <p>We're pleased to inform you that <strong>{$contractorName}</strong> has acknowledged your layout request and is now reviewing the details.</p>
+                                
+                                <div class='info-box'>
+                                    <h3 style='margin: 0 0 15px 0; color: #1f2937;'>Request Details</h3>
+                                    <div class='info-row'>
+                                        <span class='info-label'>Layout:</span>
+                                        <span class='info-value'><strong>{$layoutTitle}{$layoutInfo}</strong></span>
+                                    </div>
+                                    <div class='info-row'>
+                                        <span class='info-label'>Contractor:</span>
+                                        <span class='info-value'>{$contractorName}</span>
+                                    </div>
+                                    <div class='info-row'>
+                                        <span class='info-label'>Email:</span>
+                                        <span class='info-value'>{$contractorEmail}</span>
+                                    </div>
+                                    <div class='info-row'>
+                                        <span class='info-label'>Acknowledged:</span>
+                                        <span class='info-value'>{$ackTime}</span>
+                                    </div>
+                                    <div class='info-row'>
+                                        <span class='info-label'>Expected Due Date:</span>
+                                        <span class='info-value'><strong style='color: #059669;'>{$formattedDate}</strong></span>
+                                    </div>"
+                    . (($technicalDetails && !empty($technicalDetails)) ? 
+                       "<div class='info-row'>
+                           <span class='info-label'>Technical Details:</span>
+                           <span class='info-value'><strong style='color: #667eea;'>Available</strong></span>
+                        </div>" : "") . "
+                                </div>
+                                
+                                " . (($technicalDetails && !empty($technicalDetails)) ? 
+                                "<p style='background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 12px; border-radius: 6px; margin: 20px 0;'>
+                                    <strong>📋 Technical Details:</strong><br>
+                                    The contractor has access to all technical specifications including room dimensions, structural elements, 
+                                    material specifications, and construction details. They will reference these when preparing your estimate.
+                                </p>" : "") . "
+                                
+                                <p>The contractor is now working on preparing your detailed estimate. You'll be notified once they submit their proposal.</p>
+                                
+                                <a href='http://localhost/buildhub/#/homeowner/dashboard' class='cta-button'>View in Dashboard</a>
+                                
+                                <p style='margin-top: 30px; color: #6b7280; font-size: 14px;'>
+                                    Best regards,<br>
+                                    <strong>The BuildHub Team</strong>
+                                </p>
+                                
+                                <div class='footer'>
+                                    <p>This is an automated notification from BuildHub.</p>
+                                    <p>If you have any questions, please contact us.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>";
+                    
+                    sendMail($homeownerEmail, $emailSubject, $emailBody);
+                    error_log("Acknowledgment email sent to homeowner: {$homeownerEmail}");
+                } catch (Exception $emailError) {
+                    error_log("Failed to send acknowledgment email: " . $emailError->getMessage());
+                }
+            }
         } catch (Throwable $e) {
             // Notification creation failed, but acknowledgment succeeded
             error_log("Failed to create homeowner notification: " . $e->getMessage());

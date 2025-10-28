@@ -60,7 +60,7 @@ try {
     )");
 
     $sql = "SELECT e.id, e.send_id, e.contractor_id, e.total_cost, e.timeline, e.notes, e.structured, e.status, e.created_at,
-                   s.homeowner_id, s.layout_id, s.design_id,
+                   s.homeowner_id, s.layout_id, s.design_id, s.acknowledged_at, s.due_date,
                    CONCAT(c.first_name, ' ', c.last_name) AS contractor_name, c.email AS contractor_email,
                    (SELECT COUNT(*) FROM contractor_estimate_payments p WHERE p.homeowner_id = s.homeowner_id AND p.estimate_id = e.id AND p.payment_status = 'completed') AS is_paid
             FROM contractor_send_estimates e

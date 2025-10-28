@@ -10,7 +10,13 @@ if (typeof window !== 'undefined' && !window.Razorpay) {
   const script = document.createElement('script');
   script.src = 'https://checkout.razorpay.com/v1/checkout.js';
   script.async = true;
+  script.onerror = function() {
+    console.error('Failed to load Razorpay SDK');
+  };
   document.head.appendChild(script);
+  
+  // Set a flag to indicate Razorpay is loading
+  window._razorpayLoading = true;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

@@ -36,10 +36,14 @@ try {
                            e.homeowner_feedback, e.homeowner_action_at,
                            s.homeowner_id,
                            CONCAT(h.first_name, ' ', h.last_name) AS homeowner_name,
-                           h.email AS homeowner_email
+                           h.email AS homeowner_email,
+                           ci.message AS homeowner_message,
+                           ci.acknowledged_at,
+                           ci.due_date
                         FROM contractor_send_estimates e
                         LEFT JOIN contractor_layout_sends s ON s.id = e.send_id
                         LEFT JOIN users h ON h.id = s.homeowner_id
+                        LEFT JOIN contractor_inbox ci ON ci.estimate_id = e.id AND ci.type = 'estimate_message'
                         WHERE e.contractor_id = :cid
                         ORDER BY e.created_at DESC");
     $q->bindValue(':cid', $contractor_id, PDO::PARAM_INT);

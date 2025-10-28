@@ -70,10 +70,22 @@ class SimpleMLEngine:
             else:  # sqft
                 plot_size_sqft = plot_size
             
-            # Use user's building size if provided, otherwise calculate from plot
-            building_size = float(form_data.get('building_size', 0))
-            if building_size <= 0:  # Only use default if user didn't provide building size
-                building_size = plot_size_sqft * 0.6  # Default 60% of plot
+            # Get user's building size if provided
+            building_size_str = form_data.get('building_size', '')
+            user_building_size = building_size_str  # Keep original user value
+            
+            # For ML calculations, use user's value or calculate default
+            if building_size_str and building_size_str.strip():
+                try:
+                    building_size_for_calc = float(building_size_str)
+                except (ValueError, TypeError):
+                    building_size_for_calc = plot_size_sqft * 0.6  # Default 60% of plot
+            else:
+                # Calculate default for ML calculations only
+                building_size_for_calc = plot_size_sqft * 0.6 if plot_size_sqft > 0 else 0
+            
+            # Use calculated value for ML, but keep original for return
+            building_size = building_size_for_calc
             
             # Simple validation logic (using square feet)
             is_valid = plot_size_sqft >= 200 and budget >= 100000 and num_floors <= 6
@@ -136,6 +148,9 @@ class SimpleMLEngine:
             suggestions.append(f"Estimated cost: ₹{cost_estimate:,.0f}")
             suggestions.append(f"Predicted timeline: {predicted_timeline} months")
             
+            # Return user's original building_size (not calculated value)
+            return_building_size = float(user_building_size) if user_building_size and user_building_size.strip() else building_size
+            
             return {
                 'is_valid': bool(is_valid),
                 'errors': errors,
@@ -145,8 +160,9 @@ class SimpleMLEngine:
                 'plot_category': plot_category,
                 'budget_category': budget_category,
                 'predicted_timeline': predicted_timeline,
-                'building_size': building_size,
-                'plot_size_sqft': plot_size_sqft
+                'building_size': return_building_size,
+                'plot_size_sqft': plot_size_sqft,
+                'cost_per_sqft': base_cost_per_sqft
             }
             
         except Exception as e:

@@ -95,6 +95,19 @@ try {
             $decoded = json_decode($row['payload'], true);
             if (is_array($decoded)) $payload = $decoded;
         }
+        
+        // Extract technical details from payload if available
+        $technical_details = null;
+        if (isset($payload['technical_details']) && is_array($payload['technical_details'])) {
+            $technical_details = $payload['technical_details'];
+        } else if (isset($payload['forwarded_design']['technical_details']) && is_array($payload['forwarded_design']['technical_details'])) {
+            $technical_details = $payload['forwarded_design']['technical_details'];
+        }
+        
+        // Extract plot size and building size
+        $plot_size = $payload['plot_size'] ?? null;
+        $building_size = $payload['building_size'] ?? null;
+        
         $items[] = [
             'id' => (int)$row['id'],
             'contractor_id' => (int)$row['contractor_id'],
@@ -108,6 +121,9 @@ try {
             'title' => $row['title'] ?? 'New layout sent',
             'message' => $row['message'],
             'payload' => $payload,
+            'technical_details' => $technical_details,
+            'plot_size' => $plot_size,
+            'building_size' => $building_size,
             'created_at' => $row['created_at'],
             'acknowledged_at' => $row['acknowledged_at'] ?? null,
             'due_date' => $row['due_date'] ?? null,

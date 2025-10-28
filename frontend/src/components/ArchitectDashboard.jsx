@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import jsPDF from 'jspdf';
 import '../../styles/ArchitectSoftUI.css';
 import '../../styles/ArchitectDashboard.css';
 
@@ -139,6 +140,140 @@ const ArchitectDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Download project details as PDF
+  const downloadProjectPDF = (request) => {
+    const doc = new jsPDF();
+    let yPos = 20;
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('Project Details', 105, yPos, { align: 'center' });
+    yPos += 10;
+
+    // Project ID
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Project ID: ${request.id}`, 20, yPos);
+    yPos += 8;
+
+    // Client Information
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Client Information', 20, yPos);
+    yPos += 8;
+    
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Name: ${request.homeowner_name || 'Not specified'}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Email: ${request.homeowner_email || 'Not specified'}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Location: ${request.location || 'Not specified'}`, 20, yPos);
+    yPos += 10;
+
+    // Project Specifications
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Project Specifications', 20, yPos);
+    yPos += 8;
+    
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Plot Size: ${request.plot_size || 'Not specified'}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Building Size: ${request.building_size || 'Not specified'}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Budget Range: ${request.budget_range || 'Not specified'}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Number of Floors: ${request.num_floors || 'Not specified'}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Timeline: ${request.timeline || 'Not specified'}`, 20, yPos);
+    yPos += 10;
+
+    // Floor-wise Room Distribution
+    const floorRoomsData = request.floor_rooms || request.requirements_parsed?.floor_rooms;
+    if (floorRoomsData && (Array.isArray(floorRoomsData) ? floorRoomsData.length > 0 : Object.keys(floorRoomsData || {}).length > 0)) {
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Floor-wise Room Distribution', 20, yPos);
+      yPos += 8;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      const floorRooms = Array.isArray(floorRoomsData) ? floorRoomsData : Object.entries(floorRoomsData);
+      
+      floorRooms.forEach((item, floorIdx) => {
+        let floorData, floorNumber;
+        if (Array.isArray(floorRoomsData)) {
+          floorData = item.rooms;
+          floorNumber = parseInt(item.floor || floorIdx + 1);
+        } else {
+          const [floorKey, floorRooms] = item;
+          floorData = floorRooms;
+          floorNumber = parseInt(floorKey.replace('floor', ''));
+        }
+        
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text(floorNumber === 1 ? 'Ground Floor' : `Floor ${floorNumber}`, 25, yPos);
+        yPos += 7;
+        
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        Object.entries(floorData || {}).forEach(([roomType, count]) => {
+          const roomCount = typeof count === 'number' ? count : (count.length || 0);
+          if (roomCount > 0) {
+            doc.text(`  • ${roomType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}: ${roomCount}`, 30, yPos);
+            yPos += 6;
+          }
+        });
+        yPos += 4;
+      });
+      yPos += 5;
+    }
+
+    // Additional Details
+    if (request.requirements_parsed) {
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text('Additional Requirements', 20, yPos);
+      yPos += 8;
+      
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      if (request.requirements_parsed.plot_shape) {
+        doc.text(`Plot Shape: ${request.requirements_parsed.plot_shape}`, 20, yPos);
+        yPos += 7;
+      }
+      if (request.requirements_parsed.topography) {
+        doc.text(`Topography: ${request.requirements_parsed.topography}`, 20, yPos);
+        yPos += 7;
+      }
+      if (request.requirements_parsed.aesthetic) {
+        doc.text(`Style: ${request.requirements_parsed.aesthetic}`, 20, yPos);
+        yPos += 7;
+      }
+      if (request.requirements_parsed.site_considerations) {
+        doc.text(`Site Considerations: ${request.requirements_parsed.site_considerations}`, 20, yPos);
+        yPos += 7;
+      }
+    }
+
+    // Footer
+    yPos = 280;
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'italic');
+    doc.text(`Generated on ${new Date().toLocaleString()}`, 105, yPos, { align: 'center' });
+
+    // Save PDF
+    const fileName = `Project_${request.id}_${request.homeowner_name?.replace(/\s+/g, '_') || 'Details'}.pdf`;
+    doc.save(fileName);
+    toast.success('PDF downloaded successfully');
   };
 
   const fetchMyDesigns = async () => {
@@ -901,88 +1036,23 @@ const ArchitectDashboard = () => {
                               </div>
                             )}
                             
-                            {/* Floor-wise Room Distribution */}
-                            {request.floor_rooms && (
-                              <div style={{ marginBottom: '8px' }}>
-                                <p style={{ margin: '0 0 8px 0', fontWeight: '600' }}>• Floor-wise Rooms:</p>
-                                <div style={{ marginLeft: '10px' }}>
-                                  {(() => {
-                                    // Handle different floor_rooms data formats
-                                    let floorData = {};
-                                    
-                                    if (Array.isArray(request.floor_rooms)) {
-                                      // If it's an array, convert to object format
-                                      request.floor_rooms.forEach((floor, idx) => {
-                                        floorData[`floor${idx + 1}`] = floor;
-                                      });
-                                    } else if (typeof request.floor_rooms === 'object' && request.floor_rooms !== null) {
-                                      // If it's already an object, use it directly
-                                      floorData = request.floor_rooms;
-                                    } else if (typeof request.floor_rooms === 'string') {
-                                      // If it's a JSON string, parse it
-                                      try {
-                                        floorData = JSON.parse(request.floor_rooms);
-                                      } catch (e) {
-                                        console.error('Error parsing floor_rooms:', e);
-                                        return null;
-                                      }
-                                    }
-                                    
-                                    return Object.entries(floorData).map(([floorKey, floorRooms]) => {
-                                      if (!floorRooms || typeof floorRooms !== 'object') return null;
-                                      
-                                      const totalRooms = Object.values(floorRooms).reduce((sum, count) => sum + (count || 0), 0);
-                                      if (totalRooms === 0) return null;
-                                      
-                                      const floorNumber = floorKey.replace('floor', '');
-                                      
-                                      return (
-                                        <div key={floorKey} style={{ 
-                                          marginBottom: '6px', 
-                                          padding: '6px', 
-                                          backgroundColor: '#f8fafc', 
-                                          borderRadius: '6px',
-                                          border: '1px solid #e5e7eb'
-                                        }}>
-                                          <div style={{ 
-                                            fontSize: '11px', 
-                                            fontWeight: '600', 
-                                            color: '#374151', 
-                                            marginBottom: '4px',
-                                            textTransform: 'capitalize'
-                                          }}>
-                                            {floorNumber === '1' ? 'Ground Floor' : `Floor ${floorNumber}`}
-                                          </div>
-                                          <div style={{ fontSize: '11px', color: '#6b7280', lineHeight: '1.2' }}>
-                                            {Object.entries(floorRooms).map(([roomType, count]) => {
-                                              if (!count || count === 0) return null;
-                                              
-                                              return (
-                                                <span key={roomType} style={{ 
-                                                  display: 'inline-block',
-                                                  margin: '1px 3px 1px 0',
-                                                  padding: '2px 6px',
-                                                  background: '#dbeafe',
-                                                  color: '#1e40af',
-                                                  borderRadius: '8px',
-                                                  fontSize: '10px',
-                                                  fontWeight: '500'
-                                                }}>
-                                                  {roomType.replace(/_/g, ' ')}: {count}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      );
-                                    });
-                                  })()}
-                                </div>
-                              </div>
-                            )}
+                            {/* Floor-wise Room Distribution - Remove this basic version, use enhanced version below */}
                             
                             {/* Fallback: Show floor distribution based on num_floors if floor_rooms is not available */}
-                            {!request.floor_rooms && request.num_floors && parseInt(request.num_floors) > 1 && (
+                            {(() => {
+                              const hasFloorRooms = request.floor_rooms && (
+                                Array.isArray(request.floor_rooms) 
+                                  ? request.floor_rooms.length > 0 
+                                  : Object.keys(request.floor_rooms).length > 0
+                              );
+                              const hasFloorRoomsInParsed = request.requirements_parsed?.floor_rooms && (
+                                typeof request.requirements_parsed.floor_rooms === 'string' ? request.requirements_parsed.floor_rooms.length > 0
+                                : (Array.isArray(request.requirements_parsed.floor_rooms) 
+                                    ? request.requirements_parsed.floor_rooms.length > 0 
+                                    : Object.keys(request.requirements_parsed.floor_rooms).length > 0)
+                              );
+                              return !hasFloorRooms && !hasFloorRoomsInParsed;
+                            })() && request.num_floors && parseInt(request.num_floors) > 1 && (
                               <div style={{ marginBottom: '12px' }}>
                                 <p style={{ margin: '0 0 12px 0', fontWeight: '700', fontSize: '14px', color: '#374151' }}>
                                   🏗️ Floor Details ({request.num_floors} Floors):
@@ -1075,6 +1145,14 @@ const ArchitectDashboard = () => {
                       }))}
                     >
                       {expandedAssignments[request.id] ? 'Hide Details' : 'View Images & Details'}
+                    </button>
+                    <button 
+                      className="btn btn-success btn-sm"
+                      onClick={() => downloadProjectPDF(request)}
+                      title="Download project details as PDF"
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      📥 Download PDF
                     </button>
                   </div>
                   {expandedAssignments[request.id] && (
@@ -1321,7 +1399,32 @@ const ArchitectDashboard = () => {
                       )}
 
                       {/* Floor Plans & Room Details - Enhanced */}
-                      {request.floor_rooms && request.floor_rooms.length > 0 && (
+                      {(request.floor_rooms || request.requirements_parsed?.floor_rooms) && (() => {
+                        // Get floor_rooms from either location
+                        let floorRoomsData = request.floor_rooms;
+                        
+                        if (!floorRoomsData && request.requirements_parsed?.floor_rooms) {
+                          const parsedFloorRooms = request.requirements_parsed.floor_rooms;
+                          // Handle case where it's stored as a JSON string (double-encoded)
+                          if (typeof parsedFloorRooms === 'string') {
+                            try {
+                              floorRoomsData = JSON.parse(parsedFloorRooms);
+                            } catch (e) {
+                              console.error('Error parsing floor_rooms JSON string:', e);
+                              floorRoomsData = null;
+                            }
+                          } else {
+                            floorRoomsData = parsedFloorRooms;
+                          }
+                        }
+                        
+                        const hasFloors = Array.isArray(floorRoomsData) 
+                          ? floorRoomsData.length > 0 
+                          : floorRoomsData && Object.keys(floorRoomsData).length > 0;
+                        
+                        if (!hasFloors) return null;
+                        
+                        return (
                         <div className="floor-plans" style={{marginBottom: '20px'}}>
                           <div style={{
                             display: 'flex', 
@@ -1340,7 +1443,12 @@ const ArchitectDashboard = () => {
                               fontWeight: '600',
                               boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)'
                             }}>
-                              {request.floor_rooms.length} Floor{request.floor_rooms.length > 1 ? 's' : ''}
+                              {(() => {
+                                const floorCount = Array.isArray(floorRoomsData) 
+                                  ? floorRoomsData.length 
+                                  : Object.keys(floorRoomsData || {}).length;
+                                return `${floorCount} Floor${floorCount > 1 ? 's' : ''}`;
+                              })()}
                             </span>
                           </div>
                           <div style={{
@@ -1348,9 +1456,21 @@ const ArchitectDashboard = () => {
                             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
                             gap: '14px'
                           }}>
-                          {request.floor_rooms.map((floor, floorIdx) => {
-                              const floorNumber = parseInt(floor.floor || floorIdx + 1);
-                              const roomCount = Object.values(floor.rooms || {}).reduce((sum, val) => sum + (typeof val === 'number' ? val : val.length || 0), 0);
+                          {(Array.isArray(floorRoomsData) ? floorRoomsData : Object.entries(floorRoomsData || {})).map((item, floorIdx) => {
+                              // Handle both array [{floor: 1, rooms: {...}}] and object {floor1: {...}} formats
+                              let floorData, floorNumber;
+                              if (Array.isArray(floorRoomsData)) {
+                                // Array format: item is {floor: 1, rooms: {...}}
+                                floorData = item.rooms;
+                                floorNumber = parseInt(item.floor || floorIdx + 1);
+                              } else {
+                                // Object format: item is ['floor1', {...}]
+                                const [floorKey, floorRooms] = item;
+                                floorData = floorRooms;
+                                floorNumber = parseInt(floorKey.replace('floor', ''));
+                              }
+                              
+                              const roomCount = Object.values(floorData || {}).reduce((sum, val) => sum + (typeof val === 'number' ? val : val.length || 0), 0);
                               
                               return (
                               <div key={floorIdx} style={{
@@ -1436,7 +1556,7 @@ const ArchitectDashboard = () => {
                                   position: 'relative',
                                   zIndex: 1
                                 }}>
-                                {Object.entries(floor.rooms || {}).map(([roomType, rooms]) => {
+                                {Object.entries(floorData || {}).map(([roomType, rooms]) => {
                                     const count = typeof rooms === 'number' ? rooms : (rooms.length || 0);
                                     return (
                                     <div key={roomType} style={{
@@ -1469,7 +1589,8 @@ const ArchitectDashboard = () => {
                           })}
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Site Considerations - Compact */}
                       {request.site_considerations && (
